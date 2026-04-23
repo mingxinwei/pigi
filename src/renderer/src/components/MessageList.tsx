@@ -13,7 +13,10 @@ interface MessageListProps {
   streamingRef: React.RefObject<HTMLPreElement | null>
 }
 
-export default function MessageList({ messages, streamingRef }: MessageListProps): React.JSX.Element {
+export default function MessageList({
+  messages,
+  streamingRef,
+}: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const isAutoScrollRef = useRef(true)
 
@@ -48,11 +51,7 @@ export default function MessageList({ messages, streamingRef }: MessageListProps
   }, [])
 
   return (
-    <div
-      ref={containerRef}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto"
-    >
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-text-muted py-20">
@@ -75,7 +74,7 @@ export default function MessageList({ messages, streamingRef }: MessageListProps
 
 function MessageBubble({
   message,
-  streamingRef
+  streamingRef,
 }: {
   message: ChatMessage
   streamingRef?: React.RefObject<HTMLPreElement | null>

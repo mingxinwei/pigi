@@ -48,17 +48,17 @@ function subscribeToSession(): void {
 const createRuntimeFactory: CreateAgentSessionRuntimeFactory = async ({
   cwd,
   sessionManager,
-  sessionStartEvent
+  sessionStartEvent,
 }) => {
   const services = await createAgentSessionServices({ cwd })
   return {
     ...(await createAgentSessionFromServices({
       services,
       sessionManager,
-      sessionStartEvent
+      sessionStartEvent,
     })),
     services,
-    diagnostics: services.diagnostics
+    diagnostics: services.diagnostics,
   }
 }
 
@@ -70,13 +70,15 @@ export async function initPiSdk(cwd: string): Promise<void> {
   runtime = await createAgentSessionRuntime(createRuntimeFactory, {
     cwd,
     agentDir: getAgentDir(),
-    sessionManager: SessionManager.create(cwd)
+    sessionManager: SessionManager.create(cwd),
   })
 
   subscribeToSession()
 
   const session = runtime.session
-  console.log(`[pi-sdk] Ready. model=${session.model?.name ?? 'none'}, sessionId=${session.sessionId}`)
+  console.log(
+    `[pi-sdk] Ready. model=${session.model?.name ?? 'none'}, sessionId=${session.sessionId}`,
+  )
 }
 
 export async function disposePiSdk(): Promise<void> {
@@ -124,7 +126,7 @@ export function registerPiIpcHandlers(): void {
       isStreaming: s.isStreaming,
       sessionFile: s.sessionFile,
       sessionId: s.sessionId,
-      messageCount: s.messages.length
+      messageCount: s.messages.length,
     }
   })
 
@@ -152,9 +154,7 @@ export function registerPiIpcHandlers(): void {
 
   // List sessions
   ipcMain.handle('pi:listSessions', async (_event, cwd?: string) => {
-    const sessions = cwd
-      ? await SessionManager.list(cwd)
-      : await SessionManager.listAll()
+    const sessions = cwd ? await SessionManager.list(cwd) : await SessionManager.listAll()
     return sessions
   })
 

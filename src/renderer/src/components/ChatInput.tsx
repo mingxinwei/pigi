@@ -6,7 +6,11 @@ interface ChatInputProps {
   isStreaming: boolean
 }
 
-export default function ChatInput({ onSend, onAbort, isStreaming }: ChatInputProps): React.JSX.Element {
+export default function ChatInput({
+  onSend,
+  onAbort,
+  isStreaming,
+}: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleSend = useCallback(() => {
@@ -26,7 +30,7 @@ export default function ChatInput({ onSend, onAbort, isStreaming }: ChatInputPro
         if (!isStreaming) handleSend()
       }
     },
-    [handleSend, isStreaming]
+    [handleSend, isStreaming],
   )
 
   const handleInput = useCallback(() => {

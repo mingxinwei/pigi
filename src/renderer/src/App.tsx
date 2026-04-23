@@ -41,9 +41,7 @@ function App(): React.JSX.Element {
     const text = streamingTextRef.current
     if (id) {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id ? { ...m, content: text, isStreaming: false } : m
-        )
+        prev.map((m) => (m.id === id ? { ...m, content: text, isStreaming: false } : m)),
       )
     }
     currentAssistantIdRef.current = null
@@ -62,7 +60,7 @@ function App(): React.JSX.Element {
           currentAssistantIdRef.current = id
           setMessages((prev) => [
             ...prev,
-            { id, role: 'assistant', content: '', isStreaming: true }
+            { id, role: 'assistant', content: '', isStreaming: true },
           ])
           break
         }
@@ -73,10 +71,12 @@ function App(): React.JSX.Element {
           break
 
         case 'message_update': {
-          const ame = event.assistantMessageEvent as {
-            type: string
-            delta?: string
-          } | undefined
+          const ame = event.assistantMessageEvent as
+            | {
+                type: string
+                delta?: string
+              }
+            | undefined
           if (ame?.type === 'text_delta' && ame.delta) {
             appendStreamDelta(ame.delta)
           }
@@ -95,24 +95,24 @@ function App(): React.JSX.Element {
               id: nextId(),
               role: 'tool',
               content: '',
-              toolName: event.toolName as string
-            }
+              toolName: event.toolName as string,
+            },
           ])
           break
         }
 
         case 'tool_execution_update': {
-          const partialResult = event.partialResult as {
-            content?: Array<{ text?: string }>
-          } | undefined
+          const partialResult = event.partialResult as
+            | {
+                content?: Array<{ text?: string }>
+              }
+            | undefined
           const text = partialResult?.content?.[0]?.text || ''
           if (text) {
             setMessages((prev) => {
               const lastTool = [...prev].reverse().find((m) => m.role === 'tool')
               if (lastTool) {
-                return prev.map((m) =>
-                  m.id === lastTool.id ? { ...m, content: text } : m
-                )
+                return prev.map((m) => (m.id === lastTool.id ? { ...m, content: text } : m))
               }
               return prev
             })
@@ -122,15 +122,17 @@ function App(): React.JSX.Element {
 
         case 'tool_execution_end': {
           setStatus('streaming')
-          const result = event.result as {
-            content?: Array<{ text?: string }>
-          } | undefined
+          const result = event.result as
+            | {
+                content?: Array<{ text?: string }>
+              }
+            | undefined
           const text = result?.content?.[0]?.text || ''
           setMessages((prev) => {
             const lastTool = [...prev].reverse().find((m) => m.role === 'tool')
             if (lastTool) {
               return prev.map((m) =>
-                m.id === lastTool.id ? { ...m, content: text || m.content } : m
+                m.id === lastTool.id ? { ...m, content: text || m.content } : m,
               )
             }
             return prev
@@ -142,7 +144,7 @@ function App(): React.JSX.Element {
             currentAssistantIdRef.current = id
             setMessages((prev) => [
               ...prev,
-              { id, role: 'assistant', content: '', isStreaming: true }
+              { id, role: 'assistant', content: '', isStreaming: true },
             ])
           }
           break
@@ -155,7 +157,7 @@ function App(): React.JSX.Element {
             currentAssistantIdRef.current = id
             setMessages((prev) => [
               ...prev,
-              { id, role: 'assistant', content: '', isStreaming: true }
+              { id, role: 'assistant', content: '', isStreaming: true },
             ])
           }
           break
@@ -174,10 +176,7 @@ function App(): React.JSX.Element {
   }, [appendStreamDelta, finalizeStreaming])
 
   const handleSend = useCallback(async (message: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: nextId(), role: 'user', content: message }
-    ])
+    setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: message }])
     await window.api.prompt(message)
   }, [])
 
@@ -198,11 +197,7 @@ function App(): React.JSX.Element {
       <div className="flex flex-col flex-1 min-w-0">
         <StatusBar status={status} model={model} />
         <MessageList messages={messages} streamingRef={streamingRef} />
-        <ChatInput
-          onSend={handleSend}
-          onAbort={handleAbort}
-          isStreaming={status !== 'idle'}
-        />
+        <ChatInput onSend={handleSend} onAbort={handleAbort} isStreaming={status !== 'idle'} />
       </div>
     </div>
   )

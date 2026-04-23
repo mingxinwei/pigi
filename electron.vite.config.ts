@@ -12,18 +12,18 @@ export default defineConfig({
         exclude: [
           '@mariozechner/pi-coding-agent',
           '@mariozechner/pi-agent-core',
-          '@mariozechner/pi-ai'
-        ]
-      }
-    }
+          '@mariozechner/pi-ai',
+        ],
+      },
+    },
   },
   preload: {},
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
-      }
+        '@renderer': resolve('src/renderer/src'),
+      },
     },
-    plugins: [tailwindcss(), react()]
-  }
+    plugins: [tailwindcss(), react()],
+  },
 })

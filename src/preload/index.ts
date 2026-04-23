@@ -7,8 +7,7 @@ const piApi = {
     ipcRenderer.invoke('pi:prompt', message),
 
   /** Abort current operation */
-  abort: (): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('pi:abort'),
+  abort: (): Promise<{ success: boolean }> => ipcRenderer.invoke('pi:abort'),
 
   /** Get current session state */
   getState: (): Promise<{
@@ -21,8 +20,7 @@ const piApi = {
   } | null> => ipcRenderer.invoke('pi:getState'),
 
   /** Get all messages in current session */
-  getMessages: (): Promise<unknown[]> =>
-    ipcRenderer.invoke('pi:getMessages'),
+  getMessages: (): Promise<unknown[]> => ipcRenderer.invoke('pi:getMessages'),
 
   /** Create a new session */
   newSession: (): Promise<{ success: boolean; sessionId?: string }> =>
@@ -33,16 +31,13 @@ const piApi = {
     ipcRenderer.invoke('pi:switchSession', sessionPath),
 
   /** List sessions */
-  listSessions: (cwd?: string): Promise<unknown[]> =>
-    ipcRenderer.invoke('pi:listSessions', cwd),
+  listSessions: (cwd?: string): Promise<unknown[]> => ipcRenderer.invoke('pi:listSessions', cwd),
 
   /** Cycle model */
-  cycleModel: (): Promise<unknown> =>
-    ipcRenderer.invoke('pi:cycleModel'),
+  cycleModel: (): Promise<unknown> => ipcRenderer.invoke('pi:cycleModel'),
 
   /** Cycle thinking level */
-  cycleThinkingLevel: (): Promise<string | null> =>
-    ipcRenderer.invoke('pi:cycleThinkingLevel'),
+  cycleThinkingLevel: (): Promise<string | null> => ipcRenderer.invoke('pi:cycleThinkingLevel'),
 
   /** Listen for pi events */
   onEvent: (callback: (event: unknown) => void): (() => void) => {
@@ -56,7 +51,7 @@ const piApi = {
     const handler = (_: Electron.IpcRendererEvent, data: { error: string }): void => callback(data)
     ipcRenderer.on('pi:error', handler)
     return () => ipcRenderer.removeListener('pi:error', handler)
-  }
+  },
 }
 
 if (process.contextIsolated) {

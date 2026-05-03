@@ -174,18 +174,21 @@ function subscribeToSession(sessionId: string, runtime: AgentSessionRuntime, bat
 
 // --- Command Handlers ---
 
-async function createSession(sessionId: string, cwd: string): Promise<void> {
-  if (sessions.has(sessionId)) {
-    send({ type: 'session_error', sessionId, error: 'session already exists' })
-    return
-  }
-
+async function createSession(cwd: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   try {
     const runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,
       agentDir: getAgentDir(),
       sessionManager: SessionManager.create(cwd),
     })
+
+    // Use pi SDK's real sessionId as the key
+    const sessionId = runtime.session.sessionId
+
+    if (sessions.has(sessionId)) {
+      await runtime.dispose()
+      return { success: false, error: 'session already exists' }
+    }
 
     const batcher = new StreamBatcher(sessionId)
     const unsubscribe = subscribeToSession(sessionId, runtime, batcher)
@@ -203,8 +206,12 @@ async function createSession(sessionId: string, cwd: string): Promise<void> {
         : null,
       thinkingLevel: session.thinkingLevel,
     })
+
+    return { success: true, sessionId }
   } catch (err) {
-    send({ type: 'session_error', sessionId, error: err instanceof Error ? err.message : String(err) })
+    const error = err instanceof Error ? err.message : String(err)
+    send({ type: 'session_error', sessionId: '', error })
+    return { success: false, error }
   }
 }
 
@@ -221,8 +228,7 @@ async function destroySession(sessionId: string): Promise<void> {
 async function handleCommand(cmd: PiCommand): Promise<unknown> {
   switch (cmd.type) {
     case 'create_session':
-      await createSession(cmd.sessionId, cmd.cwd)
-      return { success: true }
+      return await createSession(cmd.cwd)
 
     case 'destroy_session':
       await destroySession(cmd.sessionId)

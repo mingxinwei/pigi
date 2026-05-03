@@ -24,7 +24,7 @@ export interface StreamBatch {
 
 /** Commands: renderer → main → utility */
 export type PiCommand =
-  | { type: 'create_session'; sessionId: string; cwd: string }
+  | { type: 'create_session'; cwd: string }
   | { type: 'destroy_session'; sessionId: string }
   | { type: 'prompt'; sessionId: string; message: string }
   | { type: 'abort'; sessionId: string }

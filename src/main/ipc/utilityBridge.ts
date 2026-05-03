@@ -23,7 +23,6 @@ import type { PiResponse } from '../../shared/protocol'
 let piAgent: Electron.UtilityProcess | null = null
 const pendingRequests = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
 let requestIdCounter = 0
-let sessionIdCounter = 0
 
 function sendToRenderer(channel: string, data: unknown): void {
   const win = getMainWindow()
@@ -102,9 +101,9 @@ export function registerPiIpcHandlers(): void {
     if (!cwd || typeof cwd !== 'string') {
       return { success: false, error: 'cwd must be a non-empty string' }
     }
-    const sessionId = `session-${++sessionIdCounter}-${Date.now()}`
-    await sendCommand({ type: 'create_session', sessionId, cwd })
-    return { success: true, sessionId }
+    // pi-agent creates the runtime and returns the real pi sessionId
+    const result = await sendCommand({ type: 'create_session', cwd }) as { success: boolean; sessionId?: string; error?: string }
+    return result
   })
 
   // Destroy a session

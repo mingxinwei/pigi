@@ -6,6 +6,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   main: {
     build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          'processes/utility/pi-agent': resolve('src/processes/utility/pi-agent.ts'),
+        },
+      },
       // @mariozechner/pi-coding-agent is ESM-only;
       // exclude from auto-externalization so it gets bundled into CJS output
       externalizeDeps: {

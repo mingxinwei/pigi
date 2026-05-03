@@ -1,4 +1,4 @@
-/** Sidebar placeholder — will be built out in Phase 2 */
+/** Sidebar - will be built out in Phase 2 */
 interface SidebarProps {
   isStreaming: boolean
   onNewSession: () => void
@@ -6,7 +6,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isStreaming, onNewSession }: SidebarProps): React.JSX.Element {
   return (
-    <div className="flex flex-col w-60 min-w-60 bg-bg-secondary border-r border-border-primary h-full">
+    <div className="flex flex-col w-60 min-w-60 bg-bg-secondary border-r border-border-primary h-full" data-testid="sidebar">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-secondary">
         <span className="text-sm font-semibold text-text-primary tracking-wide">pigi</span>
@@ -25,11 +25,6 @@ export default function Sidebar({ isStreaming, onNewSession }: SidebarProps): Re
         <div className="text-xs text-text-muted px-2 py-8 text-center">
           Sessions will appear here
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-4 py-2 border-t border-border-secondary text-xs text-text-muted">
-        pi rpc
       </div>
     </div>
   )

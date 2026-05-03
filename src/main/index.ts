@@ -1,17 +1,15 @@
 /**
  * Electron main process entry point.
  *
- * Kept minimal — delegates to focused modules:
- * - windows/createMainWindow.ts — window lifecycle
- * - processes/createPiAgentProcess.ts — spawn utility process
- * - ipc/utilityBridge.ts — establish channels, register IPC handlers
+ * - Spawns pi-agent utility process (no sessions yet, just the process)
+ * - Sessions are created on-demand from renderer
+ * - Each session gets its own MessagePort for streaming
  */
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows/createMainWindow'
 import { startPiAgent, stopPiAgent, registerPiIpcHandlers } from './ipc/utilityBridge'
 
-// Enable remote debugging in dev mode
 if (is.dev) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
@@ -25,7 +23,6 @@ app.whenReady().then(() => {
   startPiAgent()
 
   app.on('activate', () => {
-    const { BrowserWindow } = require('electron')
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
   })
 })

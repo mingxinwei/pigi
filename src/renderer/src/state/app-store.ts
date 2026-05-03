@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 
-export type RuntimeStatus = 'initializing' | 'ready' | 'error'
 export type AgentStatus = 'idle' | 'streaming' | 'tool_running' | 'error'
 
 interface ModelInfo {
@@ -9,31 +8,27 @@ interface ModelInfo {
   id: string
 }
 
-interface SessionInfo {
+export interface SessionEntry {
   sessionId: string
-  sessionFile?: string
+  status: AgentStatus
+  model: ModelInfo | null
+  thinkingLevel: string | null
+  error: string | null
 }
 
 interface AppState {
-  // Runtime
-  runtimeStatus: RuntimeStatus
-  runtimeError: string | null
-  setRuntimeReady: () => void
-  setRuntimeError: (error: string) => void
+  // Pi-agent process
+  agentProcessReady: boolean
+  setAgentProcessReady: (ready: boolean) => void
 
-  // Agent status
-  agentStatus: AgentStatus
-  setAgentStatus: (status: AgentStatus) => void
+  // Sessions (multiple can exist simultaneously)
+  sessions: Map<string, SessionEntry>
+  activeSessionId: string | null
 
-  // Model
-  model: ModelInfo | null
-  thinkingLevel: string | null
-  setModel: (model: ModelInfo | null) => void
-  setThinkingLevel: (level: string | null) => void
-
-  // Session
-  session: SessionInfo | null
-  setSession: (session: SessionInfo | null) => void
+  addSession: (sessionId: string) => void
+  removeSession: (sessionId: string) => void
+  setActiveSession: (sessionId: string | null) => void
+  updateSession: (sessionId: string, updates: Partial<SessionEntry>) => void
 
   // Sidebar
   sidebarExpanded: boolean
@@ -41,25 +36,46 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // Runtime
-  runtimeStatus: 'initializing',
-  runtimeError: null,
-  setRuntimeReady: () => set({ runtimeStatus: 'ready', runtimeError: null }),
-  setRuntimeError: (error) => set({ runtimeStatus: 'error', runtimeError: error }),
+  // Pi-agent process
+  agentProcessReady: false,
+  setAgentProcessReady: (ready) => set({ agentProcessReady: ready }),
 
-  // Agent status
-  agentStatus: 'idle',
-  setAgentStatus: (agentStatus) => set({ agentStatus }),
+  // Sessions
+  sessions: new Map(),
+  activeSessionId: null,
 
-  // Model
-  model: null,
-  thinkingLevel: null,
-  setModel: (model) => set({ model }),
-  setThinkingLevel: (thinkingLevel) => set({ thinkingLevel }),
+  addSession: (sessionId) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      sessions.set(sessionId, {
+        sessionId,
+        status: 'idle',
+        model: null,
+        thinkingLevel: null,
+        error: null,
+      })
+      return { sessions }
+    }),
 
-  // Session
-  session: null,
-  setSession: (session) => set({ session }),
+  removeSession: (sessionId) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      sessions.delete(sessionId)
+      const activeSessionId = state.activeSessionId === sessionId ? null : state.activeSessionId
+      return { sessions, activeSessionId }
+    }),
+
+  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+
+  updateSession: (sessionId, updates) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      const existing = sessions.get(sessionId)
+      if (existing) {
+        sessions.set(sessionId, { ...existing, ...updates })
+      }
+      return { sessions }
+    }),
 
   // Sidebar
   sidebarExpanded: true,

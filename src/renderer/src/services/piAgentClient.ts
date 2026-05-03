@@ -1,35 +1,43 @@
 /**
- * Pi agent client - renderer-side wrapper for communication with pi-agent.
+ * Pi agent client - renderer-side interface for multi-session communication.
  *
- * Provides a unified interface over two channels:
- * - Low-frequency commands/events via window.piApi (normal IPC)
- * - High-frequency streaming via MessagePort (direct, bypasses main)
+ * Each session has:
+ * - A sessionId for routing commands/events
+ * - Its own MessagePort for high-frequency streaming (requested after session_ready)
  */
 import type { StreamBatch } from '../../../shared/protocol'
 
 export type StreamBatchHandler = (batch: StreamBatch) => void
 
-let unsubscribeStream: (() => void) | null = null
-
-/** Subscribe to high-frequency stream batches from pi-agent */
-export function subscribeToStream(handler: StreamBatchHandler): () => void {
-  unsubscribeStream?.()
-  unsubscribeStream = window.piApi.onStreamBatch(handler)
-  return () => {
-    unsubscribeStream?.()
-    unsubscribeStream = null
+/** Create a new session and return its sessionId */
+export async function createSession(cwd: string): Promise<string> {
+  const result = await window.piApi.createSession(cwd)
+  if (!result.success || !result.sessionId) {
+    throw new Error(result.error || 'failed to create session')
   }
+  // Request stream port for this session
+  window.piApi.requestStreamPort(result.sessionId)
+  return result.sessionId
 }
 
-/** Re-export piApi methods for convenience */
+/** Destroy a session */
+export async function destroySession(sessionId: string): Promise<void> {
+  await window.piApi.destroySession(sessionId)
+}
+
+/** Subscribe to stream batches for a specific session */
+export function subscribeToStream(sessionId: string, handler: StreamBatchHandler): () => void {
+  return window.piApi.onStreamBatch(sessionId, handler)
+}
+
+/** Per-session commands */
 export const piAgent = {
-  prompt: (message: string) => window.piApi.prompt(message),
-  abort: () => window.piApi.abort(),
-  getState: () => window.piApi.getState(),
-  getMessages: () => window.piApi.getMessages(),
-  newSession: () => window.piApi.newSession(),
-  switchSession: (path: string) => window.piApi.switchSession(path),
+  prompt: (sessionId: string, message: string) => window.piApi.prompt(sessionId, message),
+  abort: (sessionId: string) => window.piApi.abort(sessionId),
+  getState: (sessionId: string) => window.piApi.getState(sessionId),
+  getMessages: (sessionId: string) => window.piApi.getMessages(sessionId),
+  switchSession: (sessionId: string, path: string) => window.piApi.switchSession(sessionId, path),
   listSessions: (cwd?: string) => window.piApi.listSessions(cwd),
-  cycleModel: () => window.piApi.cycleModel(),
-  cycleThinkingLevel: () => window.piApi.cycleThinkingLevel(),
+  cycleModel: (sessionId: string) => window.piApi.cycleModel(sessionId),
+  cycleThinkingLevel: (sessionId: string) => window.piApi.cycleThinkingLevel(sessionId),
 }

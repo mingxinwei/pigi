@@ -1,94 +1,107 @@
 /**
  * Preload script - exposes piApi to renderer via contextBridge.
  *
- * Two communication paths:
- * 1. Normal IPC (invoke/send): low-frequency commands and lifecycle events
- * 2. MessagePort (direct to pi-agent): high-frequency streaming batches
+ * Multi-session design:
+ * - Commands are scoped by sessionId
+ * - Each session gets its own MessagePort for streaming
+ * - Lifecycle events include sessionId so renderer knows which session they belong to
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// --- Stream Port Setup ---
-// Renderer requests port on load (and on HMR reload/refresh).
-// Main responds by transferring port2 of the MessageChannel.
+// --- Per-session stream ports ---
 
-let streamPort: MessagePort | null = null
-let streamCallback: ((batch: unknown) => void) | null = null
+const streamPorts = new Map<string, MessagePort>()
+const streamCallbacks = new Map<string, (batch: unknown) => void>()
 
-ipcRenderer.on('pi:stream_port', (event) => {
+// Receive stream port for a specific session
+ipcRenderer.on('pi:stream_port', (event, data: { sessionId: string }) => {
   const [port] = event.ports
-  if (port) {
-    streamPort = port
-    streamPort.onmessage = (e) => {
-      streamCallback?.(e.data)
-    }
-    streamPort.start()
-  }
-})
+  if (!port || !data?.sessionId) return
 
-// Request the port (fires on initial load and after any reload)
-ipcRenderer.send('pi:request_stream_port')
+  streamPorts.set(data.sessionId, port)
+  port.onmessage = (e) => {
+    const callback = streamCallbacks.get(data.sessionId)
+    callback?.(e.data)
+  }
+  port.start()
+})
 
 // --- API ---
 
 const piApi = {
-  // Low-frequency commands (normal IPC, routed through main)
-  prompt: (message: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('pi:prompt', message),
+  // Session lifecycle
+  createSession: (cwd: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
+    ipcRenderer.invoke('pi:createSession', cwd),
 
-  abort: (): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('pi:abort'),
+  destroySession: (sessionId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('pi:destroySession', sessionId),
 
-  getState: (): Promise<unknown> =>
-    ipcRenderer.invoke('pi:getState'),
+  // Request a stream port for a session (call after session_ready)
+  requestStreamPort: (sessionId: string): void => {
+    ipcRenderer.send('pi:request_stream_port', sessionId)
+  },
 
-  getMessages: (): Promise<unknown[]> =>
-    ipcRenderer.invoke('pi:getMessages'),
+  // Commands (all scoped by sessionId)
+  prompt: (sessionId: string, message: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('pi:prompt', sessionId, message),
 
-  newSession: (): Promise<{ success: boolean; sessionId?: string }> =>
-    ipcRenderer.invoke('pi:newSession'),
+  abort: (sessionId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('pi:abort', sessionId),
 
-  switchSession: (sessionPath: string): Promise<{ success: boolean; sessionId?: string }> =>
-    ipcRenderer.invoke('pi:switchSession', sessionPath),
+  getState: (sessionId: string): Promise<unknown> =>
+    ipcRenderer.invoke('pi:getState', sessionId),
+
+  getMessages: (sessionId: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('pi:getMessages', sessionId),
+
+  switchSession: (sessionId: string, sessionPath: string): Promise<{ success: boolean; sessionId?: string }> =>
+    ipcRenderer.invoke('pi:switchSession', sessionId, sessionPath),
 
   listSessions: (cwd?: string): Promise<unknown[]> =>
     ipcRenderer.invoke('pi:listSessions', cwd),
 
-  cycleModel: (): Promise<unknown> =>
-    ipcRenderer.invoke('pi:cycleModel'),
+  cycleModel: (sessionId: string): Promise<unknown> =>
+    ipcRenderer.invoke('pi:cycleModel', sessionId),
 
-  cycleThinkingLevel: (): Promise<string | null> =>
-    ipcRenderer.invoke('pi:cycleThinkingLevel'),
+  cycleThinkingLevel: (sessionId: string): Promise<string | null> =>
+    ipcRenderer.invoke('pi:cycleThinkingLevel', sessionId),
 
-  // Low-frequency lifecycle events (normal IPC)
-  onEvent: (callback: (event: unknown) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: unknown): void => callback(data)
+  // Lifecycle events (include sessionId)
+  onSessionReady: (callback: (data: { sessionId: string; model: unknown; thinkingLevel: string | null }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; model: unknown; thinkingLevel: string | null }): void => callback(data)
+    ipcRenderer.on('pi:session_ready', handler)
+    return () => ipcRenderer.removeListener('pi:session_ready', handler)
+  },
+
+  onSessionError: (callback: (data: { sessionId: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; error: string }): void => callback(data)
+    ipcRenderer.on('pi:session_error', handler)
+    return () => ipcRenderer.removeListener('pi:session_error', handler)
+  },
+
+  onEvent: (callback: (data: { sessionId: string; event: unknown }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; event: unknown }): void => callback(data)
     ipcRenderer.on('pi:event', handler)
     return () => ipcRenderer.removeListener('pi:event', handler)
   },
 
-  onError: (callback: (error: { error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { error: string }): void => callback(data)
+  onError: (callback: (data: { sessionId: string; error: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; error: string }): void => callback(data)
     ipcRenderer.on('pi:error', handler)
     return () => ipcRenderer.removeListener('pi:error', handler)
   },
 
-  onRuntimeReady: (callback: (data: { sessionId: string; model: { name: string; provider: string; id: string } | null; thinkingLevel: string | null }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { sessionId: string; model: { name: string; provider: string; id: string } | null; thinkingLevel: string | null }): void => callback(data)
-    ipcRenderer.on('pi:runtime_ready', handler)
-    return () => ipcRenderer.removeListener('pi:runtime_ready', handler)
+  onAgentProcessExit: (callback: (data: { code: number }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { code: number }): void => callback(data)
+    ipcRenderer.on('pi:agent_process_exit', handler)
+    return () => ipcRenderer.removeListener('pi:agent_process_exit', handler)
   },
 
-  onRuntimeError: (callback: (data: { error: string }) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { error: string }): void => callback(data)
-    ipcRenderer.on('pi:runtime_error', handler)
-    return () => ipcRenderer.removeListener('pi:runtime_error', handler)
-  },
-
-  // High-frequency streaming (MessagePort, bypasses main)
-  onStreamBatch: (callback: (batch: unknown) => void): (() => void) => {
-    streamCallback = callback
-    return () => { streamCallback = null }
+  // Stream subscription (per session, via MessagePort)
+  onStreamBatch: (sessionId: string, callback: (batch: unknown) => void): (() => void) => {
+    streamCallbacks.set(sessionId, callback)
+    return () => { streamCallbacks.delete(sessionId) }
   },
 }
 

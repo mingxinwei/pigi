@@ -1,16 +1,17 @@
 /**
  * Protocol types for communication between renderer ↔ pi-agent utility process.
  *
- * Two channels:
- * 1. Control (normal IPC via main): low-frequency commands and lifecycle events
- * 2. Stream (MessagePort, direct renderer ↔ utility): high-frequency batched deltas
+ * Two channels per session:
+ * 1. Control (normal IPC via main): commands and lifecycle events, tagged with sessionId
+ * 2. Stream (MessagePort per session): high-frequency batched deltas
  */
 
-// --- Stream channel (MessagePort) ---
+// --- Stream channel (one MessagePort per session) ---
 
 /** Batched streaming data: renderer ← utility (high-frequency, every 16ms) */
 export interface StreamBatch {
   type: 'stream_batch'
+  sessionId: string
   /** Accumulated text deltas keyed by assistant message id */
   text?: Record<string, string>
   /** Accumulated thinking deltas keyed by assistant message id */
@@ -23,23 +24,23 @@ export interface StreamBatch {
 
 /** Commands: renderer → main → utility */
 export type PiCommand =
-  | { type: 'init'; cwd: string }
-  | { type: 'prompt'; message: string }
-  | { type: 'abort' }
-  | { type: 'getState' }
-  | { type: 'getMessages' }
-  | { type: 'newSession' }
-  | { type: 'switchSession'; sessionPath: string }
+  | { type: 'create_session'; sessionId: string; cwd: string }
+  | { type: 'destroy_session'; sessionId: string }
+  | { type: 'prompt'; sessionId: string; message: string }
+  | { type: 'abort'; sessionId: string }
+  | { type: 'getState'; sessionId: string }
+  | { type: 'getMessages'; sessionId: string }
+  | { type: 'switchSession'; sessionId: string; sessionPath: string }
   | { type: 'listSessions'; cwd?: string }
-  | { type: 'cycleModel' }
-  | { type: 'cycleThinkingLevel' }
+  | { type: 'cycleModel'; sessionId: string }
+  | { type: 'cycleThinkingLevel'; sessionId: string }
 
-/** Responses: utility → main → renderer */
+/** Responses/events: utility → main → renderer */
 export type PiResponse =
-  | { type: 'runtime_ready'; sessionId: string; model: ModelInfo | null; thinkingLevel: string | null }
-  | { type: 'runtime_error'; error: string }
-  | { type: 'event'; event: unknown }
-  | { type: 'error'; error: string }
+  | { type: 'session_ready'; sessionId: string; model: ModelInfo | null; thinkingLevel: string | null }
+  | { type: 'session_error'; sessionId: string; error: string }
+  | { type: 'event'; sessionId: string; event: unknown }
+  | { type: 'error'; sessionId: string; error: string }
   | { type: 'result'; id: string; data: unknown }
 
 export interface ModelInfo {

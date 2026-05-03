@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useAppStore } from './state/app-store'
+import { createSession } from './services/piAgentClient'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import MessageList, { ChatMessage } from './components/MessageList'
@@ -17,32 +18,23 @@ function nextId(): string {
 
 /**
  * Temporary: event handling lives here until Phase 1 transcript controller.
- * This is acknowledged technical debt per plan.md Phase 1 tasks.
  */
 function App(): React.JSX.Element {
   const {
-    runtimeStatus,
-    runtimeError,
-    agentStatus,
-    model,
-    setRuntimeReady,
-    setRuntimeError,
-    setAgentStatus,
-    setModel,
-    setThinkingLevel,
-    setSession,
+    activeSessionId,
+    sessions,
+    addSession,
+    setActiveSession,
+    updateSession,
   } = useAppStore()
 
-  const messagesRef = useRef<ChatMessage[]>([])
-  const setMessagesState = useRef<React.Dispatch<React.SetStateAction<ChatMessage[]>> | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const streamingRef = useRef<HTMLPreElement>(null)
   const streamingTextRef = useRef('')
   const currentAssistantIdRef = useRef<string | null>(null)
 
-  // Use a simple state for messages (will move to transcript controller in Phase 1)
-  const [messages, setMessages] = useMessagesState()
-  setMessagesState.current = setMessages
-  messagesRef.current = messages
+  const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
+  const agentStatus = activeSession?.status ?? 'idle'
 
   const appendStreamDelta = useCallback((delta: string) => {
     streamingTextRef.current += delta
@@ -61,35 +53,43 @@ function App(): React.JSX.Element {
     }
     currentAssistantIdRef.current = null
     streamingTextRef.current = ''
-  }, [setMessages])
+  }, [])
 
-  // Listen for runtime lifecycle events
+  // Listen for session lifecycle
   useEffect(() => {
-    const removeReady = window.piApi.onRuntimeReady((data) => {
-      setRuntimeReady()
-      if (data.model) setModel(data.model)
-      if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel)
-      setSession({ sessionId: data.sessionId })
+    const removeReady = window.piApi.onSessionReady((data) => {
+      updateSession(data.sessionId, {
+        model: data.model as { name: string; provider: string; id: string } | null,
+        thinkingLevel: data.thinkingLevel,
+        status: 'idle',
+      })
     })
 
-    const removeError = window.piApi.onRuntimeError((data) => {
-      setRuntimeError(data.error)
+    const removeError = window.piApi.onSessionError((data) => {
+      updateSession(data.sessionId, { error: data.error, status: 'error' })
+    })
+
+    const removeProcessExit = window.piApi.onAgentProcessExit(() => {
+      // All sessions are gone
     })
 
     return () => {
       removeReady()
       removeError()
+      removeProcessExit()
     }
-  }, [setRuntimeReady, setRuntimeError, setModel, setThinkingLevel, setSession])
+  }, [updateSession])
 
-  // Listen for agent events
+  // Listen for session events (scoped by activeSessionId)
   useEffect(() => {
-    const removeEvent = window.piApi.onEvent((raw: unknown) => {
+    const removeEvent = window.piApi.onEvent(({ sessionId, event: raw }) => {
+      // Only process events for the active session
+      if (sessionId !== activeSessionId) return
       const event = raw as PiEvent
 
       switch (event.type) {
         case 'agent_start': {
-          setAgentStatus('streaming')
+          if (activeSessionId) updateSession(activeSessionId, { status: 'streaming' })
           streamingTextRef.current = ''
           const id = nextId()
           currentAssistantIdRef.current = id
@@ -102,7 +102,7 @@ function App(): React.JSX.Element {
 
         case 'agent_end':
           finalizeStreaming()
-          setAgentStatus('idle')
+          if (activeSessionId) updateSession(activeSessionId, { status: 'idle' })
           break
 
         case 'message_update': {
@@ -127,15 +127,10 @@ function App(): React.JSX.Element {
         }
 
         case 'tool_execution_start': {
-          setAgentStatus('tool_running')
+          if (activeSessionId) updateSession(activeSessionId, { status: 'tool_running' })
           setMessages((prev) => [
             ...prev,
-            {
-              id: nextId(),
-              role: 'tool',
-              content: '',
-              toolName: event.toolName as string,
-            },
+            { id: nextId(), role: 'tool', content: '', toolName: event.toolName as string },
           ])
           break
         }
@@ -158,7 +153,7 @@ function App(): React.JSX.Element {
         }
 
         case 'tool_execution_end': {
-          setAgentStatus('streaming')
+          if (activeSessionId) updateSession(activeSessionId, { status: 'streaming' })
           const result = event.result as
             | { content?: Array<{ text?: string }> }
             | undefined
@@ -172,7 +167,6 @@ function App(): React.JSX.Element {
             }
             return prev
           })
-          // Prepare for next assistant text
           if (!currentAssistantIdRef.current) {
             streamingTextRef.current = ''
             const id = nextId()
@@ -200,50 +194,68 @@ function App(): React.JSX.Element {
       }
     })
 
-    const removeError = window.piApi.onError((err) => {
-      console.error('[pi:error]', err.error)
+    const removeError = window.piApi.onError(({ sessionId, error }) => {
+      if (sessionId === activeSessionId) {
+        console.error('[pi:error]', error)
+      }
     })
 
     return () => {
       removeEvent()
       removeError()
     }
-  }, [appendStreamDelta, finalizeStreaming, setAgentStatus, setMessages])
+  }, [activeSessionId, appendStreamDelta, finalizeStreaming, updateSession])
+
+  // Subscribe to stream batches for active session
+  useEffect(() => {
+    if (!activeSessionId) return
+    return window.piApi.onStreamBatch(activeSessionId, (batch) => {
+      const b = batch as { text?: Record<string, string> }
+      if (b.text) {
+        for (const delta of Object.values(b.text)) {
+          appendStreamDelta(delta)
+        }
+      }
+    })
+  }, [activeSessionId, appendStreamDelta])
 
   const handleSend = useCallback(async (message: string) => {
+    if (!activeSessionId) return
     setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: message }])
-    await window.piApi.prompt(message)
-  }, [setMessages])
+    await window.piApi.prompt(activeSessionId, message)
+  }, [activeSessionId])
 
   const handleAbort = useCallback(async () => {
-    await window.piApi.abort()
-  }, [])
+    if (!activeSessionId) return
+    await window.piApi.abort(activeSessionId)
+  }, [activeSessionId])
 
   const handleNewSession = useCallback(async () => {
-    await window.piApi.newSession()
-    setMessages([])
-    setAgentStatus('idle')
-  }, [setMessages, setAgentStatus])
+    try {
+      const sessionId = await createSession(process.cwd?.() || '.')
+      addSession(sessionId)
+      setActiveSession(sessionId)
+      setMessages([])
+    } catch (err) {
+      console.error('Failed to create session:', err)
+    }
+  }, [addSession, setActiveSession])
 
-  // Runtime initialization overlay
-  if (runtimeStatus === 'initializing') {
+  // No active session — show welcome
+  if (!activeSessionId) {
     return (
-      <div className="flex h-screen items-center justify-center" data-testid="init-screen">
-        <div className="text-center">
-          <div className="text-sm text-text-secondary mb-2">Initializing pi runtime...</div>
-          <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-        </div>
-      </div>
-    )
-  }
-
-  if (runtimeStatus === 'error') {
-    return (
-      <div className="flex h-screen items-center justify-center" data-testid="error-screen">
-        <div className="text-center max-w-md">
-          <div className="text-sm text-red mb-2">Failed to initialize pi runtime</div>
-          <div className="text-xs text-text-muted font-mono bg-bg-tertiary rounded p-3">
-            {runtimeError}
+      <div className="flex h-screen" data-testid="app-shell">
+        <Sidebar isStreaming={false} onNewSession={handleNewSession} />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center">
+            <div className="text-2xl mb-2">🥧</div>
+            <div className="text-sm text-text-secondary mb-4">Start a new session</div>
+            <button
+              onClick={handleNewSession}
+              className="px-4 py-2 rounded-lg bg-accent text-bg-primary text-sm font-medium hover:bg-accent-hover transition-colors"
+            >
+              New Session
+            </button>
           </div>
         </div>
       </div>
@@ -255,18 +267,12 @@ function App(): React.JSX.Element {
       <Sidebar isStreaming={agentStatus !== 'idle'} onNewSession={handleNewSession} />
 
       <div className="flex flex-col flex-1 min-w-0">
-        <StatusBar status={agentStatus} model={model?.name ?? ''} />
+        <StatusBar status={agentStatus} model={activeSession?.model?.name ?? ''} />
         <MessageList messages={messages} streamingRef={streamingRef} />
         <ChatInput onSend={handleSend} onAbort={handleAbort} isStreaming={agentStatus !== 'idle'} />
       </div>
     </div>
   )
-}
-
-// Temporary hook until transcript controller in Phase 1
-import { useState } from 'react'
-function useMessagesState(): [ChatMessage[], React.Dispatch<React.SetStateAction<ChatMessage[]>>] {
-  return useState<ChatMessage[]>([])
 }
 
 export default App

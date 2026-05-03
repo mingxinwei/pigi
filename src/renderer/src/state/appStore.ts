@@ -2,10 +2,18 @@ import { create } from 'zustand'
 
 export type AgentStatus = 'idle' | 'streaming' | 'tool_running' | 'error'
 
-interface ModelInfo {
+export interface ModelInfo {
   name: string
   provider: string
   id: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  toolName?: string
+  isStreaming?: boolean
 }
 
 export interface SessionEntry {
@@ -14,13 +22,10 @@ export interface SessionEntry {
   model: ModelInfo | null
   thinkingLevel: string | null
   error: string | null
+  messages: ChatMessage[]
 }
 
 interface AppState {
-  // Pi-agent process
-  agentProcessReady: boolean
-  setAgentProcessReady: (ready: boolean) => void
-
   // Sessions (multiple can exist simultaneously)
   sessions: Map<string, SessionEntry>
   activeSessionId: string | null
@@ -28,7 +33,12 @@ interface AppState {
   addSession: (sessionId: string) => void
   removeSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
-  updateSession: (sessionId: string, updates: Partial<SessionEntry>) => void
+  updateSession: (sessionId: string, updates: Partial<Omit<SessionEntry, 'sessionId' | 'messages'>>) => void
+
+  // Per-session message operations
+  appendMessage: (sessionId: string, message: ChatMessage) => void
+  updateMessage: (sessionId: string, messageId: string, updates: Partial<ChatMessage>) => void
+  setMessages: (sessionId: string, messages: ChatMessage[]) => void
 
   // Sidebar
   sidebarExpanded: boolean
@@ -36,11 +46,6 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // Pi-agent process
-  agentProcessReady: false,
-  setAgentProcessReady: (ready) => set({ agentProcessReady: ready }),
-
-  // Sessions
   sessions: new Map(),
   activeSessionId: null,
 
@@ -53,6 +58,7 @@ export const useAppStore = create<AppState>((set) => ({
         model: null,
         thinkingLevel: null,
         error: null,
+        messages: [],
       })
       return { sessions }
     }),
@@ -73,6 +79,44 @@ export const useAppStore = create<AppState>((set) => ({
       const existing = sessions.get(sessionId)
       if (existing) {
         sessions.set(sessionId, { ...existing, ...updates })
+      }
+      return { sessions }
+    }),
+
+  appendMessage: (sessionId, message) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      const existing = sessions.get(sessionId)
+      if (existing) {
+        sessions.set(sessionId, {
+          ...existing,
+          messages: [...existing.messages, message],
+        })
+      }
+      return { sessions }
+    }),
+
+  updateMessage: (sessionId, messageId, updates) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      const existing = sessions.get(sessionId)
+      if (existing) {
+        sessions.set(sessionId, {
+          ...existing,
+          messages: existing.messages.map((m) =>
+            m.id === messageId ? { ...m, ...updates } : m,
+          ),
+        })
+      }
+      return { sessions }
+    }),
+
+  setMessages: (sessionId, messages) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      const existing = sessions.get(sessionId)
+      if (existing) {
+        sessions.set(sessionId, { ...existing, messages })
       }
       return { sessions }
     }),

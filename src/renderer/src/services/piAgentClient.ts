@@ -15,7 +15,16 @@ export async function createSession(cwd: string): Promise<string> {
   if (!result.success || !result.sessionId) {
     throw new Error(result.error || 'failed to create session')
   }
-  // Request stream port for this session
+  window.piApi.requestStreamPort(result.sessionId)
+  return result.sessionId
+}
+
+/** Resume an existing session by its file path (from SessionInfo.path) */
+export async function resumeSession(sessionPath: string): Promise<string> {
+  const result = await window.piApi.resumeSession(sessionPath)
+  if (!result.success || !result.sessionId) {
+    throw new Error(result.error || 'failed to resume session')
+  }
   window.piApi.requestStreamPort(result.sessionId)
   return result.sessionId
 }

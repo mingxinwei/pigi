@@ -22,7 +22,7 @@ import {
   getAgentDir,
   SessionManager,
 } from '@mariozechner/pi-coding-agent'
-import type { PiCommand, PiResponse, StreamBatch } from '../../shared/protocol'
+import type { PiCommand, PiResponse, StreamBatch, UtilityMessage } from '../../shared/protocol'
 
 // --- StreamBatcher (one per session) ---
 
@@ -174,6 +174,34 @@ function subscribeToSession(sessionId: string, runtime: AgentSessionRuntime, bat
 
 // --- Command Handlers ---
 
+/** Register a runtime into the sessions map, bind extensions, emit session_ready */
+async function registerRuntime(runtime: AgentSessionRuntime): Promise<{ success: boolean; sessionId: string; error?: string }> {
+  const sessionId = runtime.session.sessionId
+
+  if (sessions.has(sessionId)) {
+    await runtime.dispose()
+    return { success: false, sessionId, error: 'session already active' }
+  }
+
+  const batcher = new StreamBatcher(sessionId)
+  const unsubscribe = subscribeToSession(sessionId, runtime, batcher)
+  sessions.set(sessionId, { runtime, batcher, unsubscribe })
+
+  await runtime.session.bindExtensions({})
+
+  const session = runtime.session
+  send({
+    type: 'session_ready',
+    sessionId,
+    model: session.model
+      ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
+      : null,
+    thinkingLevel: session.thinkingLevel,
+  })
+
+  return { success: true, sessionId }
+}
+
 async function createSession(cwd: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   try {
     const runtime = await createAgentSessionRuntime(createRuntimeFactory, {
@@ -181,33 +209,25 @@ async function createSession(cwd: string): Promise<{ success: boolean; sessionId
       agentDir: getAgentDir(),
       sessionManager: SessionManager.create(cwd),
     })
+    return registerRuntime(runtime)
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    send({ type: 'session_error', sessionId: '', error })
+    return { success: false, error }
+  }
+}
 
-    // Use pi SDK's real sessionId as the key
-    const sessionId = runtime.session.sessionId
-
-    if (sessions.has(sessionId)) {
-      await runtime.dispose()
-      return { success: false, error: 'session already exists' }
-    }
-
-    const batcher = new StreamBatcher(sessionId)
-    const unsubscribe = subscribeToSession(sessionId, runtime, batcher)
-
-    sessions.set(sessionId, { runtime, batcher, unsubscribe })
-
-    await runtime.session.bindExtensions({})
-
-    const session = runtime.session
-    send({
-      type: 'session_ready',
-      sessionId,
-      model: session.model
-        ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
-        : null,
-      thinkingLevel: session.thinkingLevel,
+async function resumeSession(sessionPath: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+  try {
+    // SessionManager.open reads cwd from session header automatically
+    const sessionManager = SessionManager.open(sessionPath)
+    const cwd = sessionManager.getCwd()
+    const runtime = await createAgentSessionRuntime(createRuntimeFactory, {
+      cwd,
+      agentDir: getAgentDir(),
+      sessionManager,
     })
-
-    return { success: true, sessionId }
+    return registerRuntime(runtime)
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     send({ type: 'session_error', sessionId: '', error })
@@ -229,6 +249,9 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
   switch (cmd.type) {
     case 'create_session':
       return await createSession(cmd.cwd)
+
+    case 'resume_session':
+      return await resumeSession(cmd.sessionPath)
 
     case 'destroy_session':
       await destroySession(cmd.sessionId)
@@ -317,8 +340,9 @@ process.parentPort?.on('message', async (messageEvent) => {
   const { data, ports } = messageEvent
 
   // Receive a stream port for a specific session
-  if (data?.type === 'attach_stream_port' && ports.length > 0) {
-    const sessionId = data.sessionId as string
+  const msg = data as UtilityMessage | PiCommand
+  if (msg.type === 'attach_stream_port' && ports.length > 0) {
+    const sessionId = msg.sessionId
     const entry = sessions.get(sessionId)
     if (entry) {
       entry.batcher.start(ports[0])

@@ -5,6 +5,7 @@ interface PiApi {
   // Session lifecycle
   createSession: (cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   destroySession: (sessionId: string) => Promise<{ success: boolean }>
+  resumeSession: (sessionPath: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   requestStreamPort: (sessionId: string) => void
 
   // Commands (scoped by sessionId)
@@ -22,7 +23,7 @@ interface PiApi {
   onSessionError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
   onEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => () => void
   onError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
-  onAgentProcessExit: (callback: (data: { code: number }) => void) => () => void
+  onProcessExit: (callback: (data: { code: number }) => void) => () => void
 
   // Stream (per session, via MessagePort)
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void

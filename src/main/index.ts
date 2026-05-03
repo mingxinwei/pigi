@@ -8,7 +8,7 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows/createMainWindow'
-import { startPiAgent, stopPiAgent, registerPiIpcHandlers } from './ipc/utilityBridge'
+import { stopUtilityProcess, registerIpcHandlers } from './ipc/piAgentBridge'
 
 if (is.dev) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -18,9 +18,8 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pigi')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
-  registerPiIpcHandlers()
+  registerIpcHandlers()
   createMainWindow()
-  startPiAgent()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
@@ -32,5 +31,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  stopPiAgent()
+  stopUtilityProcess()
 })

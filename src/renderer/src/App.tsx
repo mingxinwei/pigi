@@ -1,9 +1,9 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
-import { useAppStore } from './state/app-store'
+import { useEffect, useRef, useCallback } from 'react'
+import { useAppStore } from './state/appStore'
 import { createSession } from './services/piAgentClient'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
-import MessageList, { ChatMessage } from './components/MessageList'
+import MessageList from './components/MessageList'
 import ChatInput from './components/ChatInput'
 
 interface PiEvent {
@@ -17,8 +17,11 @@ function nextId(): string {
 }
 
 /**
- * Temporary: event handling lives here until Phase 1 transcript controller.
+ * Tracks per-session streaming state (which assistant message is currently streaming).
+ * This is mutable state that doesn't need to trigger re-renders.
  */
+const streamingState = new Map<string, { assistantId: string; text: string }>()
+
 function App(): React.JSX.Element {
   const {
     activeSessionId,
@@ -26,36 +29,185 @@ function App(): React.JSX.Element {
     addSession,
     setActiveSession,
     updateSession,
+    appendMessage,
   } = useAppStore()
-
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const streamingRef = useRef<HTMLPreElement>(null)
-  const streamingTextRef = useRef('')
-  const currentAssistantIdRef = useRef<string | null>(null)
 
   const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
   const agentStatus = activeSession?.status ?? 'idle'
 
-  const appendStreamDelta = useCallback((delta: string) => {
-    streamingTextRef.current += delta
-    if (streamingRef.current) {
-      streamingRef.current.textContent = streamingTextRef.current
-    }
-  }, [])
+  // Ref to the streaming <pre> element for the active session (direct DOM mutation)
+  const streamingRef = useRef<HTMLPreElement>(null)
 
-  const finalizeStreaming = useCallback(() => {
-    const id = currentAssistantIdRef.current
-    const text = streamingTextRef.current
-    if (id) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, content: text, isStreaming: false } : m)),
-      )
+  // Sync streaming text to DOM for active session
+  const syncStreamingDom = useCallback(() => {
+    if (!activeSessionId) return
+    const state = streamingState.get(activeSessionId)
+    if (streamingRef.current && state) {
+      streamingRef.current.textContent = state.text
     }
-    currentAssistantIdRef.current = null
-    streamingTextRef.current = ''
-  }, [])
+  }, [activeSessionId])
 
-  // Listen for session lifecycle
+  // Process events from ALL sessions (not just active)
+  useEffect(() => {
+    const removeEvent = window.piApi.onEvent(({ sessionId, event: raw }) => {
+      const event = raw as PiEvent
+      const store = useAppStore.getState()
+
+      if (!store.sessions.has(sessionId)) return
+
+      switch (event.type) {
+        case 'agent_start': {
+          store.updateSession(sessionId, { status: 'streaming' })
+          const id = nextId()
+          streamingState.set(sessionId, { assistantId: id, text: '' })
+          store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+          break
+        }
+
+        case 'agent_end': {
+          const state = streamingState.get(sessionId)
+          if (state) {
+            store.updateMessage(sessionId, state.assistantId, {
+              content: state.text,
+              isStreaming: false,
+            })
+            streamingState.delete(sessionId)
+          }
+          store.updateSession(sessionId, { status: 'idle' })
+          break
+        }
+
+        case 'message_update': {
+          const ame = event.assistantMessageEvent as { type: string; delta?: string } | undefined
+          if (ame?.type === 'text_delta' && ame.delta) {
+            const state = streamingState.get(sessionId)
+            if (state) {
+              state.text += ame.delta
+              // Only mutate DOM if this is the active session
+              if (sessionId === store.activeSessionId) {
+                syncStreamingDom()
+              }
+            }
+          }
+          break
+        }
+
+        case 'message_end': {
+          const endMsg = event.message as { role?: string; errorMessage?: string } | undefined
+          if (endMsg?.role === 'assistant') {
+            const state = streamingState.get(sessionId)
+            if (state) {
+              if (endMsg.errorMessage) {
+                state.text = `Error: ${endMsg.errorMessage}`
+              }
+              store.updateMessage(sessionId, state.assistantId, {
+                content: state.text,
+                isStreaming: false,
+              })
+              streamingState.delete(sessionId)
+            }
+          }
+          break
+        }
+
+        case 'tool_execution_start': {
+          store.updateSession(sessionId, { status: 'tool_running' })
+          store.appendMessage(sessionId, {
+            id: nextId(),
+            role: 'tool',
+            content: '',
+            toolName: event.toolName as string,
+          })
+          break
+        }
+
+        case 'tool_execution_update': {
+          const partialResult = event.partialResult as { content?: Array<{ text?: string }> } | undefined
+          const text = partialResult?.content?.[0]?.text || ''
+          if (text) {
+            const session = store.sessions.get(sessionId)
+            if (session) {
+              const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
+              if (lastTool) {
+                store.updateMessage(sessionId, lastTool.id, { content: text })
+              }
+            }
+          }
+          break
+        }
+
+        case 'tool_execution_end': {
+          store.updateSession(sessionId, { status: 'streaming' })
+          const result = event.result as { content?: Array<{ text?: string }> } | undefined
+          const text = result?.content?.[0]?.text || ''
+          const session = store.sessions.get(sessionId)
+          if (session) {
+            const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
+            if (lastTool && text) {
+              store.updateMessage(sessionId, lastTool.id, { content: text })
+            }
+          }
+          // Prepare next assistant message if needed
+          if (!streamingState.has(sessionId)) {
+            const id = nextId()
+            streamingState.set(sessionId, { assistantId: id, text: '' })
+            store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+          }
+          break
+        }
+
+        case 'turn_start': {
+          if (!streamingState.has(sessionId)) {
+            const id = nextId()
+            streamingState.set(sessionId, { assistantId: id, text: '' })
+            store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+          }
+          break
+        }
+      }
+    })
+
+    const removeError = window.piApi.onError(({ sessionId, error }) => {
+      console.error(`[pi:error] session=${sessionId}`, error)
+    })
+
+    return () => {
+      removeEvent()
+      removeError()
+    }
+  }, [syncStreamingDom])
+
+  // Subscribe to stream batches for ALL sessions
+  useEffect(() => {
+    const unsubscribes: Array<() => void> = []
+
+    for (const [sessionId] of sessions) {
+      const unsub = window.piApi.onStreamBatch(sessionId, (batch) => {
+        const b = batch as { text?: Record<string, string> }
+        if (b.text) {
+          const state = streamingState.get(sessionId)
+          if (state) {
+            for (const delta of Object.values(b.text)) {
+              state.text += delta
+            }
+            if (sessionId === useAppStore.getState().activeSessionId) {
+              syncStreamingDom()
+            }
+          }
+        }
+      })
+      unsubscribes.push(unsub)
+    }
+
+    return () => unsubscribes.forEach((fn) => fn())
+  }, [sessions, syncStreamingDom])
+
+  // When switching to a session, sync its streaming state to DOM
+  useEffect(() => {
+    syncStreamingDom()
+  }, [activeSessionId, syncStreamingDom])
+
+  // Session lifecycle listeners
   useEffect(() => {
     const removeReady = window.piApi.onSessionReady((data) => {
       updateSession(data.sessionId, {
@@ -69,8 +221,8 @@ function App(): React.JSX.Element {
       updateSession(data.sessionId, { error: data.error, status: 'error' })
     })
 
-    const removeProcessExit = window.piApi.onAgentProcessExit(() => {
-      // All sessions are gone
+    const removeProcessExit = window.piApi.onProcessExit(() => {
+      // All sessions are gone if process crashes
     })
 
     return () => {
@@ -80,150 +232,11 @@ function App(): React.JSX.Element {
     }
   }, [updateSession])
 
-  // Listen for session events (scoped by activeSessionId)
-  useEffect(() => {
-    const removeEvent = window.piApi.onEvent(({ sessionId, event: raw }) => {
-      // Only process events for the active session
-      if (sessionId !== activeSessionId) return
-      const event = raw as PiEvent
-
-      switch (event.type) {
-        case 'agent_start': {
-          if (activeSessionId) updateSession(activeSessionId, { status: 'streaming' })
-          streamingTextRef.current = ''
-          const id = nextId()
-          currentAssistantIdRef.current = id
-          setMessages((prev) => [
-            ...prev,
-            { id, role: 'assistant', content: '', isStreaming: true },
-          ])
-          break
-        }
-
-        case 'agent_end':
-          finalizeStreaming()
-          if (activeSessionId) updateSession(activeSessionId, { status: 'idle' })
-          break
-
-        case 'message_update': {
-          const ame = event.assistantMessageEvent as
-            | { type: string; delta?: string }
-            | undefined
-          if (ame?.type === 'text_delta' && ame.delta) {
-            appendStreamDelta(ame.delta)
-          }
-          break
-        }
-
-        case 'message_end': {
-          const endMsg = event.message as { role?: string; errorMessage?: string } | undefined
-          if (endMsg?.role === 'assistant') {
-            if (endMsg?.errorMessage) {
-              streamingTextRef.current = `Error: ${endMsg.errorMessage}`
-            }
-            finalizeStreaming()
-          }
-          break
-        }
-
-        case 'tool_execution_start': {
-          if (activeSessionId) updateSession(activeSessionId, { status: 'tool_running' })
-          setMessages((prev) => [
-            ...prev,
-            { id: nextId(), role: 'tool', content: '', toolName: event.toolName as string },
-          ])
-          break
-        }
-
-        case 'tool_execution_update': {
-          const partialResult = event.partialResult as
-            | { content?: Array<{ text?: string }> }
-            | undefined
-          const text = partialResult?.content?.[0]?.text || ''
-          if (text) {
-            setMessages((prev) => {
-              const lastTool = [...prev].reverse().find((m) => m.role === 'tool')
-              if (lastTool) {
-                return prev.map((m) => (m.id === lastTool.id ? { ...m, content: text } : m))
-              }
-              return prev
-            })
-          }
-          break
-        }
-
-        case 'tool_execution_end': {
-          if (activeSessionId) updateSession(activeSessionId, { status: 'streaming' })
-          const result = event.result as
-            | { content?: Array<{ text?: string }> }
-            | undefined
-          const text = result?.content?.[0]?.text || ''
-          setMessages((prev) => {
-            const lastTool = [...prev].reverse().find((m) => m.role === 'tool')
-            if (lastTool) {
-              return prev.map((m) =>
-                m.id === lastTool.id ? { ...m, content: text || m.content } : m,
-              )
-            }
-            return prev
-          })
-          if (!currentAssistantIdRef.current) {
-            streamingTextRef.current = ''
-            const id = nextId()
-            currentAssistantIdRef.current = id
-            setMessages((prev) => [
-              ...prev,
-              { id, role: 'assistant', content: '', isStreaming: true },
-            ])
-          }
-          break
-        }
-
-        case 'turn_start': {
-          if (!currentAssistantIdRef.current) {
-            streamingTextRef.current = ''
-            const id = nextId()
-            currentAssistantIdRef.current = id
-            setMessages((prev) => [
-              ...prev,
-              { id, role: 'assistant', content: '', isStreaming: true },
-            ])
-          }
-          break
-        }
-      }
-    })
-
-    const removeError = window.piApi.onError(({ sessionId, error }) => {
-      if (sessionId === activeSessionId) {
-        console.error('[pi:error]', error)
-      }
-    })
-
-    return () => {
-      removeEvent()
-      removeError()
-    }
-  }, [activeSessionId, appendStreamDelta, finalizeStreaming, updateSession])
-
-  // Subscribe to stream batches for active session
-  useEffect(() => {
-    if (!activeSessionId) return
-    return window.piApi.onStreamBatch(activeSessionId, (batch) => {
-      const b = batch as { text?: Record<string, string> }
-      if (b.text) {
-        for (const delta of Object.values(b.text)) {
-          appendStreamDelta(delta)
-        }
-      }
-    })
-  }, [activeSessionId, appendStreamDelta])
-
   const handleSend = useCallback(async (message: string) => {
     if (!activeSessionId) return
-    setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: message }])
+    appendMessage(activeSessionId, { id: nextId(), role: 'user', content: message })
     await window.piApi.prompt(activeSessionId, message)
-  }, [activeSessionId])
+  }, [activeSessionId, appendMessage])
 
   const handleAbort = useCallback(async () => {
     if (!activeSessionId) return
@@ -235,20 +248,29 @@ function App(): React.JSX.Element {
       const sessionId = await createSession(process.cwd?.() || '.')
       addSession(sessionId)
       setActiveSession(sessionId)
-      setMessages([])
     } catch (err) {
       console.error('Failed to create session:', err)
     }
   }, [addSession, setActiveSession])
 
+  const handleSwitchSession = useCallback((sessionId: string) => {
+    setActiveSession(sessionId)
+  }, [setActiveSession])
+
   // No active session — show welcome
   if (!activeSessionId) {
     return (
       <div className="flex h-screen" data-testid="app-shell">
-        <Sidebar isStreaming={false} onNewSession={handleNewSession} />
+        <Sidebar
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          isStreaming={false}
+          onNewSession={handleNewSession}
+          onSwitchSession={handleSwitchSession}
+        />
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <div className="text-2xl mb-2">🥧</div>
+            <div className="text-2xl mb-2">pi</div>
             <div className="text-sm text-text-secondary mb-4">Start a new session</div>
             <button
               onClick={handleNewSession}
@@ -262,13 +284,21 @@ function App(): React.JSX.Element {
     )
   }
 
+  const activeMessages = activeSession?.messages ?? []
+
   return (
     <div className="flex h-screen" data-testid="app-shell">
-      <Sidebar isStreaming={agentStatus !== 'idle'} onNewSession={handleNewSession} />
+      <Sidebar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        isStreaming={agentStatus !== 'idle'}
+        onNewSession={handleNewSession}
+        onSwitchSession={handleSwitchSession}
+      />
 
       <div className="flex flex-col flex-1 min-w-0">
         <StatusBar status={agentStatus} model={activeSession?.model?.name ?? ''} />
-        <MessageList messages={messages} streamingRef={streamingRef} />
+        <MessageList messages={activeMessages} streamingRef={streamingRef} />
         <ChatInput onSend={handleSend} onAbort={handleAbort} isStreaming={agentStatus !== 'idle'} />
       </div>
     </div>

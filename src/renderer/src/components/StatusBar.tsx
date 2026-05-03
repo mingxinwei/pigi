@@ -1,4 +1,4 @@
-import type { AgentStatus } from '../state/app-store'
+import type { AgentStatus } from '../state/appStore'
 
 interface StatusBarProps {
   status: AgentStatus

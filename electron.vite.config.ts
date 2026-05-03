@@ -9,7 +9,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
-          'processes/utility/pi-agent': resolve('src/processes/utility/pi-agent.ts'),
+          'processes/utility/piAgent': resolve('src/processes/utility/piAgent.ts'),
         },
       },
       // @mariozechner/pi-coding-agent is ESM-only;

@@ -1,14 +1,15 @@
 /**
- * Protocol types for communication between renderer ↔ pi-agent utility process.
+ * Protocol types for communication between processes.
  *
- * Two channels per session:
- * 1. Control (normal IPC via main): commands and lifecycle events, tagged with sessionId
- * 2. Stream (MessagePort per session): high-frequency batched deltas
+ * Three layers:
+ * 1. IPC (renderer ↔ main): defined in ipcChannels.ts
+ * 2. Internal (main ↔ utility): PiCommand, PiResponse, UtilityMessage
+ * 3. Stream (utility → renderer via MessagePort): StreamBatch
  */
 
 // --- Stream channel (one MessagePort per session) ---
 
-/** Batched streaming data: renderer ← utility (high-frequency, every 16ms) */
+/** Batched streaming data: utility → renderer (high-frequency, every 16ms) */
 export interface StreamBatch {
   type: 'stream_batch'
   sessionId: string
@@ -20,11 +21,16 @@ export interface StreamBatch {
   toolOutput?: Record<string, string>
 }
 
-// --- Control channel (normal IPC) ---
+// --- Internal protocol (main ↔ utility process via parentPort/postMessage) ---
 
-/** Commands: renderer → main → utility */
+/** Messages from main → utility that are NOT regular commands (carry ports, no response) */
+export type UtilityMessage =
+  | { type: 'attach_stream_port'; sessionId: string }
+
+/** Commands: main → utility (expect a result response) */
 export type PiCommand =
   | { type: 'create_session'; cwd: string }
+  | { type: 'resume_session'; sessionPath: string }
   | { type: 'destroy_session'; sessionId: string }
   | { type: 'prompt'; sessionId: string; message: string }
   | { type: 'abort'; sessionId: string }
@@ -35,13 +41,15 @@ export type PiCommand =
   | { type: 'cycleModel'; sessionId: string }
   | { type: 'cycleThinkingLevel'; sessionId: string }
 
-/** Responses/events: utility → main → renderer */
+/** Responses/events: utility → main */
 export type PiResponse =
   | { type: 'session_ready'; sessionId: string; model: ModelInfo | null; thinkingLevel: string | null }
   | { type: 'session_error'; sessionId: string; error: string }
   | { type: 'event'; sessionId: string; event: unknown }
   | { type: 'error'; sessionId: string; error: string }
   | { type: 'result'; id: string; data: unknown }
+
+// --- Shared types ---
 
 export interface ModelInfo {
   name: string

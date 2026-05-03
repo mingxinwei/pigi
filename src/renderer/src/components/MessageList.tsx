@@ -1,12 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
-
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant' | 'tool'
-  content: string
-  toolName?: string
-  isStreaming?: boolean
-}
+import type { ChatMessage } from '../state/appStore'
 
 interface MessageListProps {
   messages: ChatMessage[]

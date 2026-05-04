@@ -13,6 +13,7 @@ import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import MessageList from './components/MessageList'
 import ChatInput from './components/ChatInput'
+import { SidebarProvider } from './components/ui/sidebar'
 
 function App(): React.JSX.Element {
   const { activeSessionId, sessions, addSession, setActiveSession, activeProject, recentProjects } =
@@ -103,7 +104,11 @@ function App(): React.JSX.Element {
   )
 
   return (
-    <div className="flex h-screen bg-white" data-testid="app-shell">
+    <SidebarProvider
+      style={{ '--sidebar-width': '15.25rem' } as React.CSSProperties}
+      className="h-screen min-h-0 bg-background"
+      data-testid="app-shell"
+    >
       <Sidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -116,7 +121,7 @@ function App(): React.JSX.Element {
         onSelectProject={handleSelectProject}
       />
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <StatusBar status={transcript.status} model={activeSession?.title ?? 'New chat'} />
         <MessageList
           nodes={transcript.nodes}
@@ -130,7 +135,7 @@ function App(): React.JSX.Element {
           project={activeProject}
         />
       </main>
-    </div>
+    </SidebarProvider>
   )
 }
 

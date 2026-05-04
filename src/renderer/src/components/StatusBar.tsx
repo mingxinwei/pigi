@@ -1,6 +1,12 @@
 import { ChevronDown, GitBranch, MoreHorizontal, Play, SquareTerminal } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 import type { AgentStatus } from '../state/transcriptController'
 
 interface StatusBarProps {
@@ -18,51 +24,63 @@ const STATUS_LABELS: Record<AgentStatus, string> = {
 export default function StatusBar({ status, model }: StatusBarProps): React.JSX.Element {
   return (
     <header
-      className="flex h-[52px] shrink-0 items-center justify-between bg-white"
-      style={{ padding: '0 16px', WebkitAppRegion: 'drag' } as React.CSSProperties}
+      className="flex h-13 shrink-0 items-center justify-between bg-background px-4"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       data-testid="status-bar"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="text-[13px] font-semibold text-[#202124]">pi</span>
-        <span className="min-w-0 truncate text-[13px] text-[#767a7f]">{model || 'New chat'}</span>
+        <span className="text-sm font-semibold">pi</span>
+        <span className="min-w-0 truncate text-sm text-muted-foreground">
+          {model || 'New chat'}
+        </span>
         <Button
           variant="ghost"
           size="icon-xs"
-          className="size-6 rounded-md text-[#8b8f94] hover:bg-[#f3f3f1]"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal />
         </Button>
       </div>
 
       <div
-        className="flex items-center gap-2 text-[12px] text-[#8b8f94]"
+        className="flex items-center gap-2 text-sm text-muted-foreground"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="size-7 rounded-md text-[#8b8f94] hover:bg-[#f3f3f1]"
-        >
-          <Play className="size-4" />
+        <Button variant="ghost" size="icon-sm">
+          <Play />
         </Button>
-        <Badge
-          variant="outline"
-          className="h-7 gap-1 rounded-lg border-[#e1e1de] bg-white px-2 text-[12px] font-normal text-[#606469]"
-        >
-          <SquareTerminal className="size-3.5" />
-          5.5
-          <ChevronDown className="size-3" />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <SquareTerminal data-icon="inline-start" />
+              5.5
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>Claude 5.5</DropdownMenuItem>
+            <DropdownMenuItem>Change model</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <GitBranch data-icon="inline-start" />
+              Commit
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>Commit changes</DropdownMenuItem>
+            <DropdownMenuItem>View diff</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Badge variant="ghost" className="w-14 justify-end font-normal text-muted-foreground">
+          {STATUS_LABELS[status]}
         </Badge>
-        <Badge
-          variant="outline"
-          className="h-7 gap-1 rounded-lg border-[#e1e1de] bg-white px-2 text-[12px] font-normal text-[#606469]"
-        >
-          <GitBranch className="size-3.5" />
-          Commit
-          <ChevronDown className="size-3" />
-        </Badge>
-        <span style={{ width: 56, textAlign: 'right' }}>{STATUS_LABELS[status]}</span>
       </div>
     </header>
   )

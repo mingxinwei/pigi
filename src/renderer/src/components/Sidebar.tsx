@@ -1,8 +1,29 @@
-import { Plus, MessageCircle, AlertCircle, Loader2, Search, Settings, Folder } from 'lucide-react'
-import { Button } from './ui/button'
-import { cn } from '../lib/utils'
+import { useState } from 'react'
+import { AlertCircle, Folder, Loader2, MessageCircle, Plus, Search, Settings } from 'lucide-react'
 import type { ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
+import {
+  Sidebar as ShadcnSidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from './ui/sidebar'
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from './ui/command'
 
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
@@ -27,6 +48,7 @@ export default function Sidebar({
   onOpenProject,
   onSelectProject,
 }: SidebarProps): React.JSX.Element {
+  const [searchOpen, setSearchOpen] = useState(false)
   const activeProjectPath = activeProject?.path ?? null
   const sessionList = Array.from(sessions.values()).filter((session) => {
     if (!activeProjectPath) {
@@ -36,132 +58,162 @@ export default function Sidebar({
   })
 
   return (
-    <aside
-      className="flex h-full flex-col border-r border-[#e4e4e1] bg-[#f3f3f1]"
-      style={{ width: 244, minWidth: 244 }}
-      data-testid="sidebar"
-    >
-      <div style={{ height: 50, WebkitAppRegion: 'drag' } as React.CSSProperties} />
-
-      <div style={{ padding: '0 12px 20px' }} className="space-y-px">
-        <SidebarButton icon={Plus} label="New chat" onClick={onNewSession} disabled={isStreaming} />
-        <SidebarButton icon={Search} label="Search" />
-        <SidebarButton icon={Folder} label="Open project" onClick={onOpenProject} />
-      </div>
-
-      <div className="flex items-center justify-between" style={{ padding: '0 16px 7px' }}>
-        <span className="text-[12px] font-normal text-[#8b8f94]">Projects</span>
-        <Folder className="size-[13px] text-[#8b8f94]" />
-      </div>
-
-      <div className="flex-1 overflow-y-auto" style={{ padding: '0 8px 12px' }}>
-        <ul className="mb-2 space-y-px">
-          {recentProjects.map((project) => {
-            const isActiveProject = project.path === activeProjectPath
-            return (
-              <li key={project.path}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
+    <>
+      <CommandDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        title="Search projects and chats"
+        description="Search recent projects and open chats."
+      >
+        <Command>
+          <CommandInput placeholder="Search projects and chats..." />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup heading="Projects">
+              {recentProjects.map((project) => (
+                <CommandItem
+                  key={project.path}
+                  value={`project ${project.name} ${project.path}`}
+                  onSelect={() => {
                     onSelectProject(project.path)
+                    setSearchOpen(false)
                   }}
-                  className={cn(
-                    'h-[26px] w-full justify-start gap-2 rounded-md text-[13px] font-normal text-[#5f6368] hover:bg-[#e8e8e5] hover:text-[#202124]',
-                    isActiveProject && 'bg-[#e8e8e5] text-[#202124]',
-                  )}
-                  style={{ paddingLeft: 8, paddingRight: 8 }}
-                  title={project.path}
                 >
-                  <Folder className="size-[13px] shrink-0 text-[#8b8f94]" />
-                  <span className="truncate">{project.name}</span>
-                </Button>
-              </li>
-            )
-          })}
-        </ul>
-        {recentProjects.length === 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenProject}
-            className="mb-2 h-[26px] w-full justify-start gap-2 rounded-md text-[13px] font-normal text-[#8b8f94] hover:bg-[#e8e8e5]"
-            style={{ paddingLeft: 8, paddingRight: 8 }}
-          >
-            <Folder className="size-[13px] text-[#8b8f94]" />
-            Open a project
-          </Button>
-        )}
-        {sessionList.length === 0 ? (
-          <div className="text-[13px] text-[#8b8f94]" style={{ padding: '3px 8px 3px 28px' }}>
-            No chats yet
-          </div>
-        ) : (
-          <ul className="space-y-px">
-            {sessionList.map((session) => {
-              const isActive = session.sessionId === activeSessionId
-              const isBusy = session.status === 'streaming' || session.status === 'tool_running'
-              const isError = session.status === 'error'
+                  <Folder />
+                  <span>{project.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <CommandGroup heading="Chats">
+              {sessionList.map((session) => (
+                <CommandItem
+                  key={session.sessionId}
+                  value={`chat ${session.title}`}
+                  onSelect={() => {
+                    onSwitchSession(session.sessionId)
+                    setSearchOpen(false)
+                  }}
+                >
+                  <MessageCircle />
+                  <span>{session.title}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </CommandDialog>
 
-              return (
-                <li key={session.sessionId}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      onSwitchSession(session.sessionId)
-                    }}
-                    className={cn(
-                      'h-[26px] w-full justify-start gap-2 rounded-md text-[13px] font-normal text-[#51565b] hover:bg-[#e8e8e5] hover:text-[#202124]',
-                      isActive && 'bg-[#e1e1de] text-[#202124] hover:bg-[#e1e1de]',
-                    )}
-                    style={{ paddingLeft: 28, paddingRight: 8 }}
-                  >
-                    {isBusy && (
-                      <Loader2 className="size-[13px] shrink-0 animate-spin text-[#8b8f94]" />
-                    )}
-                    {isError && <AlertCircle className="size-[13px] shrink-0 text-red" />}
-                    {!isBusy && !isError && (
-                      <MessageCircle className="size-[13px] shrink-0 text-[#8b8f94]" />
-                    )}
-                    <span className="truncate">{session.title}</span>
-                  </Button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </div>
+      <ShadcnSidebar collapsible="none" className="border-r" data-testid="sidebar">
+        <SidebarHeader style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+          <div className="h-10" />
+          <SidebarMenu style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={onNewSession} disabled={isStreaming}>
+                <Plus data-icon="inline-start" />
+                <span>New chat</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => {
+                  setSearchOpen(true)
+                }}
+              >
+                <Search data-icon="inline-start" />
+                <span>Search</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={onOpenProject}>
+                <Folder data-icon="inline-start" />
+                <span>Open project</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-      <div style={{ padding: '0 8px 12px' }}>
-        <SidebarButton icon={Settings} label="Settings" />
-      </div>
-    </aside>
-  )
-}
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Projects</SidebarGroupLabel>
+            <SidebarGroupAction onClick={onOpenProject} title="Open project">
+              <Folder />
+              <span className="sr-only">Open project</span>
+            </SidebarGroupAction>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {recentProjects.length === 0 ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton onClick={onOpenProject} className="text-muted-foreground">
+                      <Folder data-icon="inline-start" />
+                      <span>Open a project</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  recentProjects.map((project) => (
+                    <SidebarMenuItem key={project.path}>
+                      <SidebarMenuButton
+                        onClick={() => {
+                          onSelectProject(project.path)
+                        }}
+                        isActive={project.path === activeProjectPath}
+                        title={project.path}
+                      >
+                        <Folder data-icon="inline-start" />
+                        <span>{project.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
+              </SidebarMenu>
 
-function SidebarButton({
-  icon: Icon,
-  label,
-  onClick,
-  disabled,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  onClick?: () => void
-  disabled?: boolean
-}): React.JSX.Element {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={onClick}
-      disabled={disabled}
-      className="h-[26px] w-full justify-start gap-2 rounded-md text-[13px] font-normal text-[#26282b] hover:bg-[#e8e8e5]"
-      style={{ paddingLeft: 8, paddingRight: 8, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-    >
-      <Icon className="size-[14px] text-[#5d6267]" />
-      {label}
-    </Button>
+              <SidebarMenu className="mt-1">
+                {sessionList.length === 0 ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton className="pl-7 text-muted-foreground" disabled>
+                      <span>No chats yet</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  sessionList.map((session) => {
+                    const isActive = session.sessionId === activeSessionId
+                    const isBusy =
+                      session.status === 'streaming' || session.status === 'tool_running'
+                    const isError = session.status === 'error'
+
+                    return (
+                      <SidebarMenuItem key={session.sessionId}>
+                        <SidebarMenuButton
+                          onClick={() => {
+                            onSwitchSession(session.sessionId)
+                          }}
+                          isActive={isActive}
+                          className="pl-7"
+                        >
+                          {isBusy && <Loader2 data-icon="inline-start" className="animate-spin" />}
+                          {isError && <AlertCircle data-icon="inline-start" />}
+                          {!isBusy && !isError && <MessageCircle data-icon="inline-start" />}
+                          <span>{session.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                <Settings data-icon="inline-start" />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </ShadcnSidebar>
+    </>
   )
 }

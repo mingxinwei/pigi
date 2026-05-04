@@ -1,8 +1,7 @@
 import { useRef, useCallback, KeyboardEvent } from 'react'
 import { ArrowUp, GitBranch, HardDrive, Plus, Square } from 'lucide-react'
 import type { ProjectDirectory } from '../../../shared/ipcContract'
-import { Button } from './ui/button'
-import { Textarea } from './ui/textarea'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from './ui/input-group'
 
 interface ChatInputProps {
   onSend: (message: string) => void
@@ -66,71 +65,55 @@ export default function ChatInput({
 
   return (
     <div
-      className="pointer-events-none absolute left-0 right-0 z-10 flex justify-center"
-      style={{ bottom: 36, paddingLeft: 32, paddingRight: 32 }}
+      className="pointer-events-none absolute inset-x-0 bottom-9 z-10 flex justify-center px-8"
       data-testid="chat-input"
     >
-      <div className="pointer-events-auto" style={{ width: 'min(720px, 100%)' }}>
-        <div
-          className="border border-[#d9d9d5] bg-white shadow-[0_10px_34px_rgba(0,0,0,0.075)]"
-          style={{ borderRadius: 18 }}
-        >
-          <Textarea
+      <div className="pointer-events-auto w-full max-w-[720px]">
+        <InputGroup className="h-auto flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)]">
+          <InputGroupTextarea
             ref={textareaRef}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             placeholder="Ask for follow-up changes"
             rows={1}
-            className="resize-none border-0 bg-transparent text-[14px] leading-5 shadow-none placeholder:text-[#a1a1a1] focus-visible:ring-0"
-            style={{ minHeight: 48, maxHeight: 128, padding: '13px 16px 8px' }}
+            className="min-h-12 max-h-32 px-4 pt-3.5 pb-2 text-sm leading-5 placeholder:text-muted-foreground/70"
             data-testid="chat-textarea"
           />
-          <div
-            className="flex items-center justify-between"
-            style={{ padding: '0 10px 10px 10px' }}
-          >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-full text-[#7c7c7c] hover:bg-[#f1f1ef]"
-              style={{ width: 28, height: 28 }}
-            >
-              <Plus className="size-4" />
-            </Button>
+          <InputGroupAddon align="block-end" className="justify-between px-2.5 pb-2.5 pt-0">
+            <InputGroupButton size="icon-sm" variant="ghost" className="rounded-full">
+              <Plus />
+            </InputGroupButton>
             {isStreaming ? (
-              <Button
+              <InputGroupButton
                 onClick={onAbort}
                 size="icon-sm"
-                className="rounded-full bg-[#707070] text-white hover:bg-[#555]"
-                style={{ width: 28, height: 28 }}
+                variant="default"
+                className="rounded-full"
                 data-testid="abort-button"
               >
-                <Square className="size-3 fill-current" />
-              </Button>
+                <Square className="fill-current" />
+              </InputGroupButton>
             ) : (
-              <Button
+              <InputGroupButton
                 onClick={handleSend}
                 size="icon-sm"
-                className="rounded-full bg-[#8f8f8f] text-white hover:bg-[#6f6f6f]"
-                style={{ width: 28, height: 28 }}
+                variant="default"
+                className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
                 data-testid="send-button"
               >
-                <ArrowUp className="size-4" />
-              </Button>
+                <ArrowUp />
+              </InputGroupButton>
             )}
-          </div>
-        </div>
+          </InputGroupAddon>
+        </InputGroup>
 
-        <div
-          className="flex items-center gap-4 text-[12px] text-[#8b8f94]"
-          style={{ padding: '10px 16px 0' }}
-        >
+        <div className="flex items-center gap-4 px-4 pt-2.5 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <HardDrive className="size-3.5" />
+            <HardDrive className="size-4" />
             Work locally
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
-            <GitBranch className="size-3.5 shrink-0" />
+            <GitBranch className="size-4 shrink-0" />
             <span className="truncate">{project?.name ?? 'current directory'}</span>
           </span>
         </div>

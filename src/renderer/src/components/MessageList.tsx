@@ -5,6 +5,7 @@ import type {
   TranscriptController,
 } from '../state/transcriptController'
 import ToolBlock from './ToolBlock'
+import { ScrollArea } from './ui/scroll-area'
 
 interface MessageListProps {
   nodes: TranscriptNode[]
@@ -22,12 +23,16 @@ export default function MessageList({
   const thinkingRef = useRef<HTMLPreElement>(null)
   const isAutoScrollRef = useRef(true)
 
+  const getViewport = useCallback((): HTMLDivElement | null => {
+    return containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]') ?? null
+  }, [])
+
   const scrollToBottom = useCallback(() => {
-    const el = containerRef.current
+    const el = getViewport()
     if (el && isAutoScrollRef.current) {
       el.scrollTop = el.scrollHeight
     }
-  }, [])
+  }, [getViewport])
 
   useEffect(() => {
     scrollToBottom()
@@ -64,19 +69,19 @@ export default function MessageList({
   }, [activeAssistantId, controller, scrollToBottom])
 
   const handleScroll = useCallback(() => {
-    const el = containerRef.current
+    const el = getViewport()
     if (!el) {
       return
     }
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
     isAutoScrollRef.current = atBottom
-  }, [])
+  }, [getViewport])
 
   return (
-    <div
+    <ScrollArea
       ref={containerRef}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto bg-bg-primary"
+      onScrollCapture={handleScroll}
+      className="flex-1 bg-background"
       data-testid="message-list"
     >
       <div className="mx-auto max-w-[720px] px-5 pb-48 pt-12">
@@ -94,7 +99,7 @@ export default function MessageList({
           ))}
         </div>
       </div>
-    </div>
+    </ScrollArea>
   )
 }
 
@@ -131,7 +136,7 @@ function NodeRenderer({
 function UserBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="flex justify-end" data-testid="user-message">
-      <div className="max-w-[58%] rounded-2xl bg-bg-tertiary px-3.5 py-1.5 text-[14px] leading-6 text-text-primary">
+      <div className="max-w-[58%] rounded-2xl bg-muted px-3.5 py-1.5 text-[14px] leading-6 text-foreground">
         {text}
       </div>
     </div>
@@ -151,20 +156,18 @@ function AssistantBubble({
 }): React.JSX.Element {
   return (
     <div className="flex justify-start" data-testid="assistant-message">
-      <div className="max-w-[680px] min-w-0 text-[14px] leading-6 text-text-primary">
+      <div className="max-w-[680px] min-w-0 text-[14px] leading-6 text-foreground">
         {isStreaming && (
           <pre
             ref={thinkingRef}
-            className="mb-3 whitespace-pre-wrap break-words border-l-2 border-border-secondary pl-3 font-mono text-[12px] leading-5 text-text-muted"
+            className="mb-3 whitespace-pre-wrap break-words border-l-2 border-border pl-3 font-mono text-[12px] leading-5 text-muted-foreground"
           />
         )}
 
         {!isStreaming && node.thinking && (
-          <details className="mb-3 text-[13px] text-text-muted">
-            <summary className="cursor-pointer select-none hover:text-text-secondary">
-              Thinking
-            </summary>
-            <pre className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-border-secondary pl-3 font-mono text-[12px] leading-5">
+          <details className="mb-3 text-[13px] text-muted-foreground">
+            <summary className="cursor-pointer select-none hover:text-foreground">Thinking</summary>
+            <pre className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-border pl-3 font-mono text-[12px] leading-5">
               {node.thinking}
             </pre>
           </details>
@@ -177,7 +180,7 @@ function AssistantBubble({
         )}
 
         {node.errorMessage && (
-          <div className="mt-3 rounded-lg bg-red-subtle px-3 py-2 text-[13px] text-red">
+          <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
             {node.errorMessage}
           </div>
         )}
@@ -189,7 +192,7 @@ function AssistantBubble({
 function SystemBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="flex justify-center" data-testid="system-message">
-      <div className="text-[13px] text-text-muted">{text}</div>
+      <div className="text-[13px] text-muted-foreground">{text}</div>
     </div>
   )
 }

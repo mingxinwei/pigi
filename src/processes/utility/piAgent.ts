@@ -245,10 +245,16 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       const available = await models.getAvailable()
       const extensions = runtime.services.resourceLoader.getExtensions()
       return {
-        model: session.model ? { name: session.model.name, provider: session.model.provider, id: session.model.id } : null,
-        availableModels: available.map((m: { name: string; provider: string; id: string }) => `${m.provider}/${m.id}`),
+        model: session.model
+          ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
+          : null,
+        availableModels: available.map(
+          (m: { name: string; provider: string; id: string }) => `${m.provider}/${m.id}`,
+        ),
         extensionCount: extensions.extensions.length,
-        extensionNames: extensions.extensions.map((e: { name?: string; path?: string }) => e.name || e.path),
+        extensionNames: extensions.extensions.map(
+          (e: { name?: string; path?: string }) => e.name || e.path,
+        ),
         extensionErrors: extensions.errors,
         diagnostics: runtime.diagnostics,
       }

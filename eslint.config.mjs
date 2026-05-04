@@ -34,5 +34,23 @@ export default defineConfig(
       curly: ['error', 'all'],
     },
   },
+  {
+    files: [
+      'src/renderer/src/components/ui/**/*.{ts,tsx}',
+      'src/renderer/src/components/themeProvider.tsx',
+      'src/renderer/src/hooks/useMobile.ts',
+    ],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
   eslintConfigPrettier,
 )

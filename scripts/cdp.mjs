@@ -35,7 +35,10 @@ async function cdpCall(method, params = {}) {
 
   return new Promise((resolve, reject) => {
     const id = 1
-    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')) }, 30000)
+    const timer = setTimeout(() => {
+      ws.close()
+      reject(new Error('timeout'))
+    }, 30000)
     ws.addEventListener('open', () => {
       ws.send(JSON.stringify({ id, method, params }))
     })
@@ -48,7 +51,10 @@ async function cdpCall(method, params = {}) {
         else resolve(data.result)
       }
     })
-    ws.addEventListener('error', (e) => { clearTimeout(timer); reject(e) })
+    ws.addEventListener('error', (e) => {
+      clearTimeout(timer)
+      reject(e)
+    })
   })
 }
 

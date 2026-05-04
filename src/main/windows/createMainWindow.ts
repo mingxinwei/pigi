@@ -16,8 +16,13 @@ export function createMainWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 680,
+    minHeight: 400,
     show: false,
     autoHideMenuBar: true,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 15 },
+    backgroundColor: '#ffffff',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),

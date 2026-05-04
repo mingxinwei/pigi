@@ -9,6 +9,7 @@ import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows/createMainWindow'
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge'
+import { registerProjectHandlers } from './ipc/projectHandlers'
 
 if (is.dev) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -19,15 +20,20 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
   registerIpcHandlers()
+  registerProjectHandlers()
   createMainWindow()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createMainWindow()
+    }
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
 })
 
 app.on('before-quit', () => {

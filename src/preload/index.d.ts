@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { PiCommand, PiPush, StreamBatch } from '../shared/ipcContract'
+import type { PiCommand, PiPush, ProjectStateResult, StreamBatch } from '../shared/ipcContract'
 
 interface PiApi {
   // Session lifecycle (via main process IPC)
@@ -8,6 +8,11 @@ interface PiApi {
     sessionPath: string,
   ) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   destroySession: (sessionId: string) => Promise<{ success: boolean }>
+
+  // Project directories
+  getProjects: () => Promise<ProjectStateResult>
+  setActiveProject: (path: string) => Promise<ProjectStateResult>
+  openProjectDirectory: () => Promise<ProjectStateResult>
 
   // Commands (via MessagePort, direct to utility)
   send: (sessionId: string, cmd: PiCommand) => Promise<unknown>

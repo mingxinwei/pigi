@@ -13,6 +13,7 @@ import {
   type PiRequest,
   type PiResult,
   type PortMessage,
+  type ProjectStateResult,
   type StreamBatch,
 } from '../shared/ipcContract'
 
@@ -114,6 +115,17 @@ const piApi = {
   /** Destroy a session. */
   destroySession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(PiChannel.DestroySession, sessionId),
+
+  /** Get persisted project directory state from main process. */
+  getProjects: (): Promise<ProjectStateResult> => ipcRenderer.invoke(PiChannel.GetProjects),
+
+  /** Set active project directory from recent projects. */
+  setActiveProject: (path: string): Promise<ProjectStateResult> =>
+    ipcRenderer.invoke(PiChannel.SetActiveProject, path),
+
+  /** Open native directory picker and persist selected project directory. */
+  openProjectDirectory: (): Promise<ProjectStateResult> =>
+    ipcRenderer.invoke(PiChannel.OpenProjectDirectory),
 
   /** Send a command to a session (via MessagePort). Returns result. */
   send: (sessionId: string, cmd: PiCommand): Promise<unknown> => {

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ModelInfo } from '../../../shared/ipcContract'
+import type { ModelInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { AgentStatus } from './transcriptController'
 
 export type { AgentStatus }
@@ -7,6 +7,8 @@ export type { AgentStatus }
 export interface SessionEntry {
   sessionId: string
   status: AgentStatus
+  title: string
+  cwd: string
   model: ModelInfo | null
   thinkingLevel: string | null
   error: string | null
@@ -17,10 +19,14 @@ interface AppState {
   sessions: Map<string, SessionEntry>
   activeSessionId: string | null
 
-  addSession: (sessionId: string) => void
+  recentProjects: ProjectDirectory[]
+  activeProject: ProjectDirectory | null
+
+  addSession: (sessionId: string, cwd: string) => void
   removeSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
   updateSession: (sessionId: string, updates: Partial<Omit<SessionEntry, 'sessionId'>>) => void
+  setProjects: (recentProjects: ProjectDirectory[], activeProject: ProjectDirectory | null) => void
 
   // Sidebar
   sidebarExpanded: boolean
@@ -31,12 +37,17 @@ export const useAppStore = create<AppState>((set) => ({
   sessions: new Map(),
   activeSessionId: null,
 
-  addSession: (sessionId) =>
+  recentProjects: [],
+  activeProject: null,
+
+  addSession: (sessionId, cwd) =>
     set((state) => {
       const sessions = new Map(state.sessions)
       sessions.set(sessionId, {
         sessionId,
         status: 'idle',
+        title: 'New chat',
+        cwd,
         model: null,
         thinkingLevel: null,
         error: null,
@@ -63,6 +74,8 @@ export const useAppStore = create<AppState>((set) => ({
       }
       return { sessions }
     }),
+
+  setProjects: (recentProjects, activeProject) => set({ recentProjects, activeProject }),
 
   // Sidebar
   sidebarExpanded: true,

@@ -3,7 +3,12 @@
  *
  * Components use these instead of calling piApi directly.
  */
-import type { PiCommand, PiPush, StreamBatch } from '../../../shared/ipcContract'
+import type {
+  PiCommand,
+  PiPush,
+  ProjectStateResult,
+  StreamBatch,
+} from '../../../shared/ipcContract'
 
 type CommandResult<T = unknown> = { success: boolean; error?: string } & T
 
@@ -36,6 +41,18 @@ export async function resumeSession(sessionPath: string): Promise<string> {
 /** Destroy a session. */
 export async function destroySession(sessionId: string): Promise<void> {
   await window.piApi.destroySession(sessionId)
+}
+
+export async function getProjects(): Promise<ProjectStateResult> {
+  return window.piApi.getProjects()
+}
+
+export async function setActiveProject(path: string): Promise<ProjectStateResult> {
+  return window.piApi.setActiveProject(path)
+}
+
+export async function openProjectDirectory(): Promise<ProjectStateResult> {
+  return window.piApi.openProjectDirectory()
 }
 
 // =============================================================================

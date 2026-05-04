@@ -24,6 +24,20 @@ export interface ModelInfo {
   id: string
 }
 
+export interface ProjectDirectory {
+  path: string
+  name: string
+}
+
+export interface ProjectState {
+  recentProjects: ProjectDirectory[]
+  activeProject: ProjectDirectory | null
+}
+
+export type ProjectStateResult =
+  | ({ success: true } & ProjectState)
+  | { success: false; error?: string; canceled?: boolean }
+
 export interface SessionState {
   model: ModelInfo | null
   thinkingLevel: string | null
@@ -102,6 +116,12 @@ export enum PiChannel {
   SessionPort = 'pi:session_port',
   /** main → renderer: a session's process exited unexpectedly */
   ProcessExit = 'pi:process_exit',
+  /** renderer → main: get persisted project cwd state */
+  GetProjects = 'pi:get_projects',
+  /** renderer → main: set active project cwd from recent project list */
+  SetActiveProject = 'pi:set_active_project',
+  /** renderer → main: open a native directory picker for project cwd selection */
+  OpenProjectDirectory = 'pi:open_project_directory',
 }
 
 // =============================================================================

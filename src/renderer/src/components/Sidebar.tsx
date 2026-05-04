@@ -18,7 +18,10 @@ export default function Sidebar({
   const sessionList = Array.from(sessions.values())
 
   return (
-    <div className="flex flex-col w-60 min-w-60 bg-bg-secondary border-r border-border-primary h-full" data-testid="sidebar">
+    <div
+      className="flex flex-col w-60 min-w-60 bg-bg-secondary border-r border-border-primary h-full"
+      data-testid="sidebar"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-secondary">
         <span className="text-sm font-semibold text-text-primary tracking-wide">pigi</span>
@@ -35,9 +38,7 @@ export default function Sidebar({
       {/* Sessions list */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {sessionList.length === 0 ? (
-          <div className="text-xs text-text-muted px-2 py-8 text-center">
-            No active sessions
-          </div>
+          <div className="text-xs text-text-muted px-2 py-8 text-center">No active sessions</div>
         ) : (
           <ul className="space-y-1">
             {sessionList.map((session) => {
@@ -59,9 +60,7 @@ export default function Sidebar({
                         : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
                     }`}
                   >
-                    <span className="truncate">
-                      {session.model?.name ?? 'loading...'}
-                    </span>
+                    <span className="truncate">{session.model?.name ?? 'loading...'}</span>
                     {statusIndicator && (
                       <span className="ml-1 text-text-muted">{statusIndicator}</span>
                     )}

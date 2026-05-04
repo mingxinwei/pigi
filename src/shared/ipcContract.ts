@@ -45,6 +45,7 @@ export type PiCommand =
   | { type: 'list_sessions'; cwd?: string }
   | { type: 'cycle_model' }
   | { type: 'cycle_thinking_level' }
+  | { type: 'debug' }
 
 /** Wire format for a command request (renderer → utility via port) */
 export interface PiRequest {

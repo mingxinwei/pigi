@@ -1,6 +1,7 @@
 {
   "name": "pigi",
   "version": "1.0.0",
+  "type": "module",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "author": "example.com",

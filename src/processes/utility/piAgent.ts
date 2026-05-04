@@ -144,7 +144,8 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       }
 
       case 'message_update': {
-        const ame = (event as { assistantMessageEvent?: { type: string; delta?: string } }).assistantMessageEvent
+        const ame = (event as { assistantMessageEvent?: { type: string; delta?: string } })
+          .assistantMessageEvent
         if (ame && currentAssistantId) {
           if (ame.type === 'text_delta' && ame.delta) {
             batch.appendText(currentAssistantId, ame.delta)
@@ -165,7 +166,10 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
         break
 
       case 'tool_execution_update': {
-        const toolEvent = event as { toolCallId?: string; partialResult?: { content?: Array<{ text?: string }> } }
+        const toolEvent = event as {
+          toolCallId?: string
+          partialResult?: { content?: Array<{ text?: string }> }
+        }
         const text = toolEvent.partialResult?.content?.[0]?.text
         if (text && toolEvent.toolCallId) {
           batch.appendToolOutput(toolEvent.toolCallId, text)
@@ -196,7 +200,10 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       }
       runtime.session.prompt(cmd.message).catch((err) => {
         if (sessionPort) {
-          const msg: PiPush = { type: 'error', error: err instanceof Error ? err.message : String(err) }
+          const msg: PiPush = {
+            type: 'error',
+            error: err instanceof Error ? err.message : String(err),
+          }
           sessionPort.postMessage(msg)
         }
       })
@@ -210,9 +217,7 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
     case 'get_state': {
       const s = runtime.session
       return {
-        model: s.model
-          ? { name: s.model.name, provider: s.model.provider, id: s.model.id }
-          : null,
+        model: s.model ? { name: s.model.name, provider: s.model.provider, id: s.model.id } : null,
         thinkingLevel: s.thinkingLevel,
         isStreaming: s.isStreaming,
         sessionFile: s.sessionFile,
@@ -225,9 +230,7 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       return runtime.session.messages
 
     case 'list_sessions': {
-      return cmd.cwd
-        ? await SessionManager.list(cmd.cwd)
-        : await SessionManager.listAll()
+      return cmd.cwd ? await SessionManager.list(cmd.cwd) : await SessionManager.listAll()
     }
 
     case 'cycle_model':
@@ -235,6 +238,21 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
 
     case 'cycle_thinking_level':
       return runtime.session.cycleThinkingLevel()
+
+    case 'debug': {
+      const session = runtime.session
+      const models = runtime.services.modelRegistry
+      const available = await models.getAvailable()
+      const extensions = runtime.services.resourceLoader.getExtensions()
+      return {
+        model: session.model ? { name: session.model.name, provider: session.model.provider, id: session.model.id } : null,
+        availableModels: available.map((m: { name: string; provider: string; id: string }) => `${m.provider}/${m.id}`),
+        extensionCount: extensions.extensions.length,
+        extensionNames: extensions.extensions.map((e: { name?: string; path?: string }) => e.name || e.path),
+        extensionErrors: extensions.errors,
+        diagnostics: runtime.diagnostics,
+      }
+    }
   }
 }
 
@@ -248,7 +266,10 @@ function setupPortListener(port: Port): void {
         const response: PiResult = { id: req.id, result }
         port.postMessage(response)
       } catch (err) {
-        const response: PiResult = { id: req.id, result: { success: false, error: err instanceof Error ? err.message : String(err) } }
+        const response: PiResult = {
+          id: req.id,
+          result: { success: false, error: err instanceof Error ? err.message : String(err) },
+        }
         port.postMessage(response)
       }
     }

@@ -14,16 +14,18 @@ const CDP_PORT = 9222
 
 async function getWsUrl() {
   return new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:${CDP_PORT}/json`, (res) => {
-      let data = ''
-      res.on('data', (chunk) => (data += chunk))
-      res.on('end', () => {
-        const pages = JSON.parse(data)
-        const page = pages.find((p) => p.type === 'page')
-        if (!page) reject(new Error('No page found'))
-        else resolve(page.webSocketDebuggerUrl)
+    http
+      .get(`http://127.0.0.1:${CDP_PORT}/json`, (res) => {
+        let data = ''
+        res.on('data', (chunk) => (data += chunk))
+        res.on('end', () => {
+          const pages = JSON.parse(data)
+          const page = pages.find((p) => p.type === 'page')
+          if (!page) reject(new Error('No page found'))
+          else resolve(page.webSocketDebuggerUrl)
+        })
       })
-    }).on('error', reject)
+      .on('error', reject)
   })
 }
 
@@ -33,19 +35,20 @@ async function cdpCall(method, params = {}) {
 
   return new Promise((resolve, reject) => {
     const id = 1
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')) }, 30000)
     ws.addEventListener('open', () => {
       ws.send(JSON.stringify({ id, method, params }))
     })
     ws.addEventListener('message', (evt) => {
       const data = JSON.parse(evt.data)
       if (data.id === id) {
+        clearTimeout(timer)
         ws.close()
         if (data.error) reject(new Error(JSON.stringify(data.error)))
         else resolve(data.result)
       }
     })
-    ws.addEventListener('error', (e) => reject(e))
-    setTimeout(() => { ws.close(); reject(new Error('timeout')) }, 30000)
+    ws.addEventListener('error', (e) => { clearTimeout(timer); reject(e) })
   })
 }
 
@@ -89,12 +92,14 @@ if (cmd === 'eval') {
   ws.addEventListener('message', (evt) => {
     const data = JSON.parse(evt.data)
     if (data.method === 'Runtime.consoleAPICalled') {
-      const text = data.params.args.map(a => a.value || a.description || JSON.stringify(a)).join(' ')
+      const text = data.params.args
+        .map((a) => a.value || a.description || JSON.stringify(a))
+        .join(' ')
       messages.push(`[${data.params.type}] ${text}`)
     }
   })
   const seconds = parseInt(args[0]) || 3
-  await new Promise(r => setTimeout(r, seconds * 1000))
+  await new Promise((r) => setTimeout(r, seconds * 1000))
   ws.close()
   console.log(messages.join('\n') || '(no console messages)')
 } else if (cmd === 'type') {
@@ -113,25 +118,48 @@ if (cmd === 'eval') {
   const { x, y } = loc.result.value
 
   // Mouse click
-  await cdpCall('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
-  await cdpCall('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
-  await new Promise(r => setTimeout(r, 100))
+  await cdpCall('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  })
+  await cdpCall('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  })
+  await new Promise((r) => setTimeout(r, 100))
 
   // 2. Type each character
   for (const ch of text) {
-    await cdpCall('Input.dispatchKeyEvent', { type: 'keyDown', text: ch, key: ch, unmodifiedText: ch })
+    await cdpCall('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      text: ch,
+      key: ch,
+      unmodifiedText: ch,
+    })
     await cdpCall('Input.dispatchKeyEvent', { type: 'keyUp', key: ch })
   }
-  await new Promise(r => setTimeout(r, 100))
+  await new Promise((r) => setTimeout(r, 100))
 
   // 3. Press Enter to send
   await cdpCall('Input.dispatchKeyEvent', {
-    type: 'rawKeyDown', key: 'Enter', code: 'Enter',
-    windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+    type: 'rawKeyDown',
+    key: 'Enter',
+    code: 'Enter',
+    windowsVirtualKeyCode: 13,
+    nativeVirtualKeyCode: 13,
   })
   await cdpCall('Input.dispatchKeyEvent', {
-    type: 'keyUp', key: 'Enter', code: 'Enter',
-    windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+    type: 'keyUp',
+    key: 'Enter',
+    code: 'Enter',
+    windowsVirtualKeyCode: 13,
+    nativeVirtualKeyCode: 13,
   })
   console.log(`Typed and sent: "${text}"`)
 } else {

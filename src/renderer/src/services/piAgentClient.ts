@@ -81,6 +81,9 @@ export function onPush(sessionId: string, callback: (msg: PiPush) => void): () =
   return window.piApi.onPush(sessionId, callback)
 }
 
-export function onStreamBatch(sessionId: string, callback: (batch: StreamBatch) => void): () => void {
+export function onStreamBatch(
+  sessionId: string,
+  callback: (batch: StreamBatch) => void,
+): () => void {
   return window.piApi.onStreamBatch(sessionId, callback)
 }

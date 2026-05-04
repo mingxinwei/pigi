@@ -6,7 +6,15 @@
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { PiChannel, type PiCommand, type PiPush, type PiRequest, type PiResult, type PortMessage, type StreamBatch } from '../shared/ipcContract'
+import {
+  PiChannel,
+  type PiCommand,
+  type PiPush,
+  type PiRequest,
+  type PiResult,
+  type PortMessage,
+  type StreamBatch,
+} from '../shared/ipcContract'
 
 // =============================================================================
 // Per-session port management
@@ -15,25 +23,23 @@ import { PiChannel, type PiCommand, type PiPush, type PiRequest, type PiResult, 
 interface SessionPort {
   port: MessagePort
   pending: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>
-  pushHandler: ((msg: PiPush) => void) | null
-  streamHandler: ((batch: StreamBatch) => void) | null
+  pushHandlers: Set<(msg: PiPush) => void>
+  streamHandlers: Set<(batch: StreamBatch) => void>
   requestId: number
 }
 
 const sessionPorts = new Map<string, SessionPort>()
 
-function getSessionPort(sessionId: string): SessionPort {
-  const sp = sessionPorts.get(sessionId)
-  if (!sp) throw new Error(`no port for session ${sessionId}`)
-  return sp
-}
+/** Handlers registered before port arrives */
+const pendingPushHandlers = new Map<string, Set<(msg: PiPush) => void>>()
+const pendingStreamHandlers = new Map<string, Set<(batch: StreamBatch) => void>>()
 
 function setupPort(sessionId: string, port: MessagePort): void {
   const sp: SessionPort = {
     port,
     pending: new Map(),
-    pushHandler: null,
-    streamHandler: null,
+    pushHandlers: new Set(),
+    streamHandlers: new Set(),
     requestId: 0,
   }
 
@@ -53,18 +59,34 @@ function setupPort(sessionId: string, port: MessagePort): void {
 
     // Stream batch
     if ('type' in data && data.type === 'stream_batch') {
-      sp.streamHandler?.(data as StreamBatch)
+      for (const handler of sp.streamHandlers) {
+        handler(data as StreamBatch)
+      }
       return
     }
 
     // Push event
     if ('type' in data) {
-      sp.pushHandler?.(data as PiPush)
+      for (const handler of sp.pushHandlers) {
+        handler(data as PiPush)
+      }
     }
   }
 
   port.start()
   sessionPorts.set(sessionId, sp)
+
+  // Drain pending handlers registered before port arrived
+  const pendingPush = pendingPushHandlers.get(sessionId)
+  if (pendingPush) {
+    for (const cb of pendingPush) sp.pushHandlers.add(cb)
+    pendingPushHandlers.delete(sessionId)
+  }
+  const pendingStream = pendingStreamHandlers.get(sessionId)
+  if (pendingStream) {
+    for (const cb of pendingStream) sp.streamHandlers.add(cb)
+    pendingStreamHandlers.delete(sessionId)
+  }
 }
 
 // Receive session port from main
@@ -84,7 +106,9 @@ const piApi = {
     ipcRenderer.invoke(PiChannel.CreateSession, cwd),
 
   /** Resume an existing session by file path. */
-  resumeSession: (sessionPath: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
+  resumeSession: (
+    sessionPath: string,
+  ): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
     ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath),
 
   /** Destroy a session. */
@@ -93,7 +117,11 @@ const piApi = {
 
   /** Send a command to a session (via MessagePort). Returns result. */
   send: (sessionId: string, cmd: PiCommand): Promise<unknown> => {
-    const sp = getSessionPort(sessionId)
+    const sp = sessionPorts.get(sessionId)
+    if (!sp)
+      return Promise.reject(
+        new Error(`no port for session ${sessionId} (port may not have arrived yet)`),
+      )
     const id = `req-${++sp.requestId}`
     return new Promise((resolve, reject) => {
       sp.pending.set(id, { resolve, reject })
@@ -111,20 +139,37 @@ const piApi = {
   /** Subscribe to push events for a session (session_ready, event, error). */
   onPush: (sessionId: string, callback: (msg: PiPush) => void): (() => void) => {
     const sp = sessionPorts.get(sessionId)
-    if (sp) sp.pushHandler = callback
+    if (sp) {
+      sp.pushHandlers.add(callback)
+    } else {
+      // Port not yet arrived -- queue
+      if (!pendingPushHandlers.has(sessionId)) {
+        pendingPushHandlers.set(sessionId, new Set())
+      }
+      pendingPushHandlers.get(sessionId)!.add(callback)
+    }
     return () => {
       const s = sessionPorts.get(sessionId)
-      if (s) s.pushHandler = null
+      if (s) s.pushHandlers.delete(callback)
+      pendingPushHandlers.get(sessionId)?.delete(callback)
     }
   },
 
   /** Subscribe to stream batches for a session. */
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void): (() => void) => {
     const sp = sessionPorts.get(sessionId)
-    if (sp) sp.streamHandler = callback
+    if (sp) {
+      sp.streamHandlers.add(callback)
+    } else {
+      if (!pendingStreamHandlers.has(sessionId)) {
+        pendingStreamHandlers.set(sessionId, new Set())
+      }
+      pendingStreamHandlers.get(sessionId)!.add(callback)
+    }
     return () => {
       const s = sessionPorts.get(sessionId)
-      if (s) s.streamHandler = null
+      if (s) s.streamHandlers.delete(callback)
+      pendingStreamHandlers.get(sessionId)?.delete(callback)
     }
   },
 
@@ -135,8 +180,8 @@ const piApi = {
     return () => ipcRenderer.removeListener(PiChannel.ProcessExit, handler)
   },
 
-  /** Check if a session port is connected. */
-  hasPort: (sessionId: string): boolean => sessionPorts.has(sessionId),
+  /** Get the app's working directory (for session creation). */
+  getCwd: (): string => process.cwd(),
 }
 
 contextBridge.exposeInMainWorld('electron', electronAPI)

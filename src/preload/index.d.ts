@@ -1,32 +1,24 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { StreamBatch, ModelInfo, SessionState } from '../shared/protocol'
+import type { PiCommand, PiPush, StreamBatch } from '../shared/ipcContract'
 
 interface PiApi {
-  // Session lifecycle
+  // Session lifecycle (via main process IPC)
   createSession: (cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-  destroySession: (sessionId: string) => Promise<{ success: boolean }>
   resumeSession: (sessionPath: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-  requestStreamPort: (sessionId: string) => void
+  destroySession: (sessionId: string) => Promise<{ success: boolean }>
 
-  // Commands (scoped by sessionId)
-  prompt: (sessionId: string, message: string) => Promise<{ success: boolean; error?: string }>
-  abort: (sessionId: string) => Promise<{ success: boolean }>
-  getState: (sessionId: string) => Promise<SessionState | null>
-  getMessages: (sessionId: string) => Promise<unknown[]>
-  switchSession: (sessionId: string, sessionPath: string) => Promise<{ success: boolean; sessionId?: string }>
-  listSessions: (cwd?: string) => Promise<unknown[]>
-  cycleModel: (sessionId: string) => Promise<unknown>
-  cycleThinkingLevel: (sessionId: string) => Promise<string | null>
+  // Commands (via MessagePort, direct to utility)
+  send: (sessionId: string, cmd: PiCommand) => Promise<unknown>
 
-  // Lifecycle events (include sessionId)
-  onSessionReady: (callback: (data: { sessionId: string; model: ModelInfo | null; thinkingLevel: string | null }) => void) => () => void
-  onSessionError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
-  onEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => () => void
-  onError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
+  // Subscriptions (via MessagePort)
+  onPush: (sessionId: string, callback: (msg: PiPush) => void) => () => void
+  onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void
+
+  // Process lifecycle
   onProcessExit: (callback: (data: { code: number }) => void) => () => void
 
-  // Stream (per session, via MessagePort)
-  onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void
+  // Utilities
+  hasPort: (sessionId: string) => boolean
 }
 
 declare global {

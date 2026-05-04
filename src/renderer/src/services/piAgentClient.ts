@@ -1,52 +1,86 @@
 /**
- * Pi agent client - renderer-side interface for multi-session communication.
+ * Pi agent client - renderer-side typed wrappers over window.piApi.
  *
- * Each session has:
- * - A sessionId for routing commands/events
- * - Its own MessagePort for high-frequency streaming (requested after session_ready)
+ * Components use these instead of calling piApi directly.
  */
-import type { StreamBatch } from '../../../shared/protocol'
+import type { PiCommand, PiPush, StreamBatch } from '../../../shared/ipcContract'
 
-export type StreamBatchHandler = (batch: StreamBatch) => void
+type CommandResult<T = unknown> = { success: boolean; error?: string } & T
 
-/** Create a new session and return its sessionId */
+async function send<T = unknown>(sessionId: string, cmd: PiCommand): Promise<T> {
+  return window.piApi.send(sessionId, cmd) as Promise<T>
+}
+
+// =============================================================================
+// Session lifecycle
+// =============================================================================
+
+/** Create a new session. Resolves when port is received. */
 export async function createSession(cwd: string): Promise<string> {
   const result = await window.piApi.createSession(cwd)
   if (!result.success || !result.sessionId) {
     throw new Error(result.error || 'failed to create session')
   }
-  window.piApi.requestStreamPort(result.sessionId)
   return result.sessionId
 }
 
-/** Resume an existing session by its file path (from SessionInfo.path) */
+/** Resume an existing session by file path. */
 export async function resumeSession(sessionPath: string): Promise<string> {
   const result = await window.piApi.resumeSession(sessionPath)
   if (!result.success || !result.sessionId) {
     throw new Error(result.error || 'failed to resume session')
   }
-  window.piApi.requestStreamPort(result.sessionId)
   return result.sessionId
 }
 
-/** Destroy a session */
+/** Destroy a session. */
 export async function destroySession(sessionId: string): Promise<void> {
   await window.piApi.destroySession(sessionId)
 }
 
-/** Subscribe to stream batches for a specific session */
-export function subscribeToStream(sessionId: string, handler: StreamBatchHandler): () => void {
-  return window.piApi.onStreamBatch(sessionId, handler)
+// =============================================================================
+// Session commands (via MessagePort)
+// =============================================================================
+
+export async function prompt(sessionId: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'prompt', message })
+  if (!result.success) {
+    throw new Error(result.error || 'prompt failed')
+  }
 }
 
-/** Per-session commands */
-export const piAgent = {
-  prompt: (sessionId: string, message: string) => window.piApi.prompt(sessionId, message),
-  abort: (sessionId: string) => window.piApi.abort(sessionId),
-  getState: (sessionId: string) => window.piApi.getState(sessionId),
-  getMessages: (sessionId: string) => window.piApi.getMessages(sessionId),
-  switchSession: (sessionId: string, path: string) => window.piApi.switchSession(sessionId, path),
-  listSessions: (cwd?: string) => window.piApi.listSessions(cwd),
-  cycleModel: (sessionId: string) => window.piApi.cycleModel(sessionId),
-  cycleThinkingLevel: (sessionId: string) => window.piApi.cycleThinkingLevel(sessionId),
+export async function abort(sessionId: string): Promise<void> {
+  await send(sessionId, { type: 'abort' })
+}
+
+export async function getState(sessionId: string): Promise<unknown> {
+  return send(sessionId, { type: 'get_state' })
+}
+
+export async function getMessages(sessionId: string): Promise<unknown[]> {
+  return send<unknown[]>(sessionId, { type: 'get_messages' })
+}
+
+export async function listSessions(sessionId: string, cwd?: string): Promise<unknown[]> {
+  return send<unknown[]>(sessionId, { type: 'list_sessions', cwd })
+}
+
+export async function cycleModel(sessionId: string): Promise<unknown> {
+  return send(sessionId, { type: 'cycle_model' })
+}
+
+export async function cycleThinkingLevel(sessionId: string): Promise<string | null> {
+  return send<string | null>(sessionId, { type: 'cycle_thinking_level' })
+}
+
+// =============================================================================
+// Subscriptions
+// =============================================================================
+
+export function onPush(sessionId: string, callback: (msg: PiPush) => void): () => void {
+  return window.piApi.onPush(sessionId, callback)
+}
+
+export function onStreamBatch(sessionId: string, callback: (batch: StreamBatch) => void): () => void {
+  return window.piApi.onStreamBatch(sessionId, callback)
 }

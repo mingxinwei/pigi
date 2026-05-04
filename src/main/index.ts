@@ -8,7 +8,7 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows/createMainWindow'
-import { stopUtilityProcess, registerIpcHandlers } from './ipc/piAgentBridge'
+import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge'
 
 if (is.dev) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -31,5 +31,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  stopUtilityProcess()
+  stopAllProcesses()
 })

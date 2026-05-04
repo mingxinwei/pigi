@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from './state/appStore'
-import { createSession } from './services/piAgentClient'
+import { createSession, prompt, abort, onPush, onStreamBatch } from './services/piAgentClient'
+import type { PiPush, StreamBatch } from '../../shared/ipcContract'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import MessageList from './components/MessageList'
@@ -18,7 +19,7 @@ function nextId(): string {
 
 /**
  * Tracks per-session streaming state (which assistant message is currently streaming).
- * This is mutable state that doesn't need to trigger re-renders.
+ * Mutable state that doesn't trigger re-renders.
  */
 const streamingState = new Map<string, { assistantId: string; text: string }>()
 
@@ -28,17 +29,14 @@ function App(): React.JSX.Element {
     sessions,
     addSession,
     setActiveSession,
-    updateSession,
     appendMessage,
   } = useAppStore()
 
   const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
   const agentStatus = activeSession?.status ?? 'idle'
 
-  // Ref to the streaming <pre> element for the active session (direct DOM mutation)
   const streamingRef = useRef<HTMLPreElement>(null)
 
-  // Sync streaming text to DOM for active session
   const syncStreamingDom = useCallback(() => {
     if (!activeSessionId) return
     const state = streamingState.get(activeSessionId)
@@ -47,147 +45,48 @@ function App(): React.JSX.Element {
     }
   }, [activeSessionId])
 
-  // Process events from ALL sessions (not just active)
+  // Subscribe to push events + stream for each session
   useEffect(() => {
-    const removeEvent = window.piApi.onEvent(({ sessionId, event: raw }) => {
-      const event = raw as PiEvent
-      const store = useAppStore.getState()
-
-      if (!store.sessions.has(sessionId)) return
-
-      switch (event.type) {
-        case 'agent_start': {
-          store.updateSession(sessionId, { status: 'streaming' })
-          const id = nextId()
-          streamingState.set(sessionId, { assistantId: id, text: '' })
-          store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
-          break
-        }
-
-        case 'agent_end': {
-          const state = streamingState.get(sessionId)
-          if (state) {
-            store.updateMessage(sessionId, state.assistantId, {
-              content: state.text,
-              isStreaming: false,
-            })
-            streamingState.delete(sessionId)
-          }
-          store.updateSession(sessionId, { status: 'idle' })
-          break
-        }
-
-        case 'message_update': {
-          const ame = event.assistantMessageEvent as { type: string; delta?: string } | undefined
-          if (ame?.type === 'text_delta' && ame.delta) {
-            const state = streamingState.get(sessionId)
-            if (state) {
-              state.text += ame.delta
-              // Only mutate DOM if this is the active session
-              if (sessionId === store.activeSessionId) {
-                syncStreamingDom()
-              }
-            }
-          }
-          break
-        }
-
-        case 'message_end': {
-          const endMsg = event.message as { role?: string; errorMessage?: string } | undefined
-          if (endMsg?.role === 'assistant') {
-            const state = streamingState.get(sessionId)
-            if (state) {
-              if (endMsg.errorMessage) {
-                state.text = `Error: ${endMsg.errorMessage}`
-              }
-              store.updateMessage(sessionId, state.assistantId, {
-                content: state.text,
-                isStreaming: false,
-              })
-              streamingState.delete(sessionId)
-            }
-          }
-          break
-        }
-
-        case 'tool_execution_start': {
-          store.updateSession(sessionId, { status: 'tool_running' })
-          store.appendMessage(sessionId, {
-            id: nextId(),
-            role: 'tool',
-            content: '',
-            toolName: event.toolName as string,
-          })
-          break
-        }
-
-        case 'tool_execution_update': {
-          const partialResult = event.partialResult as { content?: Array<{ text?: string }> } | undefined
-          const text = partialResult?.content?.[0]?.text || ''
-          if (text) {
-            const session = store.sessions.get(sessionId)
-            if (session) {
-              const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
-              if (lastTool) {
-                store.updateMessage(sessionId, lastTool.id, { content: text })
-              }
-            }
-          }
-          break
-        }
-
-        case 'tool_execution_end': {
-          store.updateSession(sessionId, { status: 'streaming' })
-          const result = event.result as { content?: Array<{ text?: string }> } | undefined
-          const text = result?.content?.[0]?.text || ''
-          const session = store.sessions.get(sessionId)
-          if (session) {
-            const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
-            if (lastTool && text) {
-              store.updateMessage(sessionId, lastTool.id, { content: text })
-            }
-          }
-          // Prepare next assistant message if needed
-          if (!streamingState.has(sessionId)) {
-            const id = nextId()
-            streamingState.set(sessionId, { assistantId: id, text: '' })
-            store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
-          }
-          break
-        }
-
-        case 'turn_start': {
-          if (!streamingState.has(sessionId)) {
-            const id = nextId()
-            streamingState.set(sessionId, { assistantId: id, text: '' })
-            store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
-          }
-          break
-        }
-      }
-    })
-
-    const removeError = window.piApi.onError(({ sessionId, error }) => {
-      console.error(`[pi:error] session=${sessionId}`, error)
-    })
-
-    return () => {
-      removeEvent()
-      removeError()
-    }
-  }, [syncStreamingDom])
-
-  // Subscribe to stream batches for ALL sessions
-  useEffect(() => {
-    const unsubscribes: Array<() => void> = []
+    const cleanups: Array<() => void> = []
 
     for (const [sessionId] of sessions) {
-      const unsub = window.piApi.onStreamBatch(sessionId, (batch) => {
-        const b = batch as { text?: Record<string, string> }
-        if (b.text) {
+      // Push events
+      const unsubPush = onPush(sessionId, (msg: PiPush) => {
+        const store = useAppStore.getState()
+        if (!store.sessions.has(sessionId)) return
+
+        switch (msg.type) {
+          case 'session_ready':
+            store.updateSession(sessionId, {
+              model: msg.model,
+              thinkingLevel: msg.thinkingLevel,
+              status: 'idle',
+            })
+            break
+
+          case 'session_error':
+            store.updateSession(sessionId, { error: msg.error, status: 'error' })
+            break
+
+          case 'error':
+            console.error(`[session ${sessionId}]`, msg.error)
+            break
+
+          case 'event': {
+            const event = msg.event as PiEvent
+            handleSessionEvent(sessionId, event, store)
+            break
+          }
+        }
+      })
+      cleanups.push(unsubPush)
+
+      // Stream batches
+      const unsubStream = onStreamBatch(sessionId, (batch: StreamBatch) => {
+        if (batch.text) {
           const state = streamingState.get(sessionId)
           if (state) {
-            for (const delta of Object.values(b.text)) {
+            for (const delta of Object.values(batch.text)) {
               state.text += delta
             }
             if (sessionId === useAppStore.getState().activeSessionId) {
@@ -196,51 +95,33 @@ function App(): React.JSX.Element {
           }
         }
       })
-      unsubscribes.push(unsub)
+      cleanups.push(unsubStream)
     }
 
-    return () => unsubscribes.forEach((fn) => fn())
+    return () => cleanups.forEach((fn) => fn())
   }, [sessions, syncStreamingDom])
 
-  // When switching to a session, sync its streaming state to DOM
+  // Sync streaming DOM when switching sessions
   useEffect(() => {
     syncStreamingDom()
   }, [activeSessionId, syncStreamingDom])
 
-  // Session lifecycle listeners
+  // Process exit listener
   useEffect(() => {
-    const removeReady = window.piApi.onSessionReady((data) => {
-      updateSession(data.sessionId, {
-        model: data.model as { name: string; provider: string; id: string } | null,
-        thinkingLevel: data.thinkingLevel,
-        status: 'idle',
-      })
-    })
-
-    const removeError = window.piApi.onSessionError((data) => {
-      updateSession(data.sessionId, { error: data.error, status: 'error' })
-    })
-
-    const removeProcessExit = window.piApi.onProcessExit(() => {
+    return window.piApi.onProcessExit(() => {
       // All sessions are gone if process crashes
     })
-
-    return () => {
-      removeReady()
-      removeError()
-      removeProcessExit()
-    }
-  }, [updateSession])
+  }, [])
 
   const handleSend = useCallback(async (message: string) => {
     if (!activeSessionId) return
     appendMessage(activeSessionId, { id: nextId(), role: 'user', content: message })
-    await window.piApi.prompt(activeSessionId, message)
+    await prompt(activeSessionId, message)
   }, [activeSessionId, appendMessage])
 
   const handleAbort = useCallback(async () => {
     if (!activeSessionId) return
-    await window.piApi.abort(activeSessionId)
+    await abort(activeSessionId)
   }, [activeSessionId])
 
   const handleNewSession = useCallback(async () => {
@@ -303,6 +184,122 @@ function App(): React.JSX.Element {
       </div>
     </div>
   )
+}
+
+// =============================================================================
+// Event handler (extracted for clarity)
+// =============================================================================
+
+function handleSessionEvent(
+  sessionId: string,
+  event: PiEvent,
+  store: ReturnType<typeof useAppStore.getState>,
+): void {
+  switch (event.type) {
+    case 'agent_start': {
+      store.updateSession(sessionId, { status: 'streaming' })
+      const id = nextId()
+      streamingState.set(sessionId, { assistantId: id, text: '' })
+      store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+      break
+    }
+
+    case 'agent_end': {
+      const state = streamingState.get(sessionId)
+      if (state) {
+        store.updateMessage(sessionId, state.assistantId, {
+          content: state.text,
+          isStreaming: false,
+        })
+        streamingState.delete(sessionId)
+      }
+      store.updateSession(sessionId, { status: 'idle' })
+      break
+    }
+
+    case 'message_update': {
+      const ame = event.assistantMessageEvent as { type: string; delta?: string } | undefined
+      if (ame?.type === 'text_delta' && ame.delta) {
+        const state = streamingState.get(sessionId)
+        if (state) {
+          state.text += ame.delta
+        }
+      }
+      break
+    }
+
+    case 'message_end': {
+      const endMsg = event.message as { role?: string; errorMessage?: string } | undefined
+      if (endMsg?.role === 'assistant') {
+        const state = streamingState.get(sessionId)
+        if (state) {
+          if (endMsg.errorMessage) {
+            state.text = `Error: ${endMsg.errorMessage}`
+          }
+          store.updateMessage(sessionId, state.assistantId, {
+            content: state.text,
+            isStreaming: false,
+          })
+          streamingState.delete(sessionId)
+        }
+      }
+      break
+    }
+
+    case 'tool_execution_start': {
+      store.updateSession(sessionId, { status: 'tool_running' })
+      store.appendMessage(sessionId, {
+        id: nextId(),
+        role: 'tool',
+        content: '',
+        toolName: event.toolName as string,
+      })
+      break
+    }
+
+    case 'tool_execution_update': {
+      const partialResult = event.partialResult as { content?: Array<{ text?: string }> } | undefined
+      const text = partialResult?.content?.[0]?.text || ''
+      if (text) {
+        const session = store.sessions.get(sessionId)
+        if (session) {
+          const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
+          if (lastTool) {
+            store.updateMessage(sessionId, lastTool.id, { content: text })
+          }
+        }
+      }
+      break
+    }
+
+    case 'tool_execution_end': {
+      store.updateSession(sessionId, { status: 'streaming' })
+      const result = event.result as { content?: Array<{ text?: string }> } | undefined
+      const text = result?.content?.[0]?.text || ''
+      const session = store.sessions.get(sessionId)
+      if (session) {
+        const lastTool = [...session.messages].reverse().find((m) => m.role === 'tool')
+        if (lastTool && text) {
+          store.updateMessage(sessionId, lastTool.id, { content: text })
+        }
+      }
+      if (!streamingState.has(sessionId)) {
+        const id = nextId()
+        streamingState.set(sessionId, { assistantId: id, text: '' })
+        store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+      }
+      break
+    }
+
+    case 'turn_start': {
+      if (!streamingState.has(sessionId)) {
+        const id = nextId()
+        streamingState.set(sessionId, { assistantId: id, text: '' })
+        store.appendMessage(sessionId, { id, role: 'assistant', content: '', isStreaming: true })
+      }
+      break
+    }
+  }
 }
 
 export default App

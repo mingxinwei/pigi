@@ -1,16 +1,13 @@
 /**
- * Pi Agent - utility process managing multiple pi SDK sessions.
+ * Pi Agent - utility process managing exactly ONE pi SDK session.
  *
- * Each session has:
- * - Its own AgentSessionRuntime
- * - Its own StreamBatcher + MessagePort (for direct streaming to renderer)
- * - Its own event subscription
+ * Lifecycle:
+ * 1. Receives create_session/resume_session from main via parentPort
+ * 2. Creates session, reports back real sessionId
+ * 3. Receives attach_port from main with a MessagePort
+ * 4. All subsequent communication flows over that port
  *
- * Communication:
- * 1. parentPort: control commands in, lifecycle events + results out
- * 2. Per-session MessagePort: high-frequency batched deltas direct to renderer
- *
- * Sessions are created on-demand, not at process startup.
+ * One process per session. Process exits when session is destroyed.
  */
 import {
   type AgentSessionEvent,
@@ -22,28 +19,40 @@ import {
   getAgentDir,
   SessionManager,
 } from '@mariozechner/pi-coding-agent'
-import type { PiCommand, PiResponse, StreamBatch, UtilityMessage } from '../../shared/protocol'
+import type {
+  PiCommand,
+  PiPush,
+  PiRequest,
+  PiResult,
+  PortMessage,
+  StreamBatch,
+  UtilityCommand,
+  UtilityResponse,
+} from '../../shared/ipcContract'
 
-// --- StreamBatcher (one per session) ---
+// =============================================================================
+// Port interface (compatible with Electron's MessagePortMain)
+// =============================================================================
 
-interface StreamPort {
+interface Port {
   postMessage(message: unknown): void
   start(): void
+  close(): void
+  on(event: 'message', listener: (messageEvent: { data: unknown }) => void): unknown
 }
 
+// =============================================================================
+// StreamBatcher
+// =============================================================================
+
 class StreamBatcher {
-  private batch: StreamBatch
+  private batch: StreamBatch = { type: 'stream_batch' }
   private dirty = false
   private timer: ReturnType<typeof setInterval> | null = null
-  private port: StreamPort | null = null
+  private port: Port | null = null
 
-  constructor(private sessionId: string) {
-    this.batch = { type: 'stream_batch', sessionId }
-  }
-
-  start(port: StreamPort): void {
+  start(port: Port): void {
     this.port = port
-    port.start()
     this.timer = setInterval(() => this.flush(), 16)
   }
 
@@ -76,28 +85,23 @@ class StreamBatcher {
   private flush(): void {
     if (!this.dirty || !this.port) return
     this.port.postMessage(this.batch)
-    this.batch = { type: 'stream_batch', sessionId: this.sessionId }
+    this.batch = { type: 'stream_batch' }
     this.dirty = false
   }
 }
 
-// --- Session State ---
+// =============================================================================
+// Session state (single session per process)
+// =============================================================================
 
-interface SessionEntry {
-  runtime: AgentSessionRuntime
-  batcher: StreamBatcher
-  unsubscribe: () => void
-}
+let runtime: AgentSessionRuntime | null = null
+let batcher: StreamBatcher | null = null
+let sessionPort: Port | null = null
+let unsubscribeEvents: (() => void) | null = null
 
-const sessions = new Map<string, SessionEntry>()
-
-// --- Helpers ---
-
-function send(msg: PiResponse): void {
-  process.parentPort?.postMessage(msg)
-}
-
-// --- Runtime Factory ---
+// =============================================================================
+// Runtime factory
+// =============================================================================
 
 const createRuntimeFactory: CreateAgentSessionRuntimeFactory = async ({
   cwd,
@@ -116,11 +120,17 @@ const createRuntimeFactory: CreateAgentSessionRuntimeFactory = async ({
   }
 }
 
-// --- Session Subscription ---
+// =============================================================================
+// Event subscription
+// =============================================================================
 
-function subscribeToSession(sessionId: string, runtime: AgentSessionRuntime, batcher: StreamBatcher): () => void {
-  const session = runtime.session
+function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {
+  const session = rt.session
   let currentAssistantId: string | null = null
+
+  function push(msg: PiPush): void {
+    port.postMessage(msg)
+  }
 
   return session.subscribe((event: AgentSessionEvent) => {
     switch (event.type) {
@@ -129,7 +139,7 @@ function subscribeToSession(sessionId: string, runtime: AgentSessionRuntime, bat
         if (msg?.role === 'assistant') {
           currentAssistantId = msg.id || null
         }
-        send({ type: 'event', sessionId, event })
+        push({ type: 'event', event })
         break
       }
 
@@ -137,149 +147,68 @@ function subscribeToSession(sessionId: string, runtime: AgentSessionRuntime, bat
         const ame = (event as { assistantMessageEvent?: { type: string; delta?: string } }).assistantMessageEvent
         if (ame && currentAssistantId) {
           if (ame.type === 'text_delta' && ame.delta) {
-            batcher.appendText(currentAssistantId, ame.delta)
+            batch.appendText(currentAssistantId, ame.delta)
             return
           }
           if (ame.type === 'thinking_delta' && ame.delta) {
-            batcher.appendThinking(currentAssistantId, ame.delta)
+            batch.appendThinking(currentAssistantId, ame.delta)
             return
           }
         }
-        send({ type: 'event', sessionId, event })
+        push({ type: 'event', event })
         break
       }
 
       case 'message_end':
         currentAssistantId = null
-        send({ type: 'event', sessionId, event })
+        push({ type: 'event', event })
         break
 
       case 'tool_execution_update': {
         const toolEvent = event as { toolCallId?: string; partialResult?: { content?: Array<{ text?: string }> } }
         const text = toolEvent.partialResult?.content?.[0]?.text
         if (text && toolEvent.toolCallId) {
-          batcher.appendToolOutput(toolEvent.toolCallId, text)
+          batch.appendToolOutput(toolEvent.toolCallId, text)
           return
         }
-        send({ type: 'event', sessionId, event })
+        push({ type: 'event', event })
         break
       }
 
       default:
-        send({ type: 'event', sessionId, event })
+        push({ type: 'event', event })
         break
     }
   })
 }
 
-// --- Command Handlers ---
-
-/** Register a runtime into the sessions map, bind extensions, emit session_ready */
-async function registerRuntime(runtime: AgentSessionRuntime): Promise<{ success: boolean; sessionId: string; error?: string }> {
-  const sessionId = runtime.session.sessionId
-
-  if (sessions.has(sessionId)) {
-    await runtime.dispose()
-    return { success: false, sessionId, error: 'session already active' }
-  }
-
-  const batcher = new StreamBatcher(sessionId)
-  const unsubscribe = subscribeToSession(sessionId, runtime, batcher)
-  sessions.set(sessionId, { runtime, batcher, unsubscribe })
-
-  await runtime.session.bindExtensions({})
-
-  const session = runtime.session
-  send({
-    type: 'session_ready',
-    sessionId,
-    model: session.model
-      ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
-      : null,
-    thinkingLevel: session.thinkingLevel,
-  })
-
-  return { success: true, sessionId }
-}
-
-async function createSession(cwd: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-  try {
-    const runtime = await createAgentSessionRuntime(createRuntimeFactory, {
-      cwd,
-      agentDir: getAgentDir(),
-      sessionManager: SessionManager.create(cwd),
-    })
-    return registerRuntime(runtime)
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    send({ type: 'session_error', sessionId: '', error })
-    return { success: false, error }
-  }
-}
-
-async function resumeSession(sessionPath: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-  try {
-    // SessionManager.open reads cwd from session header automatically
-    const sessionManager = SessionManager.open(sessionPath)
-    const cwd = sessionManager.getCwd()
-    const runtime = await createAgentSessionRuntime(createRuntimeFactory, {
-      cwd,
-      agentDir: getAgentDir(),
-      sessionManager,
-    })
-    return registerRuntime(runtime)
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    send({ type: 'session_error', sessionId: '', error })
-    return { success: false, error }
-  }
-}
-
-async function destroySession(sessionId: string): Promise<void> {
-  const entry = sessions.get(sessionId)
-  if (!entry) return
-
-  entry.unsubscribe()
-  entry.batcher.stop()
-  await entry.runtime.dispose()
-  sessions.delete(sessionId)
-}
+// =============================================================================
+// Command handling (via MessagePort from renderer)
+// =============================================================================
 
 async function handleCommand(cmd: PiCommand): Promise<unknown> {
+  if (!runtime) return { success: false, error: 'session not initialized' }
+
   switch (cmd.type) {
-    case 'create_session':
-      return await createSession(cmd.cwd)
-
-    case 'resume_session':
-      return await resumeSession(cmd.sessionPath)
-
-    case 'destroy_session':
-      await destroySession(cmd.sessionId)
-      return { success: true }
-
     case 'prompt': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return { success: false, error: 'session not found' }
       if (!cmd.message || cmd.message.trim().length === 0) {
         return { success: false, error: 'prompt must be a non-empty string' }
       }
-      entry.runtime.session.prompt(cmd.message).catch((err) => {
-        send({ type: 'error', sessionId: cmd.sessionId, error: err instanceof Error ? err.message : String(err) })
+      runtime.session.prompt(cmd.message).catch((err) => {
+        if (sessionPort) {
+          const msg: PiPush = { type: 'error', error: err instanceof Error ? err.message : String(err) }
+          sessionPort.postMessage(msg)
+        }
       })
       return { success: true }
     }
 
-    case 'abort': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return { success: false, error: 'session not found' }
-      await entry.runtime.session.abort()
+    case 'abort':
+      await runtime.session.abort()
       return { success: true }
-    }
 
-    case 'getState': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return null
-      const s = entry.runtime.session
+    case 'get_state': {
+      const s = runtime.session
       return {
         model: s.model
           ? { name: s.model.name, provider: s.model.provider, id: s.model.id }
@@ -292,77 +221,136 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       }
     }
 
-    case 'getMessages': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return []
-      return entry.runtime.session.messages
-    }
+    case 'get_messages':
+      return runtime.session.messages
 
-    case 'switchSession': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return { success: false, error: 'session not found' }
-      if (!cmd.sessionPath || cmd.sessionPath.trim().length === 0) {
-        return { success: false, error: 'sessionPath must be a non-empty string' }
-      }
-      // Resubscribe after switch
-      entry.unsubscribe()
-      await entry.runtime.switchSession(cmd.sessionPath)
-      const newUnsub = subscribeToSession(cmd.sessionId, entry.runtime, entry.batcher)
-      entry.unsubscribe = newUnsub
-      await entry.runtime.session.bindExtensions({})
-      return { success: true, sessionId: entry.runtime.session.sessionId }
-    }
-
-    case 'listSessions': {
-      const sessionList = cmd.cwd
+    case 'list_sessions': {
+      return cmd.cwd
         ? await SessionManager.list(cmd.cwd)
         : await SessionManager.listAll()
-      return sessionList
     }
 
-    case 'cycleModel': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return null
-      return await entry.runtime.session.cycleModel()
-    }
+    case 'cycle_model':
+      return await runtime.session.cycleModel()
 
-    case 'cycleThinkingLevel': {
-      const entry = sessions.get(cmd.sessionId)
-      if (!entry) return null
-      return entry.runtime.session.cycleThinkingLevel()
-    }
+    case 'cycle_thinking_level':
+      return runtime.session.cycleThinkingLevel()
   }
 }
 
-// --- Message Listener ---
+function setupPortListener(port: Port): void {
+  port.on('message', async (event: { data: unknown }) => {
+    const data = event.data as PortMessage
+    if ('id' in data && 'cmd' in data) {
+      const req = data as PiRequest
+      try {
+        const result = await handleCommand(req.cmd)
+        const response: PiResult = { id: req.id, result }
+        port.postMessage(response)
+      } catch (err) {
+        const response: PiResult = { id: req.id, result: { success: false, error: err instanceof Error ? err.message : String(err) } }
+        port.postMessage(response)
+      }
+    }
+  })
+  port.start()
+}
+
+// =============================================================================
+// Session creation
+// =============================================================================
+
+function sendToMain(msg: UtilityResponse): void {
+  process.parentPort?.postMessage(msg)
+}
+
+async function createSession(cwd: string): Promise<void> {
+  try {
+    runtime = await createAgentSessionRuntime(createRuntimeFactory, {
+      cwd,
+      agentDir: getAgentDir(),
+      sessionManager: SessionManager.create(cwd),
+    })
+    await runtime.session.bindExtensions({})
+    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId })
+  } catch (err) {
+    sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+async function resumeSession(sessionPath: string): Promise<void> {
+  try {
+    const sessionManager = SessionManager.open(sessionPath)
+    const cwd = sessionManager.getCwd()
+    runtime = await createAgentSessionRuntime(createRuntimeFactory, {
+      cwd,
+      agentDir: getAgentDir(),
+      sessionManager,
+    })
+    await runtime.session.bindExtensions({})
+    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId })
+  } catch (err) {
+    sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+function attachPort(port: Port): void {
+  if (!runtime) return
+
+  sessionPort = port
+  batcher = new StreamBatcher()
+  batcher.start(port)
+  unsubscribeEvents = subscribeToSession(runtime, port, batcher)
+  setupPortListener(port)
+
+  // Send session_ready as first push on the port
+  const session = runtime.session
+  const push: PiPush = {
+    type: 'session_ready',
+    model: session.model
+      ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
+      : null,
+    thinkingLevel: session.thinkingLevel,
+  }
+  port.postMessage(push)
+}
+
+// =============================================================================
+// Cleanup
+// =============================================================================
+
+function cleanup(): void {
+  unsubscribeEvents?.()
+  batcher?.stop()
+  sessionPort?.close()
+  runtime?.dispose()
+}
+
+process.on('exit', cleanup)
+process.on('SIGTERM', () => {
+  cleanup()
+  process.exit(0)
+})
+
+// =============================================================================
+// Main listener (parentPort — lifecycle commands only)
+// =============================================================================
 
 process.parentPort?.on('message', async (messageEvent) => {
   const { data, ports } = messageEvent
+  const cmd = data as UtilityCommand
 
-  // Receive a stream port for a specific session
-  const msg = data as UtilityMessage | PiCommand
-  if (msg.type === 'attach_stream_port' && ports.length > 0) {
-    const sessionId = msg.sessionId
-    const entry = sessions.get(sessionId)
-    if (entry) {
-      entry.batcher.start(ports[0])
-    }
-    return
-  }
-
-  // Handle commands
-  const id = (data as { id?: string }).id
-  try {
-    const result = await handleCommand(data as PiCommand)
-    if (id) {
-      send({ type: 'result', id, data: result })
-    }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    if (id) {
-      send({ type: 'result', id, data: { success: false, error } })
-    } else {
-      send({ type: 'error', sessionId: (data as { sessionId?: string }).sessionId || '', error })
-    }
+  switch (cmd.type) {
+    case 'create_session':
+      await createSession(cmd.cwd)
+      break
+    case 'resume_session':
+      await resumeSession(cmd.sessionPath)
+      break
+    case 'attach_port':
+      if (ports.length > 0) {
+        attachPort(ports[0])
+      }
+      break
   }
 })

@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron'
 import { PiChannel, type ProjectStateResult } from '../../shared/ipcContract'
 import { getMainWindow } from '../windows/createMainWindow'
-import { getProjectState, setActiveProject } from '../projects/projectStore'
+import { addRecentProject, getProjectState, setActiveProject } from '../projects/projectStore'
 
 function projectStateResult(): ProjectStateResult {
   return {
@@ -36,7 +36,7 @@ export function registerProjectHandlers(): void {
       return { success: false, canceled: true }
     }
 
-    setActiveProject(result.filePaths[0])
+    addRecentProject(result.filePaths[0])
     return projectStateResult()
   })
 }

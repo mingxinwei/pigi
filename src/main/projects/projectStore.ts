@@ -47,6 +47,13 @@ export function getActiveProject(): ProjectDirectory | null {
 
 export function setActiveProject(path: string): ProjectDirectory {
   const project = toProjectDirectory(path)
+  store.set(ACTIVE_PROJECT_PATH_KEY, project.path)
+
+  return project
+}
+
+export function addRecentProject(path: string): ProjectDirectory {
+  const project = toProjectDirectory(path)
   const recentProjects = getRecentProjects().filter((item) => item.path !== project.path)
   const nextProjects = [project, ...recentProjects].slice(0, MAX_RECENT_PROJECTS)
 

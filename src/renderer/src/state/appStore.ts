@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ModelInfo, ProjectDirectory } from '../../../shared/ipcContract'
+import type { ModelInfo, PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { AgentStatus } from './transcriptController'
 
 export type { AgentStatus }
@@ -21,12 +21,16 @@ interface AppState {
 
   recentProjects: ProjectDirectory[]
   activeProject: ProjectDirectory | null
+  projectSessions: Record<string, PiSessionInfo[]>
 
   addSession: (sessionId: string, cwd: string) => void
+  addSessionEntry: (entry: SessionEntry) => void
   removeSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
   updateSession: (sessionId: string, updates: Partial<Omit<SessionEntry, 'sessionId'>>) => void
   setProjects: (recentProjects: ProjectDirectory[], activeProject: ProjectDirectory | null) => void
+  setProjectSessions: (sessionsByCwd: Record<string, PiSessionInfo[]>) => void
+  setProjectSessionList: (cwd: string, sessions: PiSessionInfo[]) => void
 
   // Sidebar
   sidebarExpanded: boolean
@@ -39,6 +43,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   recentProjects: [],
   activeProject: null,
+  projectSessions: {},
 
   addSession: (sessionId, cwd) =>
     set((state) => {
@@ -52,6 +57,13 @@ export const useAppStore = create<AppState>((set) => ({
         thinkingLevel: null,
         error: null,
       })
+      return { sessions }
+    }),
+
+  addSessionEntry: (entry) =>
+    set((state) => {
+      const sessions = new Map(state.sessions)
+      sessions.set(entry.sessionId, entry)
       return { sessions }
     }),
 
@@ -76,6 +88,14 @@ export const useAppStore = create<AppState>((set) => ({
     }),
 
   setProjects: (recentProjects, activeProject) => set({ recentProjects, activeProject }),
+  setProjectSessions: (projectSessions) => set({ projectSessions }),
+  setProjectSessionList: (cwd, sessions) =>
+    set((state) => ({
+      projectSessions: {
+        ...state.projectSessions,
+        [cwd]: sessions,
+      },
+    })),
 
   // Sidebar
   sidebarExpanded: true,

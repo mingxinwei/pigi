@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { AlertCircle, Folder, Loader2, MessageCircle, Plus, Search, Settings } from 'lucide-react'
-import type { ProjectDirectory } from '../../../shared/ipcContract'
+import { Folder, MessageCircle, Plus, Search, Settings } from 'lucide-react'
+import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
 import {
   Sidebar as ShadcnSidebar,
@@ -14,6 +14,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from './ui/sidebar'
 import {
   Command,
@@ -27,35 +30,84 @@ import {
 
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
-  activeSessionId: string | null
+  selectedSessionId: string | null
+  activeProjectPath: string | null
   isStreaming: boolean
   recentProjects: ProjectDirectory[]
-  activeProject: ProjectDirectory | null
+  projectSessions: Record<string, PiSessionInfo[]>
   onNewSession: () => void
   onSwitchSession: (sessionId: string) => void
+  onResumeSession: (session: PiSessionInfo) => void
   onOpenProject: () => void
   onSelectProject: (path: string) => void
 }
 
 export default function Sidebar({
   sessions,
-  activeSessionId,
+  selectedSessionId,
+  activeProjectPath,
   isStreaming,
   recentProjects,
-  activeProject,
+  projectSessions,
   onNewSession,
   onSwitchSession,
+  onResumeSession,
   onOpenProject,
   onSelectProject,
 }: SidebarProps): React.JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false)
-  const activeProjectPath = activeProject?.path ?? null
-  const sessionList = Array.from(sessions.values()).filter((session) => {
-    if (!activeProjectPath) {
-      return true
-    }
-    return session.cwd === activeProjectPath
-  })
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const [expandedSessionLists, setExpandedSessionLists] = useState<Set<string>>(new Set())
+  const visibleSessionCount = 5
+
+  function getSessionTitle(session: PiSessionInfo): string {
+    return (session.name ?? session.firstMessage).replace(/\s+/g, ' ').trim()
+  }
+
+  function getProjectSessions(projectPath: string): PiSessionInfo[] {
+    const listedSessions = projectSessions[projectPath] ?? []
+    const listedIds = new Set(listedSessions.map((session) => session.id))
+    const runningSessions = Array.from(sessions.values())
+      .filter((session) => session.cwd === projectPath && !listedIds.has(session.sessionId))
+      .map<PiSessionInfo>((session) => ({
+        path: '',
+        id: session.sessionId,
+        cwd: session.cwd,
+        created: '',
+        modified: '',
+        messageCount: 0,
+        firstMessage: session.title,
+        allMessagesText: session.title,
+      }))
+
+    return [...runningSessions, ...listedSessions]
+  }
+
+  const allProjectSessions = recentProjects.flatMap((project) => getProjectSessions(project.path))
+
+  function toggleProjectSessions(projectPath: string): void {
+    setExpandedProjects((current) => {
+      const next = new Set(current)
+      if (next.has(projectPath)) {
+        next.delete(projectPath)
+      } else {
+        next.add(projectPath)
+      }
+      return next
+    })
+  }
+
+  function toggleSessionList(projectPath: string): void {
+    setExpandedSessionLists((current) => {
+      const next = new Set(current)
+      if (next.has(projectPath)) {
+        next.delete(projectPath)
+      } else {
+        next.add(projectPath)
+      }
+      return next
+    })
+  }
 
   return (
     <>
@@ -85,17 +137,21 @@ export default function Sidebar({
               ))}
             </CommandGroup>
             <CommandGroup heading="Chats">
-              {sessionList.map((session) => (
+              {allProjectSessions.map((session) => (
                 <CommandItem
-                  key={session.sessionId}
-                  value={`chat ${session.title}`}
+                  key={session.path || session.id}
+                  value={`chat ${getSessionTitle(session)}`}
                   onSelect={() => {
-                    onSwitchSession(session.sessionId)
+                    if (session.path) {
+                      onResumeSession(session)
+                    } else {
+                      onSwitchSession(session.id)
+                    }
                     setSearchOpen(false)
                   }}
                 >
                   <MessageCircle />
-                  <span>{session.title}</span>
+                  <span>{getSessionTitle(session)}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -103,7 +159,11 @@ export default function Sidebar({
         </Command>
       </CommandDialog>
 
-      <ShadcnSidebar collapsible="none" className="border-r" data-testid="sidebar">
+      <ShadcnSidebar
+        collapsible="none"
+        className="border-r [&_.lucide]:stroke-[1.25]"
+        data-testid="sidebar"
+      >
         <SidebarHeader style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <div className="h-10" />
           <SidebarMenu style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -132,14 +192,16 @@ export default function Sidebar({
           </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Projects</SidebarGroupLabel>
+        <SidebarContent className="overflow-hidden">
+          <SidebarGroup className="min-h-0 flex-1">
+            <SidebarGroupLabel className="text-sm text-muted-foreground">
+              Projects
+            </SidebarGroupLabel>
             <SidebarGroupAction onClick={onOpenProject} title="Open project">
               <Folder />
               <span className="sr-only">Open project</span>
             </SidebarGroupAction>
-            <SidebarGroupContent>
+            <SidebarGroupContent className="min-h-0 flex-1 overflow-auto no-scrollbar">
               <SidebarMenu>
                 {recentProjects.length === 0 ? (
                   <SidebarMenuItem>
@@ -149,51 +211,125 @@ export default function Sidebar({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ) : (
-                  recentProjects.map((project) => (
-                    <SidebarMenuItem key={project.path}>
-                      <SidebarMenuButton
-                        onClick={() => {
-                          onSelectProject(project.path)
-                        }}
-                        isActive={project.path === activeProjectPath}
-                        title={project.path}
-                      >
-                        <Folder data-icon="inline-start" />
-                        <span>{project.name}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))
-                )}
-              </SidebarMenu>
-
-              <SidebarMenu className="mt-1">
-                {sessionList.length === 0 ? (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton className="pl-7 text-muted-foreground" disabled>
-                      <span>No chats yet</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ) : (
-                  sessionList.map((session) => {
-                    const isActive = session.sessionId === activeSessionId
-                    const isBusy =
-                      session.status === 'streaming' || session.status === 'tool_running'
-                    const isError = session.status === 'error'
+                  recentProjects.map((project) => {
+                    const sessionsForProject = getProjectSessions(project.path)
+                    const isExpanded = expandedProjects.has(project.path)
+                    const isProjectRowActive =
+                      selectedSessionId === null && activeProjectPath === project.path
+                    const isSessionListExpanded = expandedSessionLists.has(project.path)
+                    const visibleSessions = isSessionListExpanded
+                      ? sessionsForProject
+                      : sessionsForProject.slice(0, visibleSessionCount)
+                    const hiddenSessionCount = sessionsForProject.length - visibleSessions.length
 
                     return (
-                      <SidebarMenuItem key={session.sessionId}>
+                      <SidebarMenuItem
+                        key={project.path}
+                        className={isExpanded ? 'mb-3' : undefined}
+                      >
                         <SidebarMenuButton
                           onClick={() => {
-                            onSwitchSession(session.sessionId)
+                            onSelectProject(project.path)
+                            toggleProjectSessions(project.path)
                           }}
-                          isActive={isActive}
-                          className="pl-7"
+                          isActive={isProjectRowActive}
+                          title={project.path}
+                          className="font-medium text-muted-foreground data-active:bg-primary/10 data-active:text-foreground"
                         >
-                          {isBusy && <Loader2 data-icon="inline-start" className="animate-spin" />}
-                          {isError && <AlertCircle data-icon="inline-start" />}
-                          {!isBusy && !isError && <MessageCircle data-icon="inline-start" />}
-                          <span>{session.title}</span>
+                          <Folder data-icon="inline-start" />
+                          <span>{project.name}</span>
                         </SidebarMenuButton>
+
+                        <div
+                          aria-hidden={!isExpanded}
+                          className={
+                            isExpanded
+                              ? 'grid grid-rows-[1fr] translate-y-0 opacity-100 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
+                              : 'grid grid-rows-[0fr] -translate-y-1 opacity-0 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]'
+                          }
+                        >
+                          <div className="min-h-0 overflow-hidden">
+                            <SidebarMenuSub className="mx-0 border-l-0 px-0">
+                              {sessionsForProject.length === 0 ? (
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    asChild
+                                    className="w-full justify-start pl-6 text-left text-muted-foreground"
+                                  >
+                                    <span aria-disabled>No chats yet</span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ) : (
+                                visibleSessions.map((session) => {
+                                  const isActive = session.id === selectedSessionId
+
+                                  return (
+                                    <SidebarMenuSubItem key={session.path || session.id}>
+                                      <SidebarMenuSubButton
+                                        asChild
+                                        isActive={isActive}
+                                        className="w-full justify-start pl-6 text-left data-active:bg-primary/10 data-active:text-foreground"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (session.path) {
+                                              onResumeSession(session)
+                                            } else {
+                                              onSwitchSession(session.id)
+                                            }
+                                          }}
+                                        >
+                                          <span
+                                            className="min-w-0 flex-1 truncate"
+                                            title={getSessionTitle(session)}
+                                          >
+                                            {getSessionTitle(session)}
+                                          </span>
+                                        </button>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  )
+                                })
+                              )}
+                              {hiddenSessionCount > 0 && (
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton
+                                    asChild
+                                    className="w-full justify-start pl-6 text-left text-muted-foreground"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        toggleSessionList(project.path)
+                                      }}
+                                    >
+                                      <span>Show more</span>
+                                    </button>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              )}
+                              {isSessionListExpanded &&
+                                sessionsForProject.length > visibleSessionCount && (
+                                  <SidebarMenuSubItem>
+                                    <SidebarMenuSubButton
+                                      asChild
+                                      className="w-full justify-start pl-6 text-left text-muted-foreground"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toggleSessionList(project.path)
+                                        }}
+                                      >
+                                        <span>Show less</span>
+                                      </button>
+                                    </SidebarMenuSubButton>
+                                  </SidebarMenuSubItem>
+                                )}
+                            </SidebarMenuSub>
+                          </div>
+                        </div>
                       </SidebarMenuItem>
                     )
                   })

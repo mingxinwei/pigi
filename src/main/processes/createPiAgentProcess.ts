@@ -8,3 +8,8 @@ export function createPiAgentProcess(): Electron.UtilityProcess {
   const modulePath = join(__dirname, 'processes/utility/piAgent.js')
   return utilityProcess.fork(modulePath)
 }
+
+export function createSessionIndexProcess(): Electron.UtilityProcess {
+  const modulePath = join(__dirname, 'processes/utility/sessionIndex.js')
+  return utilityProcess.fork(modulePath)
+}

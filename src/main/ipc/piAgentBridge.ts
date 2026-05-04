@@ -10,8 +10,15 @@
  */
 import { ipcMain, MessageChannelMain } from 'electron'
 import { getMainWindow } from '../windows/createMainWindow'
-import { createPiAgentProcess } from '../processes/createPiAgentProcess'
-import { PiChannel, type UtilityCommand, type UtilityResponse } from '../../shared/ipcContract'
+import { createPiAgentProcess, createSessionIndexProcess } from '../processes/createPiAgentProcess'
+import {
+  PiChannel,
+  type SessionIndexCommand,
+  type SessionIndexResponse,
+  type SessionListResult,
+  type UtilityCommand,
+  type UtilityResponse,
+} from '../../shared/ipcContract'
 
 interface SessionProcess {
   process: Electron.UtilityProcess
@@ -20,12 +27,59 @@ interface SessionProcess {
 
 /** Map of real sessionId → process info */
 const sessionProcesses = new Map<string, SessionProcess>()
+let sessionIndexProcess: Electron.UtilityProcess | null = null
+let sessionIndexRequestId = 0
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
   const win = getMainWindow()
   if (win && !win.isDestroyed()) {
     win.webContents.send(channel, data)
   }
+}
+
+function startSessionIndexProcess(): void {
+  if (sessionIndexProcess) {
+    return
+  }
+
+  const proc = createSessionIndexProcess()
+  sessionIndexProcess = proc
+
+  proc.on('message', (msg: SessionIndexResponse) => {
+    switch (msg.type) {
+      case 'project_sessions_chunk':
+        sendToRenderer(PiChannel.ProjectSessionsChunk, {
+          requestId: msg.requestId,
+          cwd: msg.cwd,
+          success: msg.success,
+          sessions: msg.sessions,
+          error: msg.error,
+        })
+        break
+    }
+  })
+
+  proc.on('exit', () => {
+    if (sessionIndexProcess === proc) {
+      sessionIndexProcess = null
+    }
+  })
+}
+
+function listProjectSessions(cwds: string[]): SessionListResult {
+  startSessionIndexProcess()
+  if (!sessionIndexProcess) {
+    return { success: false, error: 'session index process not available' }
+  }
+
+  const requestId = `session-list-${++sessionIndexRequestId}`
+  const cmd: SessionIndexCommand = {
+    type: 'list_project_sessions',
+    requestId,
+    cwds: [...new Set(cwds)],
+  }
+  sessionIndexProcess.postMessage(cmd)
+  return { success: true, requestId }
 }
 
 /**
@@ -105,9 +159,13 @@ export function stopAllProcesses(): void {
     entry.process.kill()
   }
   sessionProcesses.clear()
+  sessionIndexProcess?.kill()
+  sessionIndexProcess = null
 }
 
 export function registerIpcHandlers(): void {
+  startSessionIndexProcess()
+
   ipcMain.handle(PiChannel.CreateSession, async (_e, cwd: string) => {
     if (!cwd || typeof cwd !== 'string') {
       return { success: false, error: 'cwd must be a non-empty string' }
@@ -132,5 +190,12 @@ export function registerIpcHandlers(): void {
     entry.process.kill()
     sessionProcesses.delete(sessionId)
     return { success: true }
+  })
+
+  ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {
+    if (!Array.isArray(cwds) || cwds.some((cwd) => !cwd || typeof cwd !== 'string')) {
+      return { success: false, error: 'cwds must be an array of non-empty strings' }
+    }
+    return listProjectSessions(cwds)
   })
 }

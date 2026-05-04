@@ -38,6 +38,31 @@ export type ProjectStateResult =
   | ({ success: true } & ProjectState)
   | { success: false; error?: string; canceled?: boolean }
 
+export interface PiSessionInfo {
+  path: string
+  id: string
+  cwd: string
+  name?: string
+  parentSessionPath?: string
+  created: string
+  modified: string
+  messageCount: number
+  firstMessage: string
+  allMessagesText: string
+}
+
+export type SessionListResult =
+  | { success: true; requestId: string }
+  | { success: false; error?: string }
+
+export interface ProjectSessionsChunk {
+  requestId: string
+  cwd: string
+  success: boolean
+  sessions?: PiSessionInfo[]
+  error?: string
+}
+
 export interface SessionState {
   model: ModelInfo | null
   thinkingLevel: string | null
@@ -122,7 +147,19 @@ export enum PiChannel {
   SetActiveProject = 'pi:set_active_project',
   /** renderer → main: open a native directory picker for project cwd selection */
   OpenProjectDirectory = 'pi:open_project_directory',
+  /** renderer → main: list persisted pi sessions for a project cwd */
+  ListProjectSessions = 'pi:list_project_sessions',
+  /** main → renderer: persisted pi sessions for one project cwd */
+  ProjectSessionsChunk = 'pi:project_sessions_chunk',
 }
+
+export interface SessionIndexCommand {
+  type: 'list_project_sessions'
+  requestId: string
+  cwds: string[]
+}
+
+export type SessionIndexResponse = { type: 'project_sessions_chunk' } & ProjectSessionsChunk
 
 // =============================================================================
 // Internal: Main → Utility (parentPort, lifecycle only)

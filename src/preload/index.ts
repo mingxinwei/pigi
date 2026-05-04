@@ -13,7 +13,9 @@ import {
   type PiRequest,
   type PiResult,
   type PortMessage,
+  type ProjectSessionsChunk,
   type ProjectStateResult,
+  type SessionListResult,
   type StreamBatch,
 } from '../shared/ipcContract'
 
@@ -126,6 +128,19 @@ const piApi = {
   /** Open native directory picker and persist selected project directory. */
   openProjectDirectory: (): Promise<ProjectStateResult> =>
     ipcRenderer.invoke(PiChannel.OpenProjectDirectory),
+
+  /** List persisted pi sessions for project directories. */
+  listProjectSessions: (cwds: string[]): Promise<SessionListResult> =>
+    ipcRenderer.invoke(PiChannel.ListProjectSessions, cwds),
+
+  /** Subscribe to persisted pi session chunks by project cwd. */
+  onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, chunk: ProjectSessionsChunk): void => {
+      callback(chunk)
+    }
+    ipcRenderer.on(PiChannel.ProjectSessionsChunk, handler)
+    return () => ipcRenderer.removeListener(PiChannel.ProjectSessionsChunk, handler)
+  },
 
   /** Send a command to a session (via MessagePort). Returns result. */
   send: (sessionId: string, cmd: PiCommand): Promise<unknown> => {

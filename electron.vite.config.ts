@@ -10,6 +10,7 @@ export default defineConfig({
         input: {
           index: resolve('src/main/index.ts'),
           'processes/utility/piAgent': resolve('src/processes/utility/piAgent.ts'),
+          'processes/utility/sessionIndex': resolve('src/processes/utility/sessionIndex.ts'),
         },
         output: {
           format: 'es',

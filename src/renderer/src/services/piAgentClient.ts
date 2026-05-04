@@ -6,7 +6,9 @@
 import type {
   PiCommand,
   PiPush,
+  ProjectSessionsChunk,
   ProjectStateResult,
+  SessionListResult,
   StreamBatch,
 } from '../../../shared/ipcContract'
 
@@ -53,6 +55,16 @@ export async function setActiveProject(path: string): Promise<ProjectStateResult
 
 export async function openProjectDirectory(): Promise<ProjectStateResult> {
   return window.piApi.openProjectDirectory()
+}
+
+export async function listProjectSessions(cwds: string[]): Promise<SessionListResult> {
+  return window.piApi.listProjectSessions(cwds)
+}
+
+export function onProjectSessionsChunk(
+  callback: (chunk: ProjectSessionsChunk) => void,
+): () => void {
+  return window.piApi.onProjectSessionsChunk(callback)
 }
 
 // =============================================================================

@@ -1,19 +1,10 @@
-import { useState } from 'react'
-import {
-  IconFolder,
-  IconFolderOpen,
-  IconFolderPlus,
-  IconMessageCircle,
-  IconPlus,
-  IconSearch,
-  IconSettings,
-} from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
+import { IconFolder, IconFolderOpen, IconFolderPlus, IconPlus } from '@tabler/icons-react'
 import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
@@ -26,15 +17,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from './ui/sidebar'
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from './ui/command'
 
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
@@ -61,10 +43,17 @@ export default function Sidebar({
   onOpenProject,
   onSelectProject,
 }: SidebarProps): React.JSX.Element {
-  const [searchOpen, setSearchOpen] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [expandedSessionLists, setExpandedSessionLists] = useState<Set<string>>(new Set())
+  const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now())
   const visibleSessionCount = 5
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRelativeTimeBase(Date.now())
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   function getSessionTitle(session: PiSessionInfo): string {
     return (session.name ?? session.firstMessage).replace(/\s+/g, ' ').trim()
@@ -74,12 +63,14 @@ export default function Sidebar({
     const listedSessions = projectSessions[projectPath] ?? []
     const listedIds = new Set(listedSessions.map((session) => session.id))
     const runningSessions = Array.from(sessions.values())
-      .filter((session) => session.cwd === projectPath && !listedIds.has(session.sessionId))
+      .filter(
+        (session) => session.cwd === projectPath && !listedIds.has(session.persistedSessionId),
+      )
       .map<PiSessionInfo>((session) => ({
-        path: '',
-        id: session.sessionId,
+        path: session.sessionPath ?? '',
+        id: session.persistedSessionId,
         cwd: session.cwd,
-        created: '',
+        created: session.createdAt,
         modified: '',
         messageCount: 0,
         firstMessage: session.title,
@@ -88,8 +79,6 @@ export default function Sidebar({
 
     return [...runningSessions, ...listedSessions]
   }
-
-  const allProjectSessions = recentProjects.flatMap((project) => getProjectSessions(project.path))
 
   function toggleProjectSessions(projectPath: string): void {
     setExpandedProjects((current) => {
@@ -115,56 +104,33 @@ export default function Sidebar({
     })
   }
 
+  function formatRelativeTime(value: string): string {
+    const created = new Date(value).getTime()
+    if (!Number.isFinite(created)) {
+      return ''
+    }
+
+    const elapsedSeconds = Math.max(0, Math.round((relativeTimeBase - created) / 1000))
+    const ranges: Array<[string, number]> = [
+      ['y', 60 * 60 * 24 * 365],
+      ['mo', 60 * 60 * 24 * 30],
+      ['w', 60 * 60 * 24 * 7],
+      ['d', 60 * 60 * 24],
+      ['h', 60 * 60],
+      ['m', 60],
+    ]
+
+    for (const [suffix, seconds] of ranges) {
+      if (elapsedSeconds >= seconds) {
+        return `${Math.floor(elapsedSeconds / seconds)}${suffix}`
+      }
+    }
+
+    return 'now'
+  }
+
   return (
     <>
-      <CommandDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        title="Search projects and chats"
-        description="Search recent projects and open chats."
-      >
-        <Command>
-          <CommandInput placeholder="Search projects and chats..." />
-          <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
-            <CommandGroup heading="Projects">
-              {recentProjects.map((project) => (
-                <CommandItem
-                  key={project.path}
-                  value={`project ${project.name} ${project.path}`}
-                  onSelect={() => {
-                    onSelectProject(project.path)
-                    setSearchOpen(false)
-                  }}
-                >
-                  <IconFolder />
-                  <span>{project.name}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            <CommandGroup heading="Chats">
-              {allProjectSessions.map((session) => (
-                <CommandItem
-                  key={session.path || session.id}
-                  value={`chat ${getSessionTitle(session)}`}
-                  onSelect={() => {
-                    if (session.path) {
-                      onResumeSession(session)
-                    } else {
-                      onSwitchSession(session.id)
-                    }
-                    setSearchOpen(false)
-                  }}
-                >
-                  <IconMessageCircle />
-                  <span>{getSessionTitle(session)}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </CommandDialog>
-
       <ShadcnSidebar
         collapsible="none"
         className="border-r [&_.tabler-icon]:stroke-[1.25]"
@@ -177,16 +143,6 @@ export default function Sidebar({
               <SidebarMenuButton onClick={onNewSession} disabled={isStreaming}>
                 <IconPlus data-icon="inline-start" />
                 <span>New chat</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => {
-                  setSearchOpen(true)
-                }}
-              >
-                <IconSearch data-icon="inline-start" />
-                <span>Search</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -288,10 +244,13 @@ export default function Sidebar({
                                           }}
                                         >
                                           <span
-                                            className="min-w-0 flex-1 truncate"
+                                            className="min-w-0 flex-1 truncate text-left"
                                             title={getSessionTitle(session)}
                                           >
                                             {getSessionTitle(session)}
+                                          </span>
+                                          <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                                            {formatRelativeTime(session.created)}
                                           </span>
                                         </button>
                                       </SidebarMenuSubButton>
@@ -345,17 +304,6 @@ export default function Sidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                <IconSettings data-icon="inline-start" />
-                <span>Settings</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
       </ShadcnSidebar>
     </>
   )

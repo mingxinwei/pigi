@@ -11,10 +11,11 @@
  */
 import {
   type AgentSessionEvent,
-  type CreateAgentSessionRuntimeFactory,
   type AgentSessionRuntime,
+  type AgentSessionServices,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
   createAgentSessionServices,
   getAgentDir,
   SessionManager,
@@ -98,6 +99,23 @@ let runtime: AgentSessionRuntime | null = null
 let batcher: StreamBatcher | null = null
 let sessionPort: Port | null = null
 let unsubscribeEvents: (() => void) | null = null
+let isSessionBusy = false
+// Services are expensive to build; prewarm them while the user is browsing sessions.
+const servicesByCwd = new Map<string, Promise<AgentSessionServices>>()
+
+function getServices(cwd: string): Promise<AgentSessionServices> {
+  const existing = servicesByCwd.get(cwd)
+  if (existing) {
+    return existing
+  }
+
+  const services = createAgentSessionServices({ cwd })
+  services.catch(() => {
+    servicesByCwd.delete(cwd)
+  })
+  servicesByCwd.set(cwd, services)
+  return services
+}
 
 // =============================================================================
 // Runtime factory
@@ -108,7 +126,7 @@ const createRuntimeFactory: CreateAgentSessionRuntimeFactory = async ({
   sessionManager,
   sessionStartEvent,
 }) => {
-  const services = await createAgentSessionServices({ cwd })
+  const services = await getServices(cwd)
   return {
     ...(await createAgentSessionFromServices({
       services,
@@ -124,6 +142,15 @@ const createRuntimeFactory: CreateAgentSessionRuntimeFactory = async ({
 // Event subscription
 // =============================================================================
 
+function setSessionBusy(isBusy: boolean): void {
+  if (isSessionBusy === isBusy) {
+    return
+  }
+
+  isSessionBusy = isBusy
+  sendToMain({ type: 'session_busy_changed', isBusy })
+}
+
 function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {
   const session = rt.session
   let currentAssistantId: string | null = null
@@ -133,6 +160,19 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
   }
 
   return session.subscribe((event: AgentSessionEvent) => {
+    switch (event.type) {
+      case 'agent_start':
+      case 'compaction_start':
+      case 'auto_retry_start':
+        setSessionBusy(true)
+        break
+      case 'agent_end':
+      case 'compaction_end':
+      case 'auto_retry_end':
+        setSessionBusy(session.isStreaming)
+        break
+    }
+
     switch (event.type) {
       case 'message_start': {
         const msg = (event as { message?: { role?: string; id?: string } }).message
@@ -212,6 +252,7 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
 
     case 'abort':
       await runtime.session.abort()
+      setSessionBusy(runtime.session.isStreaming)
       return { success: true }
 
     case 'get_state': {
@@ -291,6 +332,14 @@ function sendToMain(msg: UtilityResponse): void {
   process.parentPort?.postMessage(msg)
 }
 
+function prewarmSessionServices(cwds: string[]): void {
+  for (const cwd of new Set(cwds)) {
+    if (cwd) {
+      void getServices(cwd)
+    }
+  }
+}
+
 async function createSession(cwd: string): Promise<void> {
   try {
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
@@ -325,6 +374,7 @@ function attachPort(port: Port): void {
   if (!runtime) return
 
   sessionPort = port
+  setSessionBusy(runtime.session.isStreaming)
   batcher = new StreamBatcher()
   batcher.start(port)
   unsubscribeEvents = subscribeToSession(runtime, port, batcher)
@@ -373,6 +423,9 @@ process.parentPort?.on('message', async (messageEvent) => {
       break
     case 'resume_session':
       await resumeSession(cmd.sessionPath)
+      break
+    case 'prewarm_session_services':
+      prewarmSessionServices(cmd.cwds)
       break
     case 'attach_port':
       if (ports.length > 0) {

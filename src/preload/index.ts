@@ -32,12 +32,31 @@ interface SessionPort {
 }
 
 const sessionPorts = new Map<string, SessionPort>()
+const SESSION_PORT_CLOSED_ERROR = 'session process exited'
 
 /** Handlers registered before port arrives */
 const pendingPushHandlers = new Map<string, Set<(msg: PiPush) => void>>()
 const pendingStreamHandlers = new Map<string, Set<(batch: StreamBatch) => void>>()
 
+function cleanupSessionPort(sessionId: string): void {
+  const sp = sessionPorts.get(sessionId)
+  if (sp) {
+    for (const pending of sp.pending.values()) {
+      pending.reject(new Error(SESSION_PORT_CLOSED_ERROR))
+    }
+    sp.pending.clear()
+    sp.pushHandlers.clear()
+    sp.streamHandlers.clear()
+    sp.port.close()
+    sessionPorts.delete(sessionId)
+  }
+  pendingPushHandlers.delete(sessionId)
+  pendingStreamHandlers.delete(sessionId)
+}
+
 function setupPort(sessionId: string, port: MessagePort): void {
+  cleanupSessionPort(sessionId)
+
   const sp: SessionPort = {
     port,
     pending: new Map(),
@@ -117,6 +136,10 @@ const piApi = {
   /** Destroy a session. */
   destroySession: (sessionId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(PiChannel.DestroySession, sessionId),
+
+  /** Mark a session as recently selected. */
+  touchSession: (sessionId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(PiChannel.TouchSession, sessionId),
 
   /** Get persisted project directory state from main process. */
   getProjects: (): Promise<ProjectStateResult> => ipcRenderer.invoke(PiChannel.GetProjects),
@@ -201,8 +224,14 @@ const piApi = {
   },
 
   /** Listen for process exit (main → renderer). */
-  onProcessExit: (callback: (data: { code: number }) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { code: number }): void => callback(data)
+  onProcessExit: (callback: (data: { sessionId: string; code: number }) => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { sessionId: string; code: number },
+    ): void => {
+      cleanupSessionPort(data.sessionId)
+      callback(data)
+    }
     ipcRenderer.on(PiChannel.ProcessExit, handler)
     return () => ipcRenderer.removeListener(PiChannel.ProcessExit, handler)
   },

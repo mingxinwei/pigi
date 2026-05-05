@@ -15,6 +15,7 @@ interface PiApi {
     sessionPath: string,
   ) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   destroySession: (sessionId: string) => Promise<{ success: boolean }>
+  touchSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
 
   // Project directories
   getProjects: () => Promise<ProjectStateResult>
@@ -31,7 +32,7 @@ interface PiApi {
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void
 
   // Process lifecycle
-  onProcessExit: (callback: (data: { code: number }) => void) => () => void
+  onProcessExit: (callback: (data: { sessionId: string; code: number }) => void) => () => void
 
   // Utilities
   getCwd: () => string

@@ -10,7 +10,8 @@
  */
 import { ipcMain, MessageChannelMain } from 'electron'
 import { getMainWindow } from '../windows/createMainWindow'
-import { createPiAgentProcess, createSessionIndexProcess } from '../processes/createPiAgentProcess'
+import { createSessionIndexProcess } from '../processes/createPiAgentProcess'
+import { PiAgentProcessPool } from './piAgentProcessPool'
 import {
   PiChannel,
   type SessionIndexCommand,
@@ -20,13 +21,6 @@ import {
   type UtilityResponse,
 } from '../../shared/ipcContract'
 
-interface SessionProcess {
-  process: Electron.UtilityProcess
-  sessionId: string
-}
-
-/** Map of real sessionId → process info */
-const sessionProcesses = new Map<string, SessionProcess>()
 let sessionIndexProcess: Electron.UtilityProcess | null = null
 let sessionIndexRequestId = 0
 
@@ -36,6 +30,10 @@ function sendToRenderer(channel: PiChannel, data: unknown): void {
     win.webContents.send(channel, data)
   }
 }
+
+const processPool = new PiAgentProcessPool((sessionId, code) => {
+  sendToRenderer(PiChannel.ProcessExit, { sessionId, code })
+})
 
 function startSessionIndexProcess(): void {
   if (sessionIndexProcess) {
@@ -79,6 +77,7 @@ function listProjectSessions(cwds: string[]): SessionListResult {
     cwds: [...new Set(cwds)],
   }
   sessionIndexProcess.postMessage(cmd)
+  processPool.ensureWarmSessionProcesses(cwds)
   return { success: true, requestId }
 }
 
@@ -90,7 +89,7 @@ function spawnSessionProcess(
   cmd: UtilityCommand,
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   return new Promise((resolve) => {
-    const proc = createPiAgentProcess()
+    const proc = processPool.claimSessionProcess()
     let resolved = false
 
     const timeout = setTimeout(() => {
@@ -102,6 +101,11 @@ function spawnSessionProcess(
     }, 30000)
 
     proc.on('message', (msg: UtilityResponse) => {
+      if (msg.type === 'session_busy_changed') {
+        processPool.updateBusyState(proc, msg.isBusy)
+        return
+      }
+
       if (resolved) return
 
       switch (msg.type) {
@@ -110,7 +114,7 @@ function spawnSessionProcess(
           clearTimeout(timeout)
 
           const sessionId = msg.sessionId
-          sessionProcesses.set(sessionId, { process: proc, sessionId })
+          processPool.registerSessionProcess(sessionId, proc)
 
           // Establish MessagePort
           const { port1, port2 } = new MessageChannelMain()
@@ -122,19 +126,15 @@ function spawnSessionProcess(
             win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [port2])
           }
 
-          // Listen for crash after setup
-          proc.on('exit', (code) => {
-            sessionProcesses.delete(sessionId)
-            sendToRenderer(PiChannel.ProcessExit, { sessionId, code })
-          })
-
           resolve({ success: true, sessionId })
+          processPool.refillAfterSetup()
           break
         }
         case 'session_error': {
           resolved = true
           clearTimeout(timeout)
           proc.kill()
+          processPool.ensureWarmSessionProcesses()
           resolve({ success: false, error: msg.error })
           break
         }
@@ -155,16 +155,14 @@ function spawnSessionProcess(
 }
 
 export function stopAllProcesses(): void {
-  for (const [, entry] of sessionProcesses) {
-    entry.process.kill()
-  }
-  sessionProcesses.clear()
+  processPool.stopAllProcesses()
   sessionIndexProcess?.kill()
   sessionIndexProcess = null
 }
 
 export function registerIpcHandlers(): void {
   startSessionIndexProcess()
+  processPool.ensureWarmSessionProcesses()
 
   ipcMain.handle(PiChannel.CreateSession, async (_e, cwd: string) => {
     if (!cwd || typeof cwd !== 'string') {
@@ -184,12 +182,14 @@ export function registerIpcHandlers(): void {
     if (!sessionId || typeof sessionId !== 'string') {
       return { success: false, error: 'sessionId must be a non-empty string' }
     }
-    const entry = sessionProcesses.get(sessionId)
-    if (!entry) return { success: false, error: 'session not found' }
+    return { success: processPool.destroySessionProcess(sessionId) }
+  })
 
-    entry.process.kill()
-    sessionProcesses.delete(sessionId)
-    return { success: true }
+  ipcMain.handle(PiChannel.TouchSession, async (_e, sessionId: string) => {
+    if (!sessionId || typeof sessionId !== 'string') {
+      return { success: false, error: 'sessionId must be a non-empty string' }
+    }
+    return { success: processPool.touchSessionProcess(sessionId) }
   })
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {

@@ -6,9 +6,12 @@ export type { AgentStatus }
 
 export interface SessionEntry {
   sessionId: string
+  persistedSessionId: string
+  sessionPath: string | null
   status: AgentStatus
   title: string
   cwd: string
+  createdAt: string
   model: ModelInfo | null
   thinkingLevel: string | null
   error: string | null
@@ -50,9 +53,12 @@ export const useAppStore = create<AppState>((set) => ({
       const sessions = new Map(state.sessions)
       sessions.set(sessionId, {
         sessionId,
+        persistedSessionId: sessionId,
+        sessionPath: null,
         status: 'idle',
         title: 'New chat',
         cwd,
+        createdAt: new Date().toISOString(),
         model: null,
         thinkingLevel: null,
         error: null,

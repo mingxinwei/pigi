@@ -137,6 +137,8 @@ export enum PiChannel {
   ResumeSession = 'pi:resume_session',
   /** renderer → main: destroy a session (kills process) */
   DestroySession = 'pi:destroy_session',
+  /** renderer → main: mark a session as recently selected */
+  TouchSession = 'pi:touch_session',
   /** main → renderer: deliver a MessagePort for a session */
   SessionPort = 'pi:session_port',
   /** main → renderer: a session's process exited unexpectedly */
@@ -168,6 +170,7 @@ export type SessionIndexResponse = { type: 'project_sessions_chunk' } & ProjectS
 export type UtilityCommand =
   | { type: 'create_session'; cwd: string }
   | { type: 'resume_session'; sessionPath: string }
+  | { type: 'prewarm_session_services'; cwds: string[] }
   | { type: 'attach_port' }
 
 // =============================================================================
@@ -177,3 +180,4 @@ export type UtilityCommand =
 export type UtilityResponse =
   | { type: 'session_created'; sessionId: string }
   | { type: 'session_error'; error: string }
+  | { type: 'session_busy_changed'; isBusy: boolean }

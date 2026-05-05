@@ -45,6 +45,10 @@ export async function destroySession(sessionId: string): Promise<void> {
   await window.piApi.destroySession(sessionId)
 }
 
+export async function touchSession(sessionId: string): Promise<void> {
+  await window.piApi.touchSession(sessionId)
+}
+
 export async function getProjects(): Promise<ProjectStateResult> {
   return window.piApi.getProjects()
 }

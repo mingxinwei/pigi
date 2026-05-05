@@ -22,7 +22,28 @@ export function useTranscript(sessionId: string | null): UseTranscriptResult {
 
   // Reset controller when session changes
   useEffect(() => {
-    controllerRef.current.reset()
+    const controller = controllerRef.current
+    controller.reset()
+    if (!sessionId) {
+      return
+    }
+
+    let cancelled = false
+    getMessages(sessionId)
+      .then((messages) => {
+        if (!cancelled) {
+          controller.hydrate(messages)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Failed to hydrate messages:', err)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [sessionId])
 
   // Subscribe to push events
@@ -40,14 +61,6 @@ export function useTranscript(sessionId: string | null): UseTranscriptResult {
             thinkingLevel: msg.thinkingLevel,
             status: 'idle',
           })
-          // Hydrate transcript from session messages
-          getMessages(sessionId)
-            .then((messages) => {
-              controller.hydrate(messages)
-            })
-            .catch((err) => {
-              console.error('Failed to hydrate messages:', err)
-            })
           break
 
         case 'session_error':

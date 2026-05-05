@@ -11,6 +11,7 @@ import {
   onProjectSessionsChunk,
   openProjectDirectory,
   setActiveProject,
+  touchSession,
 } from './services/piAgentClient'
 import type { PiSessionInfo, ProjectDirectory } from '../../shared/ipcContract'
 import Sidebar from './components/Sidebar'
@@ -29,6 +30,7 @@ function App(): React.JSX.Element {
     addSession,
     addSessionEntry,
     setActiveSession,
+    removeSession,
     activeProject,
     recentProjects,
     projectSessions,
@@ -37,7 +39,7 @@ function App(): React.JSX.Element {
 
   const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
-  const selectedSessionId = pendingSelectedSessionId ?? activeSessionId
+  const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null
   const { state: transcript, controller } = useTranscript(activeSessionId)
 
   const handleSidebarResizeStart = useCallback(
@@ -94,10 +96,17 @@ function App(): React.JSX.Element {
   }, [activeSessionId, transcript.status])
 
   useEffect(() => {
-    return window.piApi.onProcessExit(() => {
-      // Process crashed — could mark affected sessions.
+    return window.piApi.onProcessExit(({ sessionId }) => {
+      removeSession(sessionId)
     })
-  }, [])
+  }, [removeSession])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+    void touchSession(activeSessionId)
+  }, [activeSessionId])
 
   async function handleSend(message: string): Promise<void> {
     const cwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd()
@@ -138,7 +147,9 @@ function App(): React.JSX.Element {
 
   async function handleResumeSession(session: PiSessionInfo): Promise<void> {
     setPendingSelectedSessionId(session.id)
-    const existing = sessions.get(session.id)
+    const existing = Array.from(useAppStore.getState().sessions.values()).find(
+      (entry) => entry.persistedSessionId === session.id || entry.sessionPath === session.path,
+    )
     if (existing) {
       setPendingSelectedSessionId(null)
       setActiveSession(existing.sessionId)
@@ -149,9 +160,12 @@ function App(): React.JSX.Element {
       const sessionId = await resumeSession(session.path)
       addSessionEntry({
         sessionId,
+        persistedSessionId: session.id,
+        sessionPath: session.path,
         status: 'idle',
         title: session.name ?? session.firstMessage,
         cwd: session.cwd,
+        createdAt: session.created,
         model: null,
         thinkingLevel: null,
         error: null,

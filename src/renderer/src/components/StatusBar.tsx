@@ -1,4 +1,10 @@
-import { ChevronDown, GitBranch, MoreHorizontal, Play, SquareTerminal } from 'lucide-react'
+import {
+  IconChevronDown,
+  IconDots,
+  IconGitBranch,
+  IconPlayerPlay,
+  IconTerminal2,
+} from '@tabler/icons-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import {
@@ -38,7 +44,7 @@ export default function StatusBar({ status, model }: StatusBarProps): React.JSX.
           size="icon-xs"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <MoreHorizontal />
+          <IconDots />
         </Button>
       </div>
 
@@ -47,15 +53,15 @@ export default function StatusBar({ status, model }: StatusBarProps): React.JSX.
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <Button variant="ghost" size="icon-sm">
-          <Play />
+          <IconPlayerPlay />
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
-              <SquareTerminal data-icon="inline-start" />
+              <IconTerminal2 data-icon="inline-start" />
               5.5
-              <ChevronDown data-icon="inline-end" />
+              <IconChevronDown data-icon="inline-end" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -67,9 +73,9 @@ export default function StatusBar({ status, model }: StatusBarProps): React.JSX.
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
-              <GitBranch data-icon="inline-start" />
+              <IconGitBranch data-icon="inline-start" />
               Commit
-              <ChevronDown data-icon="inline-end" />
+              <IconChevronDown data-icon="inline-end" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

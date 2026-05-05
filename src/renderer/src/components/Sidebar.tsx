@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { Folder, MessageCircle, Plus, Search, Settings } from 'lucide-react'
+import {
+  IconFolder,
+  IconFolderOpen,
+  IconFolderPlus,
+  IconMessageCircle,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+} from '@tabler/icons-react'
 import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
 import {
@@ -31,7 +39,6 @@ import {
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
   selectedSessionId: string | null
-  activeProjectPath: string | null
   isStreaming: boolean
   recentProjects: ProjectDirectory[]
   projectSessions: Record<string, PiSessionInfo[]>
@@ -45,7 +52,6 @@ interface SidebarProps {
 export default function Sidebar({
   sessions,
   selectedSessionId,
-  activeProjectPath,
   isStreaming,
   recentProjects,
   projectSessions,
@@ -131,7 +137,7 @@ export default function Sidebar({
                     setSearchOpen(false)
                   }}
                 >
-                  <Folder />
+                  <IconFolder />
                   <span>{project.name}</span>
                 </CommandItem>
               ))}
@@ -150,7 +156,7 @@ export default function Sidebar({
                     setSearchOpen(false)
                   }}
                 >
-                  <MessageCircle />
+                  <IconMessageCircle />
                   <span>{getSessionTitle(session)}</span>
                 </CommandItem>
               ))}
@@ -161,7 +167,7 @@ export default function Sidebar({
 
       <ShadcnSidebar
         collapsible="none"
-        className="border-r [&_.lucide]:stroke-[1.25]"
+        className="border-r [&_.tabler-icon]:stroke-[1.25]"
         data-testid="sidebar"
       >
         <SidebarHeader style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
@@ -169,7 +175,7 @@ export default function Sidebar({
           <SidebarMenu style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={onNewSession} disabled={isStreaming}>
-                <Plus data-icon="inline-start" />
+                <IconPlus data-icon="inline-start" />
                 <span>New chat</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -179,13 +185,13 @@ export default function Sidebar({
                   setSearchOpen(true)
                 }}
               >
-                <Search data-icon="inline-start" />
+                <IconSearch data-icon="inline-start" />
                 <span>Search</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={onOpenProject}>
-                <Folder data-icon="inline-start" />
+                <IconFolderPlus data-icon="inline-start" />
                 <span>Open project</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -198,7 +204,7 @@ export default function Sidebar({
               Projects
             </SidebarGroupLabel>
             <SidebarGroupAction onClick={onOpenProject} title="Open project">
-              <Folder />
+              <IconFolderPlus />
               <span className="sr-only">Open project</span>
             </SidebarGroupAction>
             <SidebarGroupContent className="min-h-0 flex-1 overflow-auto no-scrollbar">
@@ -206,7 +212,7 @@ export default function Sidebar({
                 {recentProjects.length === 0 ? (
                   <SidebarMenuItem>
                     <SidebarMenuButton onClick={onOpenProject} className="text-muted-foreground">
-                      <Folder data-icon="inline-start" />
+                      <IconFolderPlus data-icon="inline-start" />
                       <span>Open a project</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -214,8 +220,6 @@ export default function Sidebar({
                   recentProjects.map((project) => {
                     const sessionsForProject = getProjectSessions(project.path)
                     const isExpanded = expandedProjects.has(project.path)
-                    const isProjectRowActive =
-                      selectedSessionId === null && activeProjectPath === project.path
                     const isSessionListExpanded = expandedSessionLists.has(project.path)
                     const visibleSessions = isSessionListExpanded
                       ? sessionsForProject
@@ -232,11 +236,14 @@ export default function Sidebar({
                             onSelectProject(project.path)
                             toggleProjectSessions(project.path)
                           }}
-                          isActive={isProjectRowActive}
                           title={project.path}
-                          className="font-medium text-muted-foreground data-active:bg-primary/10 data-active:text-foreground"
+                          className="font-medium text-sidebar-foreground/65"
                         >
-                          <Folder data-icon="inline-start" />
+                          {isExpanded ? (
+                            <IconFolderOpen data-icon="inline-start" />
+                          ) : (
+                            <IconFolder data-icon="inline-start" />
+                          )}
                           <span>{project.name}</span>
                         </SidebarMenuButton>
 
@@ -268,7 +275,7 @@ export default function Sidebar({
                                       <SidebarMenuSubButton
                                         asChild
                                         isActive={isActive}
-                                        className="w-full justify-start pl-6 text-left data-active:bg-primary/10 data-active:text-foreground"
+                                        className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
                                       >
                                         <button
                                           type="button"
@@ -343,7 +350,7 @@ export default function Sidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton>
-                <Settings data-icon="inline-start" />
+                <IconSettings data-icon="inline-start" />
                 <span>Settings</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

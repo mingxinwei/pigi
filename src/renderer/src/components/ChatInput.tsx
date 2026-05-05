@@ -1,5 +1,11 @@
 import { useRef, useCallback, KeyboardEvent } from 'react'
-import { ArrowUp, GitBranch, HardDrive, Plus, Square } from 'lucide-react'
+import {
+  IconArrowUp,
+  IconDeviceDesktop,
+  IconGitBranch,
+  IconPlus,
+  IconSquare,
+} from '@tabler/icons-react'
 import type { ProjectDirectory } from '../../../shared/ipcContract'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from './ui/input-group'
 
@@ -81,7 +87,7 @@ export default function ChatInput({
           />
           <InputGroupAddon align="block-end" className="justify-between px-2.5 pb-2.5 pt-0">
             <InputGroupButton size="icon-sm" variant="ghost" className="rounded-full">
-              <Plus />
+              <IconPlus />
             </InputGroupButton>
             {isStreaming ? (
               <InputGroupButton
@@ -91,7 +97,7 @@ export default function ChatInput({
                 className="rounded-full"
                 data-testid="abort-button"
               >
-                <Square className="fill-current" />
+                <IconSquare className="fill-current" />
               </InputGroupButton>
             ) : (
               <InputGroupButton
@@ -101,7 +107,7 @@ export default function ChatInput({
                 className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
                 data-testid="send-button"
               >
-                <ArrowUp />
+                <IconArrowUp />
               </InputGroupButton>
             )}
           </InputGroupAddon>
@@ -109,11 +115,11 @@ export default function ChatInput({
 
         <div className="flex items-center gap-4 px-4 pt-2.5 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <HardDrive className="size-4" />
+            <IconDeviceDesktop className="size-4" />
             Work locally
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
-            <GitBranch className="size-4 shrink-0" />
+            <IconGitBranch className="size-4 shrink-0" />
             <span className="truncate">{project?.name ?? 'current directory'}</span>
           </span>
         </div>

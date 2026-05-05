@@ -1,15 +1,15 @@
 import { useState, useCallback } from 'react'
 import {
-  ChevronRight,
-  Terminal,
-  FileText,
-  Pencil,
-  FilePlus,
-  Loader2,
-  Check,
-  X,
-  Ban,
-} from 'lucide-react'
+  IconBan,
+  IconCheck,
+  IconChevronRight,
+  IconFilePlus,
+  IconFileText,
+  IconLoader2,
+  IconPencil,
+  IconTerminal2,
+  IconX,
+} from '@tabler/icons-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -23,17 +23,17 @@ interface ToolBlockProps {
 }
 
 const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  bash: Terminal,
-  read: FileText,
-  edit: Pencil,
-  write: FilePlus,
+  bash: IconTerminal2,
+  read: IconFileText,
+  edit: IconPencil,
+  write: IconFilePlus,
 }
 
 const STATUS_CONFIG = {
-  running: { label: 'Running', Icon: Loader2, variant: 'secondary' },
-  success: { label: 'Done', Icon: Check, variant: 'outline' },
-  error: { label: 'Error', Icon: X, variant: 'destructive' },
-  cancelled: { label: 'Cancelled', Icon: Ban, variant: 'secondary' },
+  running: { label: 'Running', Icon: IconLoader2, variant: 'secondary' },
+  success: { label: 'Done', Icon: IconCheck, variant: 'outline' },
+  error: { label: 'Error', Icon: IconX, variant: 'destructive' },
+  cancelled: { label: 'Cancelled', Icon: IconBan, variant: 'secondary' },
 } as const
 
 function getToolPreview(node: ToolNode): string {
@@ -59,7 +59,7 @@ function getToolPreview(node: ToolNode): string {
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const { label, Icon: StatusIcon, variant } = STATUS_CONFIG[node.status]
-  const ToolIcon = TOOL_ICON_MAP[node.name] ?? Terminal
+  const ToolIcon = TOOL_ICON_MAP[node.name] ?? IconTerminal2
   const preview = getToolPreview(node)
   const hasOutput = node.output.length > 0
   const truncatedOutput = node.output.length > 2000 ? node.output.slice(0, 2000) : node.output
@@ -78,7 +78,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
             className="h-auto w-full justify-start rounded-none px-3 py-2 hover:bg-muted"
             data-testid={`tool-block-${node.toolCallId}`}
           >
-            <ChevronRight
+            <IconChevronRight
               className={cn('text-muted-foreground transition-transform', open && 'rotate-90')}
             />
             <ToolIcon className="text-muted-foreground" />

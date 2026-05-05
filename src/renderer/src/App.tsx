@@ -36,7 +36,6 @@ function App(): React.JSX.Element {
   } = useAppStore()
 
   const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
-  const activeProjectPath = activeSession?.cwd ?? activeProject?.path ?? null
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSessionId
   const { state: transcript, controller } = useTranscript(activeSessionId)
@@ -101,7 +100,7 @@ function App(): React.JSX.Element {
   }, [])
 
   async function handleSend(message: string): Promise<void> {
-    const cwd = activeProject?.path ?? window.piApi.getCwd()
+    const cwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd()
     let sessionId = activeSessionId
     if (!sessionId) {
       sessionId = await createSession(cwd)
@@ -181,17 +180,12 @@ function App(): React.JSX.Element {
     }
   }, [refreshProjectSessions, setActiveSession])
 
-  const handleSelectProject = useCallback(
-    async (path: string) => {
-      const result = await setActiveProject(path)
-      if (result.success) {
-        useAppStore.getState().setProjects(result.recentProjects, result.activeProject)
-        setPendingSelectedSessionId(null)
-        setActiveSession(null)
-      }
-    },
-    [setActiveSession],
-  )
+  const handleSelectProject = useCallback(async (path: string) => {
+    const result = await setActiveProject(path)
+    if (result.success) {
+      useAppStore.getState().setProjects(result.recentProjects, result.activeProject)
+    }
+  }, [])
 
   return (
     <SidebarProvider
@@ -203,7 +197,6 @@ function App(): React.JSX.Element {
         <Sidebar
           sessions={sessions}
           selectedSessionId={selectedSessionId}
-          activeProjectPath={activeProjectPath}
           isStreaming={transcript.status !== 'idle'}
           recentProjects={recentProjects}
           projectSessions={projectSessions}

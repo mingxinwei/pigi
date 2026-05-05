@@ -16,6 +16,8 @@ interface ChatInputProps {
   project: ProjectDirectory | null
 }
 
+const CONTENT_MAX_WIDTH = 680
+
 export default function ChatInput({
   onSend,
   onAbort,
@@ -71,11 +73,14 @@ export default function ChatInput({
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-9 z-10 flex justify-center px-8"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-background via-background/95 to-transparent px-8 pb-3 pt-10"
       data-testid="chat-input"
     >
-      <div className="pointer-events-auto w-full max-w-[720px]">
-        <InputGroup className="h-auto flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)]">
+      <div
+        className="pointer-events-auto mx-auto w-full"
+        style={{ maxWidth: `${CONTENT_MAX_WIDTH}px` }}
+      >
+        <InputGroup className="h-auto flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           <InputGroupTextarea
             ref={textareaRef}
             onKeyDown={handleKeyDown}
@@ -113,7 +118,7 @@ export default function ChatInput({
           </InputGroupAddon>
         </InputGroup>
 
-        <div className="flex items-center gap-4 px-4 pt-2.5 text-sm text-muted-foreground">
+        <div className="flex items-center gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <IconDeviceDesktop className="size-4" />
             Work locally

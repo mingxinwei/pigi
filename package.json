@@ -27,6 +27,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@mariozechner/pi-coding-agent": "^0.67.68",
     "@tabler/icons-react": "^3.41.1",
+    "@tanstack/react-virtual": "^3.13.24",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

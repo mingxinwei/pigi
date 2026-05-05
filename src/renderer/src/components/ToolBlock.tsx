@@ -1,8 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import {
   IconBan,
-  IconCheck,
-  IconChevronRight,
   IconFilePlus,
   IconFileText,
   IconLoader2,
@@ -10,11 +8,8 @@ import {
   IconTerminal2,
   IconX,
 } from '@tabler/icons-react'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
-import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { ScrollArea } from './ui/scroll-area'
-import { Separator } from './ui/separator'
+import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 import type { ToolNode } from '../state/transcriptController'
 
@@ -30,13 +25,28 @@ const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>>
 }
 
 const STATUS_CONFIG = {
-  running: { label: 'Running', Icon: IconLoader2, variant: 'secondary' },
-  success: { label: 'Done', Icon: IconCheck, variant: 'outline' },
-  error: { label: 'Error', Icon: IconX, variant: 'destructive' },
-  cancelled: { label: 'Cancelled', Icon: IconBan, variant: 'secondary' },
+  running: { label: 'Running', Icon: IconLoader2, variant: 'secondary', show: true },
+  success: { label: 'Done', Icon: null, variant: 'outline', show: false },
+  error: { label: 'Error', Icon: IconX, variant: 'destructive', show: true },
+  cancelled: { label: 'Cancelled', Icon: IconBan, variant: 'secondary', show: true },
 } as const
 
-function getToolPreview(node: ToolNode): string {
+const OUTPUT_LINE_LIMIT = 10
+
+function formatToolArgs(args: unknown): string {
+  if (!args || typeof args !== 'object') {
+    return ''
+  }
+
+  const record = args as Record<string, unknown>
+  if (Object.keys(record).length === 0) {
+    return ''
+  }
+
+  return JSON.stringify(record, null, 2)
+}
+
+function getToolCommand(node: ToolNode): string {
   const args = node.args as Record<string, unknown> | undefined
   if (!args) {
     return ''
@@ -44,78 +54,75 @@ function getToolPreview(node: ToolNode): string {
 
   switch (node.name) {
     case 'bash': {
-      return String(args.command ?? '').slice(0, 120)
+      return `$ ${String(args.command ?? '')}`
     }
     case 'read':
-    case 'edit':
     case 'write': {
       return String(args.path ?? '')
     }
+    case 'edit': {
+      const path = String(args.path ?? '')
+      return path ? `${node.name} ${path}` : formatToolArgs(args)
+    }
     default:
-      return JSON.stringify(args).slice(0, 100)
+      return formatToolArgs(args)
   }
 }
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
-  const [open, setOpen] = useState(false)
-  const { label, Icon: StatusIcon, variant } = STATUS_CONFIG[node.status]
+  const [expanded, setExpanded] = useState(false)
+  const { label, Icon: StatusIcon, variant, show: showStatus } = STATUS_CONFIG[node.status]
   const ToolIcon = TOOL_ICON_MAP[node.name] ?? IconTerminal2
-  const preview = getToolPreview(node)
+  const command = getToolCommand(node)
   const hasOutput = node.output.length > 0
-  const truncatedOutput = node.output.length > 2000 ? node.output.slice(0, 2000) : node.output
-  const isTruncated = node.output.length > 2000
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(node.output)
-  }, [node.output])
+  const outputLines = node.output.split('\n')
+  const visibleOutput = expanded ? node.output : outputLines.slice(0, OUTPUT_LINE_LIMIT).join('\n')
+  const hiddenLineCount = Math.max(0, outputLines.length - OUTPUT_LINE_LIMIT)
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="max-w-[720px] overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm">
-        <CollapsibleTrigger asChild>
-          <Button
-            variant="ghost"
-            className="h-auto w-full justify-start rounded-none px-3 py-2 hover:bg-muted"
-            data-testid={`tool-block-${node.toolCallId}`}
-          >
-            <IconChevronRight
-              className={cn('text-muted-foreground transition-transform', open && 'rotate-90')}
-            />
-            <ToolIcon className="text-muted-foreground" />
-            <span className="text-sm font-medium">{node.name}</span>
-            {preview && (
-              <span className="min-w-0 flex-1 truncate text-sm font-normal text-muted-foreground">
-                {preview}
-              </span>
-            )}
-            <Badge variant={variant} className="ml-auto gap-1 font-normal">
-              <StatusIcon className={cn(node.status === 'running' && 'animate-spin')} />
-              {label}
-            </Badge>
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {hasOutput && (
-            <>
-              <Separator />
-              <div className="bg-background">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-xs text-muted-foreground">Output</span>
-                  <Button variant="ghost" size="xs" onClick={handleCopy}>
-                    Copy
-                  </Button>
-                </div>
-                <ScrollArea className="max-h-64 px-3 pb-3">
-                  <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">
-                    {truncatedOutput}
-                    {isTruncated && `\n... (${node.output.length.toLocaleString()} chars total)`}
-                  </pre>
-                </ScrollArea>
-              </div>
-            </>
-          )}
-        </CollapsibleContent>
+    <div
+      className="max-w-[680px] overflow-hidden rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
+      data-testid={`tool-block-${node.toolCallId}`}
+    >
+      <div className="flex items-center gap-2">
+        <ToolIcon className="size-4 text-muted-foreground" />
+        <span className="font-medium text-foreground">{node.name}</span>
+        {showStatus && StatusIcon && (
+          <Badge variant={variant} className="ml-auto gap-1 font-normal">
+            <StatusIcon className={cn('size-3.5', node.status === 'running' && 'animate-spin')} />
+            {label}
+          </Badge>
+        )}
       </div>
-    </Collapsible>
+
+      {command && (
+        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background/75 px-2 py-1.5 font-mono text-[13px] leading-5 text-foreground/80">
+          {command}
+        </pre>
+      )}
+
+      {hasOutput && (
+        <>
+          <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[13px] leading-5 text-muted-foreground">
+            {visibleOutput}
+            {!expanded &&
+              hiddenLineCount > 0 &&
+              `\n... (${hiddenLineCount.toLocaleString()} more lines)`}
+          </pre>
+          {hiddenLineCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
+              onClick={() => {
+                setExpanded((current) => !current)
+              }}
+            >
+              {expanded ? 'Show less' : 'Show all'}
+            </Button>
+          )}
+        </>
+      )}
+    </div>
   )
 }

@@ -1,17 +1,20 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type {
   TranscriptNode,
   AssistantNode,
   TranscriptController,
 } from '../state/transcriptController'
 import ToolBlock from './ToolBlock'
-import { ScrollArea } from './ui/scroll-area'
 
 interface MessageListProps {
   nodes: TranscriptNode[]
   activeAssistantId: string | null
   controller: React.RefObject<TranscriptController>
 }
+
+const CHAT_INPUT_AREA_HEIGHT = 172
+const CONTENT_MAX_WIDTH = 680
 
 export default function MessageList({
   nodes,
@@ -23,20 +26,26 @@ export default function MessageList({
   const thinkingRef = useRef<HTMLPreElement>(null)
   const isAutoScrollRef = useRef(true)
 
-  const getViewport = useCallback((): HTMLDivElement | null => {
-    return containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]') ?? null
-  }, [])
+  // TanStack Virtual returns imperative measurement helpers; this follows its documented React pattern.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: nodes.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: (index) => estimateNodeHeight(nodes[index]),
+    overscan: 8,
+  })
 
   const scrollToBottom = useCallback(() => {
-    const el = getViewport()
+    const el = containerRef.current
     if (el && isAutoScrollRef.current) {
       el.scrollTop = el.scrollHeight
     }
-  }, [getViewport])
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [nodes, scrollToBottom])
+    rowVirtualizer.measure()
+  }, [nodes, rowVirtualizer, scrollToBottom])
 
   useEffect(() => {
     if (!activeAssistantId) {
@@ -59,6 +68,7 @@ export default function MessageList({
           thinkPre.textContent = assistant.thinking
         }
       }
+      rowVirtualizer.measure()
       scrollToBottom()
       rafId = requestAnimationFrame(update)
     }
@@ -66,41 +76,74 @@ export default function MessageList({
     return () => {
       cancelAnimationFrame(rafId)
     }
-  }, [activeAssistantId, controller, scrollToBottom])
+  }, [activeAssistantId, controller, rowVirtualizer, scrollToBottom])
 
   const handleScroll = useCallback(() => {
-    const el = getViewport()
+    const el = containerRef.current
     if (!el) {
       return
     }
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
     isAutoScrollRef.current = atBottom
-  }, [getViewport])
+  }, [])
+
+  const virtualItems = rowVirtualizer.getVirtualItems()
 
   return (
-    <ScrollArea
+    <div
       ref={containerRef}
-      onScrollCapture={handleScroll}
-      className="flex-1 bg-background"
+      onScroll={handleScroll}
+      className="min-h-0 flex-1 overflow-y-auto bg-background"
+      style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
       data-testid="message-list"
     >
-      <div className="mx-auto max-w-[720px] px-5 pb-48 pt-12">
+      <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${CONTENT_MAX_WIDTH}px` }}>
         {nodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
-        <div className="space-y-9">
-          {nodes.map((node) => (
-            <NodeRenderer
-              key={node.id}
-              node={node}
-              isStreaming={node.id === activeAssistantId}
-              streamingRef={node.id === activeAssistantId ? streamingRef : undefined}
-              thinkingRef={node.id === activeAssistantId ? thinkingRef : undefined}
-            />
-          ))}
+        <div
+          className="relative"
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          data-testid="message-virtualizer"
+        >
+          {virtualItems.map((virtualItem) => {
+            const node = nodes[virtualItem.index]
+            return (
+              <div
+                key={node.id}
+                ref={rowVirtualizer.measureElement}
+                data-index={virtualItem.index}
+                className="absolute left-0 top-0 w-full py-4"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+              >
+                <NodeRenderer
+                  node={node}
+                  isStreaming={node.id === activeAssistantId}
+                  streamingRef={node.id === activeAssistantId ? streamingRef : undefined}
+                  thinkingRef={node.id === activeAssistantId ? thinkingRef : undefined}
+                />
+              </div>
+            )
+          })}
         </div>
       </div>
-    </ScrollArea>
+    </div>
   )
+}
+
+function estimateNodeHeight(node: TranscriptNode | undefined): number {
+  if (!node) {
+    return 96
+  }
+  switch (node.role) {
+    case 'user':
+      return Math.max(72, Math.ceil(node.text.length / 72) * 24 + 48)
+    case 'assistant':
+      return Math.max(96, Math.ceil((node.text.length + node.thinking.length) / 84) * 24 + 72)
+    case 'tool':
+      return Math.max(88, Math.ceil(node.output.length / 88) * 20 + 56)
+    case 'system':
+      return 56
+  }
 }
 
 function NodeRenderer({
@@ -136,7 +179,7 @@ function NodeRenderer({
 function UserBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="flex justify-end" data-testid="user-message">
-      <div className="max-w-[58%] rounded-2xl bg-muted px-3.5 py-1.5 text-[14px] leading-6 text-foreground">
+      <div className="w-fit min-w-16 max-w-[min(76%,680px)] rounded-2xl bg-muted px-3.5 py-1.5 text-[14px] leading-6 text-foreground">
         {text}
       </div>
     </div>
@@ -157,21 +200,9 @@ function AssistantBubble({
   return (
     <div className="flex justify-start" data-testid="assistant-message">
       <div className="max-w-[680px] min-w-0 text-[14px] leading-6 text-foreground">
-        {isStreaming && (
-          <pre
-            ref={thinkingRef}
-            className="mb-3 whitespace-pre-wrap break-words border-l-2 border-border pl-3 font-mono text-[12px] leading-5 text-muted-foreground"
-          />
-        )}
+        {isStreaming && <ThinkingBlock text="" contentRef={thinkingRef} />}
 
-        {!isStreaming && node.thinking && (
-          <details className="mb-3 text-[13px] text-muted-foreground">
-            <summary className="cursor-pointer select-none hover:text-foreground">Thinking</summary>
-            <pre className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-border pl-3 font-mono text-[12px] leading-5">
-              {node.thinking}
-            </pre>
-          </details>
-        )}
+        {!isStreaming && node.thinking && <ThinkingBlock text={node.thinking} />}
 
         {isStreaming ? (
           <div ref={streamingRef} className="whitespace-pre-wrap break-words" />
@@ -185,6 +216,26 @@ function AssistantBubble({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ThinkingBlock({
+  text,
+  contentRef,
+}: {
+  text: string
+  contentRef?: React.RefObject<HTMLPreElement | null>
+}): React.JSX.Element {
+  return (
+    <div className="mb-4 rounded-md bg-muted/35 px-3 py-2 text-muted-foreground">
+      <div className="mb-1.5 text-[13px] font-medium">Thinking</div>
+      <pre
+        ref={contentRef}
+        className="whitespace-pre-wrap break-words font-sans text-[13px] leading-6 text-muted-foreground"
+      >
+        {text}
+      </pre>
     </div>
   )
 }

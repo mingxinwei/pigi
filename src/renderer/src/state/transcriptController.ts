@@ -180,6 +180,7 @@ export class TranscriptController {
 
   hydrate(messages: unknown[]): void {
     const nodes: TranscriptNode[] = []
+    const toolCalls = new Map<string, { name: string; args: unknown }>()
 
     for (const msg of messages) {
       const m = msg as {
@@ -197,19 +198,28 @@ export class TranscriptController {
           break
         }
         case 'assistant': {
-          const { text, thinking } = extractAssistantContent(m.content)
-          nodes.push({
-            id: m.id || nextNodeId(),
-            role: 'assistant',
+          const {
             text,
             thinking,
-            model: m.model?.name,
-            provider: m.model?.provider,
-            isStreaming: false,
-          })
+            toolCalls: assistantToolCalls,
+          } = extractAssistantContent(m.content)
+          for (const toolCall of assistantToolCalls) {
+            toolCalls.set(toolCall.id, { name: toolCall.name, args: toolCall.args })
+          }
+          if (text || thinking) {
+            nodes.push({
+              id: m.id || nextNodeId(),
+              role: 'assistant',
+              text,
+              thinking,
+              model: m.model?.name,
+              provider: m.model?.provider,
+              isStreaming: false,
+            })
+          }
           break
         }
-        case 'tool_result': {
+        case 'toolResult': {
           const toolMsg = msg as {
             id?: string
             toolCallId?: string
@@ -217,13 +227,14 @@ export class TranscriptController {
             content?: unknown[]
             isError?: boolean
           }
+          const call = toolMsg.toolCallId ? toolCalls.get(toolMsg.toolCallId) : undefined
           const output = extractText(toolMsg.content)
           nodes.push({
             id: toolMsg.id || nextNodeId(),
             role: 'tool',
             toolCallId: toolMsg.toolCallId || '',
-            name: toolMsg.toolName || 'unknown',
-            args: undefined,
+            name: toolMsg.toolName || call?.name || 'unknown',
+            args: call?.args,
             status: toolMsg.isError ? 'error' : 'success',
             output,
             isError: toolMsg.isError || false,
@@ -354,13 +365,18 @@ export class TranscriptController {
     }
 
     if (batch.toolOutput) {
+      let hasToolOutput = false
       for (const [toolCallId, delta] of Object.entries(batch.toolOutput)) {
         const tool = this._state.nodes.find(
           (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
         ) as ToolNode | undefined
         if (tool) {
           tool.output += delta
+          hasToolOutput = true
         }
+      }
+      if (hasToolOutput) {
+        this.setState({ nodes: [...this._state.nodes] })
       }
     }
   }
@@ -468,7 +484,10 @@ export class TranscriptController {
     ) as ToolNode | undefined
     if (tool && event.partialResult) {
       const text = extractToolResultText(event.partialResult)
-      if (text) tool.output = text
+      if (text) {
+        tool.output = text
+        this.setState({ nodes: [...this._state.nodes] })
+      }
     }
   }
 
@@ -518,19 +537,30 @@ function extractText(content: unknown[] | undefined): string {
 function extractAssistantContent(content: unknown[] | undefined): {
   text: string
   thinking: string
+  toolCalls: Array<{ id: string; name: string; args: unknown }>
 } {
-  if (!content || !Array.isArray(content)) return { text: '', thinking: '' }
+  if (!content || !Array.isArray(content)) return { text: '', thinking: '', toolCalls: [] }
   const textParts: string[] = []
   const thinkingParts: string[] = []
+  const toolCalls: Array<{ id: string; name: string; args: unknown }> = []
   for (const block of content) {
-    const b = block as { type?: string; text?: string; thinking?: string }
+    const b = block as {
+      type?: string
+      text?: string
+      thinking?: string
+      id?: string
+      name?: string
+      arguments?: unknown
+    }
     if (b.type === 'text' && b.text) {
       textParts.push(b.text)
     } else if (b.type === 'thinking' && b.thinking) {
       thinkingParts.push(b.thinking)
+    } else if (b.type === 'toolCall' && b.id && b.name) {
+      toolCalls.push({ id: b.id, name: b.name, args: b.arguments })
     }
   }
-  return { text: textParts.join('\n'), thinking: thinkingParts.join('\n') }
+  return { text: textParts.join('\n'), thinking: thinkingParts.join('\n'), toolCalls }
 }
 
 function extractToolResultText(result: unknown): string {

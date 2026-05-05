@@ -15,7 +15,6 @@ import {
 } from './services/piAgentClient'
 import type { PiSessionInfo, ProjectDirectory } from '../../shared/ipcContract'
 import Sidebar from './components/Sidebar'
-import StatusBar from './components/StatusBar'
 import MessageList from './components/MessageList'
 import ChatInput from './components/ChatInput'
 import { SidebarProvider } from './components/ui/sidebar'
@@ -230,7 +229,6 @@ function App(): React.JSX.Element {
       </div>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <StatusBar status={transcript.status} model={activeSession?.title ?? 'New chat'} />
         <MessageList
           nodes={transcript.nodes}
           activeAssistantId={transcript.activeAssistantId}

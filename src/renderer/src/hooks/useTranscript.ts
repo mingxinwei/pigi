@@ -59,6 +59,8 @@ export function useTranscript(sessionId: string | null): UseTranscriptResult {
           useAppStore.getState().updateSession(sessionId, {
             model: msg.model,
             thinkingLevel: msg.thinkingLevel,
+            contextUsage: msg.contextUsage,
+            autoCompactionEnabled: msg.autoCompactionEnabled,
             status: 'idle',
           })
           break

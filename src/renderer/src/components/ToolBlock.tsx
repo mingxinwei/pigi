@@ -96,14 +96,14 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
       </div>
 
       {command && (
-        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background/75 px-2 py-1.5 font-mono text-[13px] leading-5 text-foreground/80">
+        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background/75 px-2 py-1.5 font-mono text-[14px] leading-5 text-foreground">
           {command}
         </pre>
       )}
 
       {hasOutput && (
         <>
-          <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[13px] leading-5 text-muted-foreground">
+          <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground">
             {visibleOutput}
             {!expanded &&
               hiddenLineCount > 0 &&

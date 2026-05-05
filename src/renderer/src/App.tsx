@@ -7,13 +7,23 @@ import {
   prompt,
   abort,
   getProjects,
+  getGitBranch,
+  getState,
+  getSessionOptions,
   listProjectSessions,
   onProjectSessionsChunk,
   openProjectDirectory,
   setActiveProject,
   touchSession,
+  setModel,
+  setThinkingLevel,
 } from './services/piAgentClient'
-import type { PiSessionInfo, ProjectDirectory } from '../../shared/ipcContract'
+import type {
+  ModelInfo,
+  PiSessionInfo,
+  ProjectDirectory,
+  ThinkingLevel,
+} from '../../shared/ipcContract'
 import Sidebar from './components/Sidebar'
 import MessageList from './components/MessageList'
 import ChatInput from './components/ChatInput'
@@ -36,10 +46,40 @@ function App(): React.JSX.Element {
     setProjectSessionList,
   } = useAppStore()
 
-  const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
+  const activeSession = activeSessionId ? (sessions.get(activeSessionId) ?? null) : null
+  const activeCwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd()
+  const [gitBranch, setGitBranch] = useState<string | null>(null)
+  const [modelOptions, setModelOptions] = useState<ModelInfo[]>([])
+  const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([])
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null
   const { state: transcript, controller } = useTranscript(activeSessionId)
+
+  const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
+    try {
+      const sessionState = await getState(sessionId)
+      useAppStore.getState().updateSession(sessionId, {
+        model: sessionState.model,
+        thinkingLevel: sessionState.thinkingLevel,
+        contextUsage: sessionState.contextUsage,
+        autoCompactionEnabled: sessionState.autoCompactionEnabled,
+      })
+    } catch (err) {
+      console.error('Failed to refresh session state:', err)
+    }
+  }, [])
+
+  const refreshSessionOptions = useCallback(async (sessionId: string): Promise<void> => {
+    try {
+      const options = await getSessionOptions(sessionId)
+      setModelOptions(options.models)
+      setThinkingLevelOptions(options.thinkingLevels)
+    } catch (err) {
+      console.error('Failed to refresh session options:', err)
+      setModelOptions([])
+      setThinkingLevelOptions([])
+    }
+  }, [])
 
   const handleSidebarResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -92,7 +132,49 @@ function App(): React.JSX.Element {
       return
     }
     useAppStore.getState().updateSession(activeSessionId, { status: transcript.status })
-  }, [activeSessionId, transcript.status])
+    void refreshSessionState(activeSessionId)
+  }, [activeSessionId, refreshSessionState, transcript.status])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+
+    let cancelled = false
+    void getSessionOptions(activeSessionId)
+      .then((options) => {
+        if (cancelled) {
+          return
+        }
+        setModelOptions(options.models)
+        setThinkingLevelOptions(options.thinkingLevels)
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return
+        }
+        console.error('Failed to refresh session options:', err)
+        setModelOptions([])
+        setThinkingLevelOptions([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeSessionId])
+
+  useEffect(() => {
+    let cancelled = false
+    void getGitBranch(activeCwd).then((result) => {
+      if (cancelled) {
+        return
+      }
+      setGitBranch(result.success ? result.branch : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeCwd, transcript.status])
 
   useEffect(() => {
     return window.piApi.onProcessExit(({ sessionId }) => {
@@ -131,16 +213,33 @@ function App(): React.JSX.Element {
     await abort(activeSessionId)
   }, [activeSessionId])
 
+  async function createAndActivateSession(cwd: string): Promise<void> {
+    const sessionId = await createSession(cwd)
+    addSession(sessionId, cwd)
+    setPendingSelectedSessionId(null)
+    setActiveSession(sessionId)
+    void listProjectSessions([cwd])
+  }
+
   async function handleNewSession(): Promise<void> {
     try {
       const cwd = activeProject?.path ?? window.piApi.getCwd()
-      const sessionId = await createSession(cwd)
-      addSession(sessionId, cwd)
-      setPendingSelectedSessionId(null)
-      setActiveSession(sessionId)
-      void listProjectSessions([cwd])
+      await createAndActivateSession(cwd)
     } catch (err) {
       console.error('Failed to create session:', err)
+    }
+  }
+
+  async function handleNewSessionForProject(path: string): Promise<void> {
+    try {
+      const result = await setActiveProject(path)
+      if (result.success) {
+        useAppStore.getState().setProjects(result.recentProjects, result.activeProject)
+      }
+
+      await createAndActivateSession(path)
+    } catch (err) {
+      console.error('Failed to create project session:', err)
     }
   }
 
@@ -167,6 +266,8 @@ function App(): React.JSX.Element {
         createdAt: session.created,
         model: null,
         thinkingLevel: null,
+        contextUsage: null,
+        autoCompactionEnabled: false,
         error: null,
       })
       setActiveSession(sessionId)
@@ -200,6 +301,30 @@ function App(): React.JSX.Element {
     }
   }, [])
 
+  const handleSelectModel = useCallback(
+    async (model: ModelInfo) => {
+      if (!activeSessionId) {
+        return
+      }
+      await setModel(activeSessionId, model.provider, model.id)
+      await refreshSessionState(activeSessionId)
+      await refreshSessionOptions(activeSessionId)
+    },
+    [activeSessionId, refreshSessionOptions, refreshSessionState],
+  )
+
+  const handleSelectThinkingLevel = useCallback(
+    async (thinkingLevel: ThinkingLevel) => {
+      if (!activeSessionId) {
+        return
+      }
+      await setThinkingLevel(activeSessionId, thinkingLevel)
+      await refreshSessionState(activeSessionId)
+      await refreshSessionOptions(activeSessionId)
+    },
+    [activeSessionId, refreshSessionOptions, refreshSessionState],
+  )
+
   return (
     <SidebarProvider
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
@@ -214,6 +339,7 @@ function App(): React.JSX.Element {
           recentProjects={recentProjects}
           projectSessions={projectSessions}
           onNewSession={handleNewSession}
+          onNewSessionForProject={handleNewSessionForProject}
           onSwitchSession={handleSwitchSession}
           onResumeSession={handleResumeSession}
           onOpenProject={handleOpenProject}
@@ -238,7 +364,12 @@ function App(): React.JSX.Element {
           onSend={handleSend}
           onAbort={handleAbort}
           isStreaming={transcript.status !== 'idle'}
-          project={activeProject}
+          gitBranch={gitBranch}
+          session={activeSession}
+          modelOptions={activeSessionId ? modelOptions : []}
+          thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}
+          onSelectModel={handleSelectModel}
+          onSelectThinkingLevel={handleSelectThinkingLevel}
         />
       </main>
     </SidebarProvider>

@@ -22,7 +22,13 @@ export interface ModelInfo {
   name: string
   provider: string
   id: string
+  api: string
+  contextWindow: number
+  maxTokens: number
+  reasoning: boolean
 }
+
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 export interface ProjectDirectory {
   path: string
@@ -33,6 +39,10 @@ export interface ProjectState {
   recentProjects: ProjectDirectory[]
   activeProject: ProjectDirectory | null
 }
+
+export type GitBranchResult =
+  | { success: true; branch: string | null; detached: boolean }
+  | { success: false; error?: string }
 
 export type ProjectStateResult =
   | ({ success: true } & ProjectState)
@@ -70,6 +80,19 @@ export interface SessionState {
   sessionFile: string | undefined
   sessionId: string
   messageCount: number
+  contextUsage: ContextUsage | null
+  autoCompactionEnabled: boolean
+}
+
+export interface ContextUsage {
+  tokens: number | null
+  contextWindow: number
+  percent: number | null
+}
+
+export interface SessionOptions {
+  models: ModelInfo[]
+  thinkingLevels: ThinkingLevel[]
 }
 
 // =============================================================================
@@ -80,10 +103,13 @@ export type PiCommand =
   | { type: 'prompt'; message: string }
   | { type: 'abort' }
   | { type: 'get_state' }
+  | { type: 'get_session_options' }
   | { type: 'get_messages' }
   | { type: 'list_sessions'; cwd?: string }
   | { type: 'cycle_model' }
   | { type: 'cycle_thinking_level' }
+  | { type: 'set_model'; provider: string; modelId: string }
+  | { type: 'set_thinking_level'; level: ThinkingLevel }
   | { type: 'debug' }
 
 /** Wire format for a command request (renderer → utility via port) */
@@ -103,7 +129,13 @@ export interface PiResult {
 // =============================================================================
 
 export type PiPush =
-  | { type: 'session_ready'; model: ModelInfo | null; thinkingLevel: string | null }
+  | {
+      type: 'session_ready'
+      model: ModelInfo | null
+      thinkingLevel: string | null
+      contextUsage: ContextUsage | null
+      autoCompactionEnabled: boolean
+    }
   | { type: 'session_error'; error: string }
   | { type: 'event'; event: unknown }
   | { type: 'error'; error: string }
@@ -153,6 +185,8 @@ export enum PiChannel {
   ListProjectSessions = 'pi:list_project_sessions',
   /** main → renderer: persisted pi sessions for one project cwd */
   ProjectSessionsChunk = 'pi:project_sessions_chunk',
+  /** renderer → main: get current git branch for a cwd */
+  GetGitBranch = 'pi:get_git_branch',
 }
 
 export interface SessionIndexCommand {

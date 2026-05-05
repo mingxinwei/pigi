@@ -13,6 +13,7 @@ import {
   type PiRequest,
   type PiResult,
   type PortMessage,
+  type GitBranchResult,
   type ProjectSessionsChunk,
   type ProjectStateResult,
   type SessionListResult,
@@ -143,6 +144,10 @@ const piApi = {
 
   /** Get persisted project directory state from main process. */
   getProjects: (): Promise<ProjectStateResult> => ipcRenderer.invoke(PiChannel.GetProjects),
+
+  /** Get current git branch for a project directory. */
+  getGitBranch: (cwd: string): Promise<GitBranchResult> =>
+    ipcRenderer.invoke(PiChannel.GetGitBranch, cwd),
 
   /** Set active project directory from recent projects. */
   setActiveProject: (path: string): Promise<ProjectStateResult> =>

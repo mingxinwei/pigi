@@ -21,6 +21,7 @@ import {
   SessionManager,
 } from '@mariozechner/pi-coding-agent'
 import type {
+  ModelInfo,
   PiCommand,
   PiPush,
   PiRequest,
@@ -30,6 +31,26 @@ import type {
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract'
+
+function toModelInfo(model: {
+  name: string
+  provider: string
+  id: string
+  api: string
+  contextWindow: number
+  maxTokens: number
+  reasoning: boolean
+}): ModelInfo {
+  return {
+    name: model.name,
+    provider: model.provider,
+    id: model.id,
+    api: model.api,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    reasoning: model.reasoning,
+  }
+}
 
 // =============================================================================
 // Port interface (compatible with Electron's MessagePortMain)
@@ -258,17 +279,34 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
     case 'get_state': {
       const s = runtime.session
       return {
-        model: s.model ? { name: s.model.name, provider: s.model.provider, id: s.model.id } : null,
+        model: s.model ? toModelInfo(s.model) : null,
         thinkingLevel: s.thinkingLevel,
         isStreaming: s.isStreaming,
         sessionFile: s.sessionFile,
         sessionId: s.sessionId,
         messageCount: s.messages.length,
+        contextUsage: s.getContextUsage() ?? null,
+        autoCompactionEnabled: s.autoCompactionEnabled,
       }
     }
 
     case 'get_messages':
       return runtime.session.messages
+
+    case 'get_session_options': {
+      const session = runtime.session
+      const scopedModels = session.scopedModels.filter((scoped) =>
+        session.modelRegistry.hasConfiguredAuth(scoped.model),
+      )
+      const models =
+        scopedModels.length > 0
+          ? scopedModels.map((scoped) => toModelInfo(scoped.model))
+          : (await session.modelRegistry.getAvailable()).map(toModelInfo)
+      return {
+        models,
+        thinkingLevels: session.getAvailableThinkingLevels(),
+      }
+    }
 
     case 'list_sessions': {
       return cmd.cwd ? await SessionManager.list(cmd.cwd) : await SessionManager.listAll()
@@ -279,6 +317,19 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
 
     case 'cycle_thinking_level':
       return runtime.session.cycleThinkingLevel()
+
+    case 'set_model': {
+      const model = runtime.session.modelRegistry.find(cmd.provider, cmd.modelId)
+      if (!model) {
+        return { success: false, error: `model not found: ${cmd.provider}/${cmd.modelId}` }
+      }
+      await runtime.session.setModel(model)
+      return { success: true }
+    }
+
+    case 'set_thinking_level':
+      runtime.session.setThinkingLevel(cmd.level)
+      return { success: true }
 
     case 'debug': {
       const session = runtime.session
@@ -384,10 +435,10 @@ function attachPort(port: Port): void {
   const session = runtime.session
   const push: PiPush = {
     type: 'session_ready',
-    model: session.model
-      ? { name: session.model.name, provider: session.model.provider, id: session.model.id }
-      : null,
+    model: session.model ? toModelInfo(session.model) : null,
     thinkingLevel: session.thinkingLevel,
+    contextUsage: session.getContextUsage() ?? null,
+    autoCompactionEnabled: session.autoCompactionEnabled,
   }
   port.postMessage(push)
 }

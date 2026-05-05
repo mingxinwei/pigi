@@ -6,9 +6,13 @@
 import type {
   PiCommand,
   PiPush,
+  GitBranchResult,
   ProjectSessionsChunk,
   ProjectStateResult,
+  SessionOptions,
+  SessionState,
   SessionListResult,
+  ThinkingLevel,
   StreamBatch,
 } from '../../../shared/ipcContract'
 
@@ -53,6 +57,10 @@ export async function getProjects(): Promise<ProjectStateResult> {
   return window.piApi.getProjects()
 }
 
+export async function getGitBranch(cwd: string): Promise<GitBranchResult> {
+  return window.piApi.getGitBranch(cwd)
+}
+
 export async function setActiveProject(path: string): Promise<ProjectStateResult> {
   return window.piApi.setActiveProject(path)
 }
@@ -86,8 +94,12 @@ export async function abort(sessionId: string): Promise<void> {
   await send(sessionId, { type: 'abort' })
 }
 
-export async function getState(sessionId: string): Promise<unknown> {
-  return send(sessionId, { type: 'get_state' })
+export async function getState(sessionId: string): Promise<SessionState> {
+  return send<SessionState>(sessionId, { type: 'get_state' })
+}
+
+export async function getSessionOptions(sessionId: string): Promise<SessionOptions> {
+  return send<SessionOptions>(sessionId, { type: 'get_session_options' })
 }
 
 export async function getMessages(sessionId: string): Promise<unknown[]> {
@@ -104,6 +116,24 @@ export async function cycleModel(sessionId: string): Promise<unknown> {
 
 export async function cycleThinkingLevel(sessionId: string): Promise<string | null> {
   return send<string | null>(sessionId, { type: 'cycle_thinking_level' })
+}
+
+export async function setModel(
+  sessionId: string,
+  provider: string,
+  modelId: string,
+): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'set_model', provider, modelId })
+  if (!result.success) {
+    throw new Error(result.error || 'set_model failed')
+  }
+}
+
+export async function setThinkingLevel(sessionId: string, level: ThinkingLevel): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'set_thinking_level', level })
+  if (!result.success) {
+    throw new Error(result.error || 'set_thinking_level failed')
+  }
 }
 
 // =============================================================================

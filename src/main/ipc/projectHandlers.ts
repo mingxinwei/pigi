@@ -2,6 +2,7 @@ import { dialog, ipcMain } from 'electron'
 import { PiChannel, type ProjectStateResult } from '../../shared/ipcContract'
 import { getMainWindow } from '../windows/createMainWindow'
 import { addRecentProject, getProjectState, setActiveProject } from '../projects/projectStore'
+import { getGitBranch } from '../projects/gitStatus'
 
 function projectStateResult(): ProjectStateResult {
   return {
@@ -12,6 +13,10 @@ function projectStateResult(): ProjectStateResult {
 
 export function registerProjectHandlers(): void {
   ipcMain.handle(PiChannel.GetProjects, async () => projectStateResult())
+
+  ipcMain.handle(PiChannel.GetGitBranch, async (_event, cwd: string) => {
+    return getGitBranch(cwd)
+  })
 
   ipcMain.handle(PiChannel.SetActiveProject, async (_event, path: string) => {
     if (!path || typeof path !== 'string' || path.trim().length === 0) {

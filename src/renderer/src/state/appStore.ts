@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import type { ModelInfo, PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
+import type {
+  ContextUsage,
+  ModelInfo,
+  PiSessionInfo,
+  ProjectDirectory,
+} from '../../../shared/ipcContract'
 import type { AgentStatus } from './transcriptController'
 
 export type { AgentStatus }
@@ -14,6 +19,8 @@ export interface SessionEntry {
   createdAt: string
   model: ModelInfo | null
   thinkingLevel: string | null
+  contextUsage: ContextUsage | null
+  autoCompactionEnabled: boolean
   error: string | null
 }
 
@@ -61,6 +68,8 @@ export const useAppStore = create<AppState>((set) => ({
         createdAt: new Date().toISOString(),
         model: null,
         thinkingLevel: null,
+        contextUsage: null,
+        autoCompactionEnabled: false,
         error: null,
       })
       return { sessions }

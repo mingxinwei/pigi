@@ -11,12 +11,15 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from './ui/sidebar'
+
+const NEW_PROJECT_SESSION_LABEL = 'New chat'
 
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
@@ -25,6 +28,7 @@ interface SidebarProps {
   recentProjects: ProjectDirectory[]
   projectSessions: Record<string, PiSessionInfo[]>
   onNewSession: () => void
+  onNewSessionForProject: (path: string) => void
   onSwitchSession: (sessionId: string) => void
   onResumeSession: (session: PiSessionInfo) => void
   onOpenProject: () => void
@@ -38,6 +42,7 @@ export default function Sidebar({
   recentProjects,
   projectSessions,
   onNewSession,
+  onNewSessionForProject,
   onSwitchSession,
   onResumeSession,
   onOpenProject,
@@ -88,6 +93,17 @@ export default function Sidebar({
       } else {
         next.add(projectPath)
       }
+      return next
+    })
+  }
+
+  function expandProjectSessions(projectPath: string): void {
+    setExpandedProjects((current) => {
+      if (current.has(projectPath)) {
+        return current
+      }
+      const next = new Set(current)
+      next.add(projectPath)
       return next
     })
   }
@@ -202,6 +218,17 @@ export default function Sidebar({
                           )}
                           <span>{project.name}</span>
                         </SidebarMenuButton>
+                        <SidebarMenuAction
+                          disabled={isStreaming}
+                          title={`${NEW_PROJECT_SESSION_LABEL} in ${project.name}`}
+                          onClick={() => {
+                            expandProjectSessions(project.path)
+                            onNewSessionForProject(project.path)
+                          }}
+                        >
+                          <IconPlus />
+                          <span className="sr-only">{NEW_PROJECT_SESSION_LABEL}</span>
+                        </SidebarMenuAction>
 
                         <div
                           aria-hidden={!isExpanded}

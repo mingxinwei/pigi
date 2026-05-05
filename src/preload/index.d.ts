@@ -2,6 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   PiCommand,
   PiPush,
+  GitBranchResult,
   ProjectSessionsChunk,
   ProjectStateResult,
   SessionListResult,
@@ -19,6 +20,7 @@ interface PiApi {
 
   // Project directories
   getProjects: () => Promise<ProjectStateResult>
+  getGitBranch: (cwd: string) => Promise<GitBranchResult>
   setActiveProject: (path: string) => Promise<ProjectStateResult>
   openProjectDirectory: () => Promise<ProjectStateResult>
   listProjectSessions: (cwds: string[]) => Promise<SessionListResult>

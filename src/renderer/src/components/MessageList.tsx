@@ -5,6 +5,7 @@ import type {
   AssistantNode,
   TranscriptController,
 } from '../state/transcriptController'
+import { MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants'
 import ToolBlock from './ToolBlock'
 
 interface MessageListProps {
@@ -14,7 +15,6 @@ interface MessageListProps {
 }
 
 const CHAT_INPUT_AREA_HEIGHT = 172
-const CONTENT_MAX_WIDTH = 680
 
 export default function MessageList({
   nodes,
@@ -97,7 +97,7 @@ export default function MessageList({
       style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
       data-testid="message-list"
     >
-      <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${CONTENT_MAX_WIDTH}px` }}>
+      <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}>
         {nodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
         <div
@@ -112,7 +112,7 @@ export default function MessageList({
                 key={node.id}
                 ref={rowVirtualizer.measureElement}
                 data-index={virtualItem.index}
-                className="absolute left-0 top-0 w-full py-4"
+                className="absolute left-0 top-0 w-full py-2.5"
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
                 <NodeRenderer
@@ -136,11 +136,11 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
   }
   switch (node.role) {
     case 'user':
-      return Math.max(72, Math.ceil(node.text.length / 72) * 24 + 48)
+      return Math.max(56, Math.ceil(node.text.length / 72) * 24 + 32)
     case 'assistant':
-      return Math.max(96, Math.ceil((node.text.length + node.thinking.length) / 84) * 24 + 72)
+      return Math.max(80, Math.ceil((node.text.length + node.thinking.length) / 84) * 24 + 56)
     case 'tool':
-      return Math.max(88, Math.ceil(node.output.length / 88) * 20 + 56)
+      return Math.max(72, Math.ceil(node.output.length / 88) * 20 + 40)
     case 'system':
       return 56
   }
@@ -179,7 +179,7 @@ function NodeRenderer({
 function UserBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="flex justify-end" data-testid="user-message">
-      <div className="w-fit min-w-16 max-w-[min(76%,680px)] rounded-2xl bg-muted px-3.5 py-1.5 text-[14px] leading-6 text-foreground">
+      <div className="w-fit min-w-16 max-w-[min(76%,680px)] rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground">
         {text}
       </div>
     </div>
@@ -199,7 +199,7 @@ function AssistantBubble({
 }): React.JSX.Element {
   return (
     <div className="flex justify-start" data-testid="assistant-message">
-      <div className="max-w-[680px] min-w-0 text-[14px] leading-6 text-foreground">
+      <div className="max-w-[680px] min-w-0 text-[15px] leading-6 text-foreground">
         {isStreaming && <ThinkingBlock text="" contentRef={thinkingRef} />}
 
         {!isStreaming && node.thinking && <ThinkingBlock text={node.thinking} />}
@@ -211,7 +211,7 @@ function AssistantBubble({
         )}
 
         {node.errorMessage && (
-          <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+          <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[14px] text-destructive">
             {node.errorMessage}
           </div>
         )}
@@ -229,10 +229,10 @@ function ThinkingBlock({
 }): React.JSX.Element {
   return (
     <div className="mb-4 rounded-md bg-muted/35 px-3 py-2 text-muted-foreground">
-      <div className="mb-1.5 text-[13px] font-medium">Thinking</div>
+      <div className="mb-1.5 text-[14px] font-medium">Thinking</div>
       <pre
         ref={contentRef}
-        className="whitespace-pre-wrap break-words font-sans text-[13px] leading-6 text-muted-foreground"
+        className="whitespace-pre-wrap break-words font-sans text-[15px] leading-6 text-muted-foreground"
       >
         {text}
       </pre>
@@ -243,7 +243,7 @@ function ThinkingBlock({
 function SystemBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="flex justify-center" data-testid="system-message">
-      <div className="text-[13px] text-muted-foreground">{text}</div>
+      <div className="text-[14px] text-muted-foreground">{text}</div>
     </div>
   )
 }

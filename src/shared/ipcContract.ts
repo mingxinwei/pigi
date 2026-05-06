@@ -157,14 +157,8 @@ export interface StreamBatch {
 // Port messages
 // =============================================================================
 
-/** Low-volume control port: renderer → utility commands and utility → renderer responses. */
-export type ControlPortMessage = PiRequest | PiResult
-
-/** High-volume data port: utility → renderer push events and stream batches. */
-export type DataPortMessage = PiPush | StreamBatch
-
-/** Union of all session port messages. */
-export type PortMessage = ControlPortMessage | DataPortMessage
+/** All messages carried over the single session MessagePort. */
+export type PortMessage = PiRequest | PiResult | PiPush | StreamBatch
 
 // =============================================================================
 // IPC Channels (only used for lifecycle via main process)

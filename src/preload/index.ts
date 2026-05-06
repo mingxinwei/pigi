@@ -8,8 +8,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   PiChannel,
-  type ControlPortMessage,
-  type DataPortMessage,
+  type PortMessage,
   type GitBranchResult,
   type PiCommand,
   type PiPush,
@@ -38,8 +37,7 @@ interface PendingPortWaiter {
 }
 
 interface SessionPort {
-  controlPort: MessagePort
-  dataPort: MessagePort
+  port: MessagePort
   pending: Map<string, PendingCommand>
   pushHandlers: Set<(msg: PiPush) => void>
   streamHandlers: Set<(batch: StreamBatch) => void>
@@ -115,8 +113,7 @@ function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): voi
     sp.pending.clear()
     sp.pushHandlers.clear()
     sp.streamHandlers.clear()
-    sp.controlPort.close()
-    sp.dataPort.close()
+    sp.port.close()
     sessionPorts.delete(sessionId)
   }
 
@@ -153,30 +150,15 @@ function mergeStreamBatches(batches: StreamBatch[]): StreamBatch {
   return merged
 }
 
-function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
+function setupPort(sessionId: string, port: MessagePort): void {
   cleanupSessionPort(sessionId, false)
 
   const sp: SessionPort = {
-    controlPort,
-    dataPort,
+    port,
     pending: new Map(),
     pushHandlers: new Set(),
     streamHandlers: new Set(),
     requestId: 0,
-  }
-
-  controlPort.onmessage = (event) => {
-    const data = event.data as ControlPortMessage
-
-    if ('id' in data && 'result' in data) {
-      const res = data as PiResult
-      const pending = sp.pending.get(res.id)
-      if (pending) {
-        clearTimeout(pending.timeoutId)
-        sp.pending.delete(res.id)
-        pending.resolve(res.result)
-      }
-    }
   }
 
   // Coalesce stream batches: buffer incoming batches and deliver at most once per
@@ -185,9 +167,22 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
   let pendingStreamBatches: StreamBatch[] = []
   let streamRafScheduled = false
 
-  dataPort.onmessage = (event) => {
-    const data = event.data as DataPortMessage
+  port.onmessage = (event) => {
+    const data = event.data as PortMessage
 
+    // Response to a command request
+    if ('id' in data && 'result' in data) {
+      const res = data as PiResult
+      const pending = sp.pending.get(res.id)
+      if (pending) {
+        clearTimeout(pending.timeoutId)
+        sp.pending.delete(res.id)
+        pending.resolve(res.result)
+      }
+      return
+    }
+
+    // Stream batch — coalesce with rAF
     if ('type' in data && data.type === 'stream_batch') {
       pendingStreamBatches.push(data as StreamBatch)
       if (!streamRafScheduled) {
@@ -205,6 +200,7 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
       return
     }
 
+    // Push event (session_ready, event, error)
     if ('type' in data) {
       for (const handler of sp.pushHandlers) {
         handler(data as PiPush)
@@ -226,16 +222,15 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     pendingStreamHandlers.delete(sessionId)
   }
 
-  controlPort.start()
-  dataPort.start()
+  port.start()
   resolvePendingPortWaiters(sessionId)
 }
 
-// Receive session ports from main. ports[0] is low-volume control, ports[1] is data stream.
+// Receive session port from main.
 ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionId: string }) => {
-  const [controlPort, dataPort] = event.ports
-  if (!controlPort || !dataPort || !data?.sessionId) return
-  setupPort(data.sessionId, controlPort, dataPort)
+  const [port] = event.ports
+  if (!port || !data?.sessionId) return
+  setupPort(data.sessionId, port)
 })
 
 // =============================================================================
@@ -326,7 +321,7 @@ const piApi = {
       }, 60000)
       sp.pending.set(id, { resolve, reject, timeoutId })
       const req: PiRequest = { id, cmd }
-      sp.controlPort.postMessage(req)
+      sp.port.postMessage(req)
     })
   },
 

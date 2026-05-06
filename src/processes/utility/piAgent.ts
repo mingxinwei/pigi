@@ -27,7 +27,7 @@ import type {
   PiPush,
   PiRequest,
   PiResult,
-  ControlPortMessage,
+  PortMessage,
   StreamBatch,
   UtilityCommand,
   UtilityResponse,
@@ -120,8 +120,7 @@ class StreamBatcher {
 
 let runtime: AgentSessionRuntime | null = null
 let batcher: StreamBatcher | null = null
-let controlPort: Port | null = null
-let dataPort: Port | null = null
+let sessionPort: Port | null = null
 let unsubscribeEvents: (() => void) | null = null
 let isCleanedUp = false
 let isSessionBusy = false
@@ -305,12 +304,12 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
         return { success: false, error: 'prompt must be a non-empty string' }
       }
       runtime.session.prompt(cmd.message).catch((err) => {
-        if (dataPort) {
+        if (sessionPort) {
           const msg: PiPush = {
             type: 'error',
             error: err instanceof Error ? err.message : String(err),
           }
-          dataPort.postMessage(msg)
+          sessionPort.postMessage(msg)
         }
       })
       return { success: true }
@@ -407,9 +406,9 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
   }
 }
 
-function setupControlPortListener(port: Port): void {
+function setupPortListener(port: Port): void {
   port.on('message', async (event: { data: unknown }) => {
-    const data = event.data as ControlPortMessage
+    const data = event.data as PortMessage
     if ('id' in data && 'cmd' in data) {
       const req = data as PiRequest
       try {
@@ -476,27 +475,24 @@ async function resumeSession(sessionPath: string): Promise<void> {
   }
 }
 
-function attachPorts(nextControlPort: Port, nextDataPort: Port): void {
+function attachPort(port: Port): void {
   if (!runtime) {
-    nextControlPort.close()
-    nextDataPort.close()
+    port.close()
     return
   }
 
   unsubscribeEvents?.()
   batcher?.stop()
-  controlPort?.close()
-  dataPort?.close()
+  sessionPort?.close()
 
-  controlPort = nextControlPort
-  dataPort = nextDataPort
+  sessionPort = port
   setSessionBusy(runtime.session.isStreaming)
   batcher = new StreamBatcher()
-  batcher.start(nextDataPort)
-  unsubscribeEvents = subscribeToSession(runtime, nextDataPort, batcher)
-  setupControlPortListener(nextControlPort)
+  batcher.start(port)
+  unsubscribeEvents = subscribeToSession(runtime, port, batcher)
+  setupPortListener(port)
 
-  // Send session_ready as first push on the data port
+  // Send session_ready as first push
   const session = runtime.session
   const push: PiPush = {
     type: 'session_ready',
@@ -505,7 +501,7 @@ function attachPorts(nextControlPort: Port, nextDataPort: Port): void {
     contextUsage: session.getContextUsage() ?? null,
     autoCompactionEnabled: session.autoCompactionEnabled,
   }
-  nextDataPort.postMessage(push)
+  port.postMessage(push)
 }
 
 // =============================================================================
@@ -522,10 +518,8 @@ function cleanup(): void {
   unsubscribeEvents = null
   batcher?.stop()
   batcher = null
-  controlPort?.close()
-  controlPort = null
-  dataPort?.close()
-  dataPort = null
+  sessionPort?.close()
+  sessionPort = null
   runtime?.dispose()
   runtime = null
 }
@@ -555,8 +549,8 @@ process.parentPort?.on('message', async (messageEvent) => {
       prewarmSessionServices(cmd.cwds)
       break
     case 'attach_ports':
-      if (ports.length > 1) {
-        attachPorts(ports[0], ports[1])
+      if (ports.length >= 1) {
+        attachPort(ports[0])
       }
       break
   }

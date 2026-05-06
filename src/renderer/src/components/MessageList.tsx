@@ -17,6 +17,7 @@ interface MessageListProps {
 
 const CHAT_INPUT_AREA_HEIGHT = 172
 const MESSAGE_ROW_GAP = 16
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 2
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24
@@ -38,7 +39,10 @@ interface UserMessagePreview {
 export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const isAutoScrollRef = useRef(true)
+  const isManualScrollLockedRef = useRef(false)
+  const hasLeftBottomAfterManualLockRef = useRef(false)
   const lastNodeIdRef = useRef<string | null>(null)
+  const lastScrollTopRef = useRef(0)
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
 
   const getItemKey = useCallback(
@@ -63,21 +67,39 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
-    if (!isAutoScrollRef.current || !el || displayNodes.length === 0) {
+    if (
+      isManualScrollLockedRef.current ||
+      !isAutoScrollRef.current ||
+      !el ||
+      displayNodes.length === 0
+    ) {
       return
     }
 
     rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
     el.scrollTop = el.scrollHeight
+    lastScrollTopRef.current = el.scrollTop
   }, [displayNodes.length, rowVirtualizer])
+
+  const unlockAutoScroll = useCallback(() => {
+    isManualScrollLockedRef.current = false
+    hasLeftBottomAfterManualLockRef.current = false
+    isAutoScrollRef.current = true
+  }, [])
+
+  const lockManualScroll = useCallback(() => {
+    isManualScrollLockedRef.current = true
+    hasLeftBottomAfterManualLockRef.current = false
+    isAutoScrollRef.current = false
+  }, [])
 
   useLayoutEffect(() => {
     const lastNode = displayNodes[displayNodes.length - 1]
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
-      isAutoScrollRef.current = true
+      unlockAutoScroll()
     }
     lastNodeIdRef.current = lastNode?.id ?? null
-  }, [displayNodes])
+  }, [displayNodes, unlockAutoScroll])
 
   useEffect(() => {
     let nextFrameId = 0
@@ -97,9 +119,45 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
     if (!el) {
       return
     }
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-    isAutoScrollRef.current = atBottom
-  }, [])
+    const scrollTop = el.scrollTop
+    const scrollingUp = scrollTop < lastScrollTopRef.current
+    lastScrollTopRef.current = scrollTop
+    const atBottom = isAtBottom(el)
+
+    if (isManualScrollLockedRef.current) {
+      if (!atBottom) {
+        hasLeftBottomAfterManualLockRef.current = true
+      }
+
+      if (atBottom && hasLeftBottomAfterManualLockRef.current) {
+        unlockAutoScroll()
+      }
+
+      return
+    }
+
+    if (scrollingUp) {
+      lockManualScroll()
+      return
+    }
+
+    if (atBottom) {
+      isAutoScrollRef.current = true
+    }
+  }, [lockManualScroll, unlockAutoScroll])
+
+  const handleWheelCapture = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (event.deltaY !== 0) {
+        lockManualScroll()
+      }
+    },
+    [lockManualScroll],
+  )
+
+  const handleTouchMoveCapture = useCallback(() => {
+    lockManualScroll()
+  }, [lockManualScroll])
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
@@ -107,6 +165,8 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
     <div
       ref={containerRef}
       onScroll={handleScroll}
+      onWheelCapture={handleWheelCapture}
+      onTouchMoveCapture={handleTouchMoveCapture}
       className="min-h-0 flex-1 overflow-y-auto bg-background"
       style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
       data-testid="message-list"
@@ -153,6 +213,10 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
     case 'system':
       return 56
   }
+}
+
+function isAtBottom(el: HTMLDivElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_BOTTOM_THRESHOLD
 }
 
 function estimateUserHeight(text: string): number {

@@ -225,6 +225,17 @@ function App(): React.JSX.Element {
     await abort(activeSessionId)
   }, [activeSessionId])
 
+  // Global Escape key to abort streaming
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape' && transcript.status !== 'idle') {
+        handleAbort()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleAbort, transcript.status])
+
   async function createAndActivateSession(cwd: string): Promise<void> {
     const sessionId = await createSession(cwd)
     addSession(sessionId, cwd)
@@ -368,7 +379,7 @@ function App(): React.JSX.Element {
       </div>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <MessageList nodes={transcript.nodes} isWorking={transcript.status !== 'idle'} />
+        <MessageList nodes={transcript.nodes} />
         <ChatInput
           onSend={handleSend}
           onAbort={handleAbort}

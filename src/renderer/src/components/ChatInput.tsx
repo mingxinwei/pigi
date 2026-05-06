@@ -100,12 +100,6 @@ export default function ChatInput({
         return
       }
 
-      if (e.key === 'Escape' && isStreaming) {
-        e.preventDefault()
-        onAbort()
-        return
-      }
-
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSend()
@@ -129,9 +123,15 @@ export default function ChatInput({
       data-testid="chat-input"
     >
       <div
-        className="pointer-events-auto mx-auto w-full"
+        className="pointer-events-auto relative mx-auto w-full"
         style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
       >
+        {isStreaming && (
+          <div className="absolute inset-x-0 bottom-full z-[-1] flex items-center gap-2 rounded-t-2xl bg-muted/60 px-4 pb-6 pt-2 text-sm text-muted-foreground" style={{ marginBottom: '-20px' }}>
+            <IconStarFilled className="size-4 animate-[spin_2s_linear_infinite] text-green-500" />
+            <span className="-ml-0.5">Working...</span>
+          </div>
+        )}
         <InputGroup className="h-auto min-h-28 flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           <InputGroupTextarea
             ref={textareaRef}

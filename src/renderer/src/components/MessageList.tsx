@@ -1,6 +1,5 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { IconLoader2 } from '@tabler/icons-react'
 import type {
   TranscriptNode,
   AssistantNode,
@@ -14,7 +13,6 @@ import { cn } from '../lib/utils'
 
 interface MessageListProps {
   nodes: TranscriptNode[]
-  isWorking: boolean
 }
 
 const CHAT_INPUT_AREA_HEIGHT = 172
@@ -38,7 +36,7 @@ interface UserMessagePreview {
   text: string
 }
 
-export default function MessageList({ nodes, isWorking }: MessageListProps): React.JSX.Element {
+export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
   const lastNodeIdRef = useRef<string | null>(null)
@@ -150,7 +148,6 @@ export default function MessageList({ nodes, isWorking }: MessageListProps): Rea
             )
           })}
         </div>
-        {isWorking && <WorkingIndicator />}
       </div>
     </div>
   )
@@ -176,19 +173,6 @@ function isAtBottom(el: HTMLDivElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_BOTTOM_THRESHOLD
 }
 
-function WorkingIndicator(): React.JSX.Element {
-  return (
-    <div className="flex justify-start py-2" data-testid="working-indicator">
-      <div
-        className="flex items-center gap-2 text-sm text-muted-foreground"
-        style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
-      >
-        <IconLoader2 className="size-4 animate-spin" />
-        <span>Working...</span>
-      </div>
-    </div>
-  )
-}
 
 function estimateUserHeight(text: string): number {
   const preview = getUserMessagePreview(text)

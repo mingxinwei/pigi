@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { IconFolder, IconFolderOpen, IconFolderPlus, IconPlus } from '@tabler/icons-react'
+import { IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconPlus } from '@tabler/icons-react'
 import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
 import {
@@ -143,6 +143,15 @@ export default function Sidebar({
     return 'now'
   }
 
+  function isSessionRunning(sessionId: string): boolean {
+    for (const entry of sessions.values()) {
+      if (entry.persistedSessionId === sessionId && entry.status !== 'idle') {
+        return true
+      }
+    }
+    return false
+  }
+
   return (
     <>
       <ShadcnSidebar
@@ -273,9 +282,13 @@ export default function Sidebar({
                                           >
                                             {getSessionTitle(session)}
                                           </span>
-                                          <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                                            {formatRelativeTime(session.created)}
-                                          </span>
+                                          {isSessionRunning(session.id) ? (
+                                            <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-spin text-green-500" />
+                                          ) : (
+                                            <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                                              {formatRelativeTime(session.created)}
+                                            </span>
+                                          )}
                                         </button>
                                       </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>

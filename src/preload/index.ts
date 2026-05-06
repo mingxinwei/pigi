@@ -4,17 +4,17 @@
  * After session creation, communication goes directly over control/data MessagePorts.
  * Main process is only involved for lifecycle (create/resume/destroy session).
  */
-import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer } from 'electron'
 import {
   PiChannel,
+  type ControlPortMessage,
+  type DataPortMessage,
+  type GitBranchResult,
   type PiCommand,
   type PiPush,
   type PiRequest,
   type PiResult,
-  type ControlPortMessage,
-  type DataPortMessage,
-  type GitBranchResult,
   type ProjectSessionsChunk,
   type ProjectStateResult,
   type SessionListResult,
@@ -127,6 +127,32 @@ function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): voi
   }
 }
 
+function mergeStreamBatches(batches: StreamBatch[]): StreamBatch {
+  if (batches.length === 1) return batches[0]
+  const merged: StreamBatch = { type: 'stream_batch' }
+  for (const batch of batches) {
+    if (batch.text) {
+      if (!merged.text) merged.text = {}
+      for (const [id, delta] of Object.entries(batch.text)) {
+        merged.text[id] = (merged.text[id] || '') + delta
+      }
+    }
+    if (batch.thinking) {
+      if (!merged.thinking) merged.thinking = {}
+      for (const [id, delta] of Object.entries(batch.thinking)) {
+        merged.thinking[id] = (merged.thinking[id] || '') + delta
+      }
+    }
+    if (batch.toolOutput) {
+      if (!merged.toolOutput) merged.toolOutput = {}
+      for (const [id, output] of Object.entries(batch.toolOutput)) {
+        merged.toolOutput[id] = output
+      }
+    }
+  }
+  return merged
+}
+
 function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
   cleanupSessionPort(sessionId, false)
 
@@ -153,12 +179,28 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     }
   }
 
+  // Coalesce stream batches: buffer incoming batches and deliver at most once per
+  // animation frame. This keeps the main thread from being saturated by back-to-back
+  // React renders, leaving gaps for keyboard events (e.g. Escape to abort) to fire.
+  let pendingStreamBatches: StreamBatch[] = []
+  let streamRafScheduled = false
+
   dataPort.onmessage = (event) => {
     const data = event.data as DataPortMessage
 
     if ('type' in data && data.type === 'stream_batch') {
-      for (const handler of sp.streamHandlers) {
-        handler(data as StreamBatch)
+      pendingStreamBatches.push(data as StreamBatch)
+      if (!streamRafScheduled) {
+        streamRafScheduled = true
+        requestAnimationFrame(() => {
+          streamRafScheduled = false
+          const batches = pendingStreamBatches
+          pendingStreamBatches = []
+          const merged = mergeStreamBatches(batches)
+          for (const handler of sp.streamHandlers) {
+            handler(merged)
+          }
+        })
       }
       return
     }

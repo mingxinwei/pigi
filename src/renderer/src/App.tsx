@@ -355,11 +355,7 @@ function App(): React.JSX.Element {
       </div>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <MessageList
-          nodes={transcript.nodes}
-          activeAssistantId={transcript.activeAssistantId}
-          controller={controller}
-        />
+        <MessageList nodes={transcript.nodes} />
         <ChatInput
           onSend={handleSend}
           onAbort={handleAbort}

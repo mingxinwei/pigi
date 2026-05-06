@@ -3,13 +3,13 @@
  *
  * Responsibilities:
  * - Converts SDK lifecycle events into UI state (TranscriptNode[])
- * - Applies stream batches to active streaming nodes (mutable, no React re-render)
+ * - Applies stream batches to active streaming nodes
  * - Normalizes session.messages during startup/switch (hydration)
  * - Tracks agent status (idle/streaming/tool_running/error)
  * - Notifies subscribers on state changes (for React re-render)
  *
- * Streaming text is accumulated mutably in AssistantNode.text / ThinkingNode.thinking.
- * React only re-renders on structural changes (new node, status change, finalization).
+ * Stream batches are already throttled by the utility process. Notifying React per batch keeps
+ * the rendered layout measurable without rendering on every token event.
  */
 
 // =============================================================================
@@ -294,9 +294,7 @@ export class TranscriptController {
         break
 
       case 'turn_start':
-        if (!this._state.activeAssistantId) {
-          this.createAssistantNode()
-        }
+        this.setState({ status: 'streaming' })
         break
 
       case 'message_start': {
@@ -334,50 +332,54 @@ export class TranscriptController {
   }
 
   // ===========================================================================
-  // Stream batch processing (high-frequency, mutable, no notify)
+  // Stream batch processing
   // ===========================================================================
 
   /**
-   * Apply a stream batch. Mutates node text in place WITHOUT notifying listeners.
-   * Returns the activeAssistantId so the caller can update DOM directly.
+   * Apply a stream batch. The utility process flushes at animation-frame cadence, so
+   * each batch can update React state and let the virtualizer measure real heights.
    */
   applyStreamBatch(batch: {
     text?: Record<string, string>
     thinking?: Record<string, string>
     toolOutput?: Record<string, string>
   }): void {
+    let changed = false
+
     if (batch.text) {
-      const assistant = this.getActiveAssistant()
-      if (assistant) {
-        for (const delta of Object.values(batch.text)) {
+      for (const [messageId, delta] of Object.entries(batch.text)) {
+        const assistant = this.getOrCreateAssistantForStream(messageId)
+        if (assistant && delta) {
           assistant.text += delta
+          changed = true
         }
       }
     }
 
     if (batch.thinking) {
-      const assistant = this.getActiveAssistant()
-      if (assistant) {
-        for (const delta of Object.values(batch.thinking)) {
+      for (const [messageId, delta] of Object.entries(batch.thinking)) {
+        const assistant = this.getOrCreateAssistantForStream(messageId)
+        if (assistant && delta) {
           assistant.thinking += delta
+          changed = true
         }
       }
     }
 
     if (batch.toolOutput) {
-      let hasToolOutput = false
-      for (const [toolCallId, delta] of Object.entries(batch.toolOutput)) {
+      for (const [toolCallId, output] of Object.entries(batch.toolOutput)) {
         const tool = this._state.nodes.find(
           (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
         ) as ToolNode | undefined
         if (tool) {
-          tool.output += delta
-          hasToolOutput = true
+          tool.output = output
+          changed = true
         }
       }
-      if (hasToolOutput) {
-        this.setState({ nodes: [...this._state.nodes] })
-      }
+    }
+
+    if (changed) {
+      this.setState({ nodes: [...this._state.nodes] })
     }
   }
 
@@ -401,6 +403,21 @@ export class TranscriptController {
     })
   }
 
+  private getOrCreateAssistantForStream(messageId: string): AssistantNode | undefined {
+    const byMessageId = this.findNode<AssistantNode>(messageId)
+    if (byMessageId) {
+      return byMessageId
+    }
+
+    const activeAssistant = this.getActiveAssistant()
+    if (activeAssistant) {
+      return activeAssistant
+    }
+
+    this.createAssistantNode(messageId)
+    return this.getActiveAssistant()
+  }
+
   private handleMessageUpdate(event: SdkMessageUpdate): void {
     const ame = event.assistantMessageEvent
     if (!ame) return
@@ -414,18 +431,19 @@ export class TranscriptController {
     // text_delta and thinking_delta are handled via StreamBatcher (not here)
     // But if they arrive here (e.g., non-batched path), accumulate them
     if (ame.type === 'text_delta' && ame.delta) {
-      const assistant = this.getActiveAssistant()
+      const assistant = this.getOrCreateAssistantForStream(event.message.id ?? nextNodeId())
       if (assistant) {
         assistant.text += ame.delta
-        // No notify — streaming DOM handles this
+        this.setState({ nodes: [...this._state.nodes] })
       }
       return
     }
 
     if (ame.type === 'thinking_delta' && ame.delta) {
-      const assistant = this.getActiveAssistant()
+      const assistant = this.getOrCreateAssistantForStream(event.message.id ?? nextNodeId())
       if (assistant) {
         assistant.thinking += ame.delta
+        this.setState({ nodes: [...this._state.nodes] })
       }
       return
     }

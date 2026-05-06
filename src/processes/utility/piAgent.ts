@@ -98,9 +98,9 @@ class StreamBatcher {
     this.dirty = true
   }
 
-  appendToolOutput(id: string, delta: string): void {
+  setToolOutput(id: string, output: string): void {
     if (!this.batch.toolOutput) this.batch.toolOutput = {}
-    this.batch.toolOutput[id] = (this.batch.toolOutput[id] || '') + delta
+    this.batch.toolOutput[id] = output
     this.dirty = true
   }
 
@@ -123,6 +123,39 @@ let unsubscribeEvents: (() => void) | null = null
 let isSessionBusy = false
 // Services are expensive to build; prewarm them while the user is browsing sessions.
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>()
+let serviceCreationQueue: Promise<void> = Promise.resolve()
+
+function enqueueServiceCreation<T>(task: () => Promise<T>): Promise<T> {
+  const queuedTask = serviceCreationQueue.then(task, task)
+  serviceCreationQueue = queuedTask.then(
+    () => {},
+    () => {},
+  )
+  return queuedTask
+}
+
+function createServicesForCwd(cwd: string): Promise<AgentSessionServices> {
+  return enqueueServiceCreation(async () => {
+    const previousCwd = process.cwd()
+    try {
+      // Some Pi extensions read process.cwd() while they register tools. Match the
+      // Pi SDK cwd option during service construction so extension-local tools bind
+      // to the project directory, not Electron's app directory.
+      process.chdir(cwd)
+      return await createAgentSessionServices({ cwd })
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+}
+
+function setSessionProcessCwd(cwd: string): Promise<void> {
+  return enqueueServiceCreation(async () => {
+    // Keep the claimed session process in its project cwd for runtime setup and
+    // later extension code paths that consult process.cwd().
+    process.chdir(cwd)
+  })
+}
 
 function getServices(cwd: string): Promise<AgentSessionServices> {
   const existing = servicesByCwd.get(cwd)
@@ -130,7 +163,7 @@ function getServices(cwd: string): Promise<AgentSessionServices> {
     return existing
   }
 
-  const services = createAgentSessionServices({ cwd })
+  const services = createServicesForCwd(cwd)
   services.catch(() => {
     servicesByCwd.delete(cwd)
   })
@@ -233,7 +266,7 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
         }
         const text = toolEvent.partialResult?.content?.[0]?.text
         if (text && toolEvent.toolCallId) {
-          batch.appendToolOutput(toolEvent.toolCallId, text)
+          batch.setToolOutput(toolEvent.toolCallId, text)
           return
         }
         push({ type: 'event', event })
@@ -393,6 +426,7 @@ function prewarmSessionServices(cwds: string[]): void {
 
 async function createSession(cwd: string): Promise<void> {
   try {
+    await setSessionProcessCwd(cwd)
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,
       agentDir: getAgentDir(),
@@ -409,6 +443,7 @@ async function resumeSession(sessionPath: string): Promise<void> {
   try {
     const sessionManager = SessionManager.open(sessionPath)
     const cwd = sessionManager.getCwd()
+    await setSessionProcessCwd(cwd)
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,
       agentDir: getAgentDir(),

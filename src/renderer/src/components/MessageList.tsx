@@ -1,82 +1,70 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type {
-  TranscriptNode,
-  AssistantNode,
-  TranscriptController,
-} from '../state/transcriptController'
-import { MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants'
-import ToolBlock from './ToolBlock'
+import type { TranscriptNode, AssistantNode, ToolNode } from '../state/transcriptController'
+import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants'
+import ToolBlock, { TOOL_OUTPUT_LINE_LIMIT } from './ToolBlock'
+import MarkdownMessage from './markdownMessage'
+import { cn } from '../lib/utils'
 
 interface MessageListProps {
   nodes: TranscriptNode[]
-  activeAssistantId: string | null
-  controller: React.RefObject<TranscriptController>
 }
 
 const CHAT_INPUT_AREA_HEIGHT = 172
+const MESSAGE_ROW_GAP = 16
+const TOOL_BLOCK_ESTIMATE_BUFFER = 16
+const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24
+const LONG_USER_MESSAGE_LINE_LIMIT = 100
+const LONG_USER_MESSAGE_HEAD_LINES = 24
+const LONG_USER_MESSAGE_TAIL_LINES = 12
+const LONG_USER_MESSAGE_CHARACTER_LIMIT = 4_000
+const LONG_USER_MESSAGE_HEAD_CHARACTERS = 2_400
+const LONG_USER_MESSAGE_TAIL_CHARACTERS = 1_200
+const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72
 
-export default function MessageList({
-  nodes,
-  activeAssistantId,
-  controller,
-}: MessageListProps): React.JSX.Element {
+interface UserMessagePreview {
+  isLong: boolean
+  text: string
+}
+
+export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const streamingRef = useRef<HTMLDivElement>(null)
-  const thinkingRef = useRef<HTMLPreElement>(null)
   const isAutoScrollRef = useRef(true)
+  const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
+
+  const getItemKey = useCallback(
+    (index: number) => displayNodes[index]?.id ?? index,
+    [displayNodes],
+  )
 
   // TanStack Virtual returns imperative measurement helpers; this follows its documented React pattern.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: nodes.length,
+    count: displayNodes.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: (index) => estimateNodeHeight(nodes[index]),
+    getItemKey,
+    estimateSize: (index) => estimateNodeHeight(displayNodes[index]),
     overscan: 8,
+    gap: MESSAGE_ROW_GAP,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
   })
 
   const scrollToBottom = useCallback(() => {
-    const el = containerRef.current
-    if (el && isAutoScrollRef.current) {
-      el.scrollTop = el.scrollHeight
+    if (isAutoScrollRef.current && displayNodes.length > 0) {
+      rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
     }
-  }, [])
+  }, [displayNodes.length, rowVirtualizer])
 
   useEffect(() => {
-    scrollToBottom()
-    rowVirtualizer.measure()
-  }, [nodes, rowVirtualizer, scrollToBottom])
-
-  useEffect(() => {
-    if (!activeAssistantId) {
-      return
-    }
-
-    let rafId: number
-    const update = (): void => {
-      const state = controller.current.state
-      const assistant = state.nodes.find((n) => n.id === activeAssistantId) as
-        | AssistantNode
-        | undefined
-      if (assistant) {
-        const el = streamingRef.current
-        if (el && el.textContent !== assistant.text) {
-          el.textContent = assistant.text
-        }
-        const thinkPre = thinkingRef.current
-        if (thinkPre && thinkPre.textContent !== assistant.thinking) {
-          thinkPre.textContent = assistant.thinking
-        }
-      }
-      rowVirtualizer.measure()
+    const measureAndScroll = (): void => {
       scrollToBottom()
-      rafId = requestAnimationFrame(update)
     }
-    rafId = requestAnimationFrame(update)
+    const rafId = requestAnimationFrame(measureAndScroll)
     return () => {
       cancelAnimationFrame(rafId)
     }
-  }, [activeAssistantId, controller, rowVirtualizer, scrollToBottom])
+  }, [displayNodes, rowVirtualizer, scrollToBottom])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -98,7 +86,7 @@ export default function MessageList({
       data-testid="message-list"
     >
       <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}>
-        {nodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
+        {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
         <div
           className="relative"
@@ -106,21 +94,16 @@ export default function MessageList({
           data-testid="message-virtualizer"
         >
           {virtualItems.map((virtualItem) => {
-            const node = nodes[virtualItem.index]
+            const node = displayNodes[virtualItem.index]
             return (
               <div
                 key={node.id}
                 ref={rowVirtualizer.measureElement}
                 data-index={virtualItem.index}
-                className="absolute left-0 top-0 w-full py-2.5"
+                className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
-                <NodeRenderer
-                  node={node}
-                  isStreaming={node.id === activeAssistantId}
-                  streamingRef={node.id === activeAssistantId ? streamingRef : undefined}
-                  thinkingRef={node.id === activeAssistantId ? thinkingRef : undefined}
-                />
+                <NodeRenderer node={node} />
               </div>
             )
           })}
@@ -136,39 +119,83 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
   }
   switch (node.role) {
     case 'user':
-      return Math.max(56, Math.ceil(node.text.length / 72) * 24 + 32)
+      return estimateUserHeight(node.text)
     case 'assistant':
-      return Math.max(80, Math.ceil((node.text.length + node.thinking.length) / 84) * 24 + 56)
+      return estimateAssistantHeight(node)
     case 'tool':
-      return Math.max(72, Math.ceil(node.output.length / 88) * 20 + 40)
+      return estimateToolHeight(node)
     case 'system':
       return 56
   }
 }
 
-function NodeRenderer({
-  node,
-  isStreaming,
-  streamingRef,
-  thinkingRef,
-}: {
-  node: TranscriptNode
-  isStreaming: boolean
-  streamingRef?: React.RefObject<HTMLDivElement | null>
-  thinkingRef?: React.RefObject<HTMLPreElement | null>
-}): React.JSX.Element {
+function estimateUserHeight(text: string): number {
+  const preview = getUserMessagePreview(text)
+  const visibleLineCount = countLines(preview.text)
+  const characterLineCount = Math.ceil(preview.text.length / USER_MESSAGE_WRAP_ESTIMATE_WIDTH)
+  const estimatedLineCount = Math.max(visibleLineCount, characterLineCount)
+  const buttonHeight = preview.isLong ? 36 : 0
+  return Math.max(56, estimatedLineCount * 24 + 32 + buttonHeight)
+}
+
+function estimateAssistantHeight(node: AssistantNode): number {
+  const textLength = node.text.length + node.thinking.length
+  const lineCount = countLines(node.text) + countLines(node.thinking)
+  return Math.max(80, Math.max(Math.ceil(textLength / 84), lineCount) * 24 + 56)
+}
+
+function estimateToolHeight(node: ToolNode): number {
+  const outputLineCount = node.output ? node.output.split('\n').length : 0
+  const visibleOutputLineCount = Math.min(outputLineCount, TOOL_OUTPUT_LINE_LIMIT)
+  const hiddenOutputLineCount = Math.max(0, outputLineCount - TOOL_OUTPUT_LINE_LIMIT)
+  const hiddenHintLineCount = hiddenOutputLineCount > 0 ? 1 : 0
+  const showAllButtonHeight = hiddenOutputLineCount > 0 ? 36 : 0
+  const commandLineCount = estimateToolCommandLineCount(node)
+
+  return Math.max(
+    96,
+    48 +
+      commandLineCount * 24 +
+      (visibleOutputLineCount + hiddenHintLineCount) * 20 +
+      showAllButtonHeight +
+      TOOL_STATUS_LINE_ESTIMATE_HEIGHT +
+      TOOL_BLOCK_ESTIMATE_BUFFER,
+  )
+}
+
+function countLines(text: string): number {
+  if (!text) {
+    return 0
+  }
+  return text.split('\n').length
+}
+
+function estimateToolCommandLineCount(node: ToolNode): number {
+  const args = node.args as Record<string, unknown> | undefined
+  const command =
+    node.name === 'bash'
+      ? String(args?.command ?? '')
+      : node.name === 'read' || node.name === 'write'
+        ? String(args?.path ?? '')
+        : ''
+
+  return Math.max(1, Math.ceil(command.length / 80))
+}
+
+function isRenderableNode(node: TranscriptNode): boolean {
+  if (node.role !== 'assistant') {
+    return true
+  }
+
+  return Boolean(node.text || node.thinking || node.errorMessage)
+}
+
+function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
   switch (node.role) {
     case 'user':
       return <UserBubble text={node.text} />
     case 'assistant':
-      return (
-        <AssistantBubble
-          node={node}
-          isStreaming={isStreaming}
-          streamingRef={streamingRef}
-          thinkingRef={thinkingRef}
-        />
-      )
+      return <AssistantBubble node={node} />
     case 'tool':
       return <ToolBlock node={node} />
     case 'system':
@@ -177,38 +204,82 @@ function NodeRenderer({
 }
 
 function UserBubble({ text }: { text: string }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const preview = useMemo(() => getUserMessagePreview(text), [text])
+  const displayText = expanded || !preview.isLong ? text : preview.text
+
   return (
     <div className="flex justify-end" data-testid="user-message">
-      <div className="w-fit min-w-16 max-w-[min(76%,680px)] rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground">
-        {text}
+      <div
+        className={cn(
+          'min-w-16 rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
+          'max-w-[85%] whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+          preview.isLong ? 'w-full' : 'w-fit',
+        )}
+      >
+        {displayText}
+        {preview.isLong && (
+          <div className="mt-2">
+            <button
+              type="button"
+              className="h-7 rounded px-2 text-sm font-medium text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+              onClick={() => {
+                setExpanded((current) => !current)
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function AssistantBubble({
-  node,
-  isStreaming,
-  streamingRef,
-  thinkingRef,
-}: {
-  node: AssistantNode
-  isStreaming: boolean
-  streamingRef?: React.RefObject<HTMLDivElement | null>
-  thinkingRef?: React.RefObject<HTMLPreElement | null>
-}): React.JSX.Element {
+function getUserMessagePreview(text: string): UserMessagePreview {
+  const lines = text.split('\n')
+  if (lines.length > LONG_USER_MESSAGE_LINE_LIMIT) {
+    return { isLong: true, text: getCollapsedUserMessageByLines(lines) }
+  }
+
+  if (text.length > LONG_USER_MESSAGE_CHARACTER_LIMIT) {
+    return { isLong: true, text: getCollapsedUserMessageByCharacters(text) }
+  }
+
+  return { isLong: false, text }
+}
+
+function getCollapsedUserMessageByLines(lines: string[]): string {
+  const omittedLineCount =
+    lines.length - LONG_USER_MESSAGE_HEAD_LINES - LONG_USER_MESSAGE_TAIL_LINES
+  const head = lines.slice(0, LONG_USER_MESSAGE_HEAD_LINES)
+  const tail = lines.slice(-LONG_USER_MESSAGE_TAIL_LINES)
+  return [...head, `... (${omittedLineCount.toLocaleString()} lines hidden)`, ...tail].join('\n')
+}
+
+function getCollapsedUserMessageByCharacters(text: string): string {
+  const hiddenCharacterCount =
+    text.length - LONG_USER_MESSAGE_HEAD_CHARACTERS - LONG_USER_MESSAGE_TAIL_CHARACTERS
+  return [
+    text.slice(0, LONG_USER_MESSAGE_HEAD_CHARACTERS),
+    `... (${hiddenCharacterCount.toLocaleString()} characters hidden)`,
+    text.slice(-LONG_USER_MESSAGE_TAIL_CHARACTERS),
+  ].join('\n')
+}
+
+function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
+  const showThinking = node.thinking.length > 0
+  const showText = node.text.length > 0
+
   return (
     <div className="flex justify-start" data-testid="assistant-message">
-      <div className="max-w-[680px] min-w-0 text-[15px] leading-6 text-foreground">
-        {isStreaming && <ThinkingBlock text="" contentRef={thinkingRef} />}
+      <div
+        className="w-full min-w-0 text-[15px] leading-6 text-foreground"
+        style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
+      >
+        {showThinking && <ThinkingBlock text={node.thinking} />}
 
-        {!isStreaming && node.thinking && <ThinkingBlock text={node.thinking} />}
-
-        {isStreaming ? (
-          <div ref={streamingRef} className="whitespace-pre-wrap break-words" />
-        ) : (
-          <div className="whitespace-pre-wrap break-words">{node.text}</div>
-        )}
+        {showText && <MarkdownMessage text={node.text} />}
 
         {node.errorMessage && (
           <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[14px] text-destructive">
@@ -220,20 +291,11 @@ function AssistantBubble({
   )
 }
 
-function ThinkingBlock({
-  text,
-  contentRef,
-}: {
-  text: string
-  contentRef?: React.RefObject<HTMLPreElement | null>
-}): React.JSX.Element {
+function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="mb-4 rounded-md bg-muted/35 px-3 py-2 text-muted-foreground">
       <div className="mb-1.5 text-[14px] font-medium">Thinking</div>
-      <pre
-        ref={contentRef}
-        className="whitespace-pre-wrap break-words font-sans text-[15px] leading-6 text-muted-foreground"
-      >
+      <pre className="whitespace-pre-wrap break-words font-sans text-[15px] leading-6 text-muted-foreground">
         {text}
       </pre>
     </div>

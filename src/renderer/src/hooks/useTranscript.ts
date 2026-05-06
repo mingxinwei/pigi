@@ -4,7 +4,7 @@
  * - Creates/resets controller on session switch
  * - Subscribes to push events and stream batches via MessagePort
  * - Hydrates transcript from getMessages on session_ready
- * - Exposes state + imperative ref for streaming DOM updates
+ * - Exposes state plus the controller for optimistic user messages
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { TranscriptController, type TranscriptState } from '../state/transcriptController'

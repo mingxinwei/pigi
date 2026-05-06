@@ -246,8 +246,7 @@ function App(): React.JSX.Element {
 
   async function handleNewSession(): Promise<void> {
     try {
-      const cwd = activeProject?.path ?? window.piApi.getCwd()
-      await createAndActivateSession(cwd)
+      await createAndActivateSession(activeCwd)
     } catch (err) {
       console.error('Failed to create session:', err)
     }

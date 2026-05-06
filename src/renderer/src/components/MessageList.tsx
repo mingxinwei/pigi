@@ -42,7 +42,6 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
   const isManualScrollLockedRef = useRef(false)
   const hasLeftBottomAfterManualLockRef = useRef(false)
   const lastNodeIdRef = useRef<string | null>(null)
-  const lastScrollTopRef = useRef(0)
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
 
   const getItemKey = useCallback(
@@ -78,7 +77,6 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
 
     rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
     el.scrollTop = el.scrollHeight
-    lastScrollTopRef.current = el.scrollTop
   }, [displayNodes.length, rowVirtualizer])
 
   const unlockAutoScroll = useCallback(() => {
@@ -119,9 +117,6 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
     if (!el) {
       return
     }
-    const scrollTop = el.scrollTop
-    const scrollingUp = scrollTop < lastScrollTopRef.current
-    lastScrollTopRef.current = scrollTop
     const atBottom = isAtBottom(el)
 
     if (isManualScrollLockedRef.current) {
@@ -136,15 +131,10 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       return
     }
 
-    if (scrollingUp) {
-      lockManualScroll()
-      return
-    }
-
     if (atBottom) {
       isAutoScrollRef.current = true
     }
-  }, [lockManualScroll, unlockAutoScroll])
+  }, [unlockAutoScroll])
 
   const handleWheelCapture = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {

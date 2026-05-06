@@ -3,6 +3,7 @@
   "include": ["electron.vite.config.*", "src/main/**/*", "src/processes/**/*", "src/shared/**/*", "src/preload/**/*"],
   "compilerOptions": {
     "composite": true,
+    "noImplicitAny": true,
     "types": ["electron-vite/node"]
   }
 }

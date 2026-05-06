@@ -40,9 +40,7 @@ interface UserMessagePreview {
 
 export default function MessageList({ nodes, isWorking }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const isAutoScrollRef = useRef(true)
-  const isManualScrollLockedRef = useRef(false)
-  const hasLeftBottomAfterManualLockRef = useRef(false)
+  const autoScrollRef = useRef(true)
   const lastNodeIdRef = useRef<string | null>(null)
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
 
@@ -64,102 +62,68 @@ export default function MessageList({ nodes, isWorking }: MessageListProps): Rea
     useFlushSync: false,
   })
 
-  const totalSize = rowVirtualizer.getTotalSize()
+  // Disable virtualizer scroll corrections when auto-scroll is off.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => autoScrollRef.current
 
-  const scrollToBottom = useCallback(() => {
-    const el = containerRef.current
-    if (
-      isManualScrollLockedRef.current ||
-      !isAutoScrollRef.current ||
-      !el ||
-      displayNodes.length === 0
-    ) {
-      return
-    }
-
-    rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
-    el.scrollTop = el.scrollHeight
-  }, [displayNodes.length, rowVirtualizer])
-
-  const unlockAutoScroll = useCallback(() => {
-    isManualScrollLockedRef.current = false
-    hasLeftBottomAfterManualLockRef.current = false
-    isAutoScrollRef.current = true
-  }, [])
-
-  const lockManualScroll = useCallback(() => {
-    isManualScrollLockedRef.current = true
-    hasLeftBottomAfterManualLockRef.current = false
-    isAutoScrollRef.current = false
-  }, [])
-
+  // Resume auto-scroll when a new user message appears
   useLayoutEffect(() => {
     const lastNode = displayNodes[displayNodes.length - 1]
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
-      unlockAutoScroll()
+      autoScrollRef.current = true
     }
     lastNodeIdRef.current = lastNode?.id ?? null
-  }, [displayNodes, unlockAutoScroll])
+  }, [displayNodes])
 
+  // Auto-scroll + wheel handler. ResizeObserver on the scroll container
+  // detects when content height changes (virtualizer spacer div grows).
+  // Stable effect — never re-created.
   useEffect(() => {
-    let nextFrameId = 0
-    const frameId = requestAnimationFrame(() => {
-      scrollToBottom()
-      nextFrameId = requestAnimationFrame(scrollToBottom)
+    const el = containerRef.current
+    if (!el) return
+
+    let lastScrollHeight = el.scrollHeight
+    let pendingRaf = 0
+
+    function scrollToBottom(): void {
+      if (!autoScrollRef.current) return
+      el!.scrollTop = el!.scrollHeight
+    }
+
+    const ro = new ResizeObserver(() => {
+      if (el!.scrollHeight !== lastScrollHeight) {
+        lastScrollHeight = el!.scrollHeight
+        if (pendingRaf) cancelAnimationFrame(pendingRaf)
+        pendingRaf = requestAnimationFrame(scrollToBottom)
+      }
     })
+    // Observe the first child (the content wrapper whose height changes)
+    const content = el.firstElementChild
+    if (content) ro.observe(content)
+
+    function handleWheel(event: WheelEvent): void {
+      if (event.deltaY < 0) {
+        autoScrollRef.current = false
+      } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(el!)) {
+        autoScrollRef.current = true
+      }
+    }
+    el.addEventListener('wheel', handleWheel, { capture: true, passive: true })
+
+    scrollToBottom()
 
     return () => {
-      cancelAnimationFrame(frameId)
-      cancelAnimationFrame(nextFrameId)
+      ro.disconnect()
+      if (pendingRaf) cancelAnimationFrame(pendingRaf)
+      el.removeEventListener('wheel', handleWheel, { capture: true })
     }
-  }, [displayNodes, isWorking, scrollToBottom, totalSize])
-
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) {
-      return
-    }
-    const atBottom = isAtBottom(el)
-
-    if (isManualScrollLockedRef.current) {
-      if (!atBottom) {
-        hasLeftBottomAfterManualLockRef.current = true
-      }
-
-      if (atBottom && hasLeftBottomAfterManualLockRef.current) {
-        unlockAutoScroll()
-      }
-
-      return
-    }
-
-    if (atBottom) {
-      isAutoScrollRef.current = true
-    }
-  }, [unlockAutoScroll])
-
-  const handleWheelCapture = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
-      if (event.deltaY !== 0) {
-        lockManualScroll()
-      }
-    },
-    [lockManualScroll],
-  )
-
-  const handleTouchMoveCapture = useCallback(() => {
-    lockManualScroll()
-  }, [lockManualScroll])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
   return (
     <div
       ref={containerRef}
-      onScroll={handleScroll}
-      onWheelCapture={handleWheelCapture}
-      onTouchMoveCapture={handleTouchMoveCapture}
-      className="min-h-0 flex-1 overflow-y-auto bg-background"
+      className="min-h-0 flex-1 overflow-y-auto bg-background [overflow-anchor:none]"
       style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
       data-testid="message-list"
     >

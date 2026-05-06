@@ -5,3 +5,4 @@ out
 .eslintcache
 .cache
 *.log*
+*.tsbuildinfo

@@ -11,6 +11,8 @@
     "composite": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
+    "skipLibCheck": true,
+    "noImplicitAny": true,
     "paths": {
       "@/*": [
         "src/renderer/src/*"

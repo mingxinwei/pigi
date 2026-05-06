@@ -116,15 +116,17 @@ function spawnSessionProcess(
           const sessionId = msg.sessionId
           processPool.registerSessionProcess(sessionId, proc)
 
-          // Single MessagePort for all session communication.
-          const channel = new MessageChannelMain()
+          // Establish separate ports so high-volume stream output cannot delay controls.
+          const controlChannel = new MessageChannelMain()
+          const dataChannel = new MessageChannelMain()
           const attachCmd: UtilityCommand = { type: 'attach_ports' }
-          proc.postMessage(attachCmd, [channel.port1])
+          proc.postMessage(attachCmd, [controlChannel.port1, dataChannel.port1])
 
           const win = getMainWindow()
           if (win && !win.isDestroyed()) {
             win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [
-              channel.port2,
+              controlChannel.port2,
+              dataChannel.port2,
             ])
           }
 

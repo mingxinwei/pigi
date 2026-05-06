@@ -8,7 +8,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   PiChannel,
-  type PortMessage,
+  type ControlPortMessage,
+  type DataPortMessage,
   type GitBranchResult,
   type PiCommand,
   type PiPush,
@@ -37,7 +38,8 @@ interface PendingPortWaiter {
 }
 
 interface SessionPort {
-  port: MessagePort
+  controlPort: MessagePort
+  dataPort: MessagePort
   pending: Map<string, PendingCommand>
   pushHandlers: Set<(msg: PiPush) => void>
   streamHandlers: Set<(batch: StreamBatch) => void>
@@ -113,7 +115,8 @@ function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): voi
     sp.pending.clear()
     sp.pushHandlers.clear()
     sp.streamHandlers.clear()
-    sp.port.close()
+    sp.controlPort.close()
+    sp.dataPort.close()
     sessionPorts.delete(sessionId)
   }
 
@@ -150,27 +153,21 @@ function mergeStreamBatches(batches: StreamBatch[]): StreamBatch {
   return merged
 }
 
-function setupPort(sessionId: string, port: MessagePort): void {
+function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
   cleanupSessionPort(sessionId, false)
 
   const sp: SessionPort = {
-    port,
+    controlPort,
+    dataPort,
     pending: new Map(),
     pushHandlers: new Set(),
     streamHandlers: new Set(),
     requestId: 0,
   }
 
-  // Coalesce stream batches: buffer incoming batches and deliver at most once per
-  // animation frame. This keeps the main thread from being saturated by back-to-back
-  // React renders, leaving gaps for keyboard events (e.g. Escape to abort) to fire.
-  let pendingStreamBatches: StreamBatch[] = []
-  let streamRafScheduled = false
+  controlPort.onmessage = (event) => {
+    const data = event.data as ControlPortMessage
 
-  port.onmessage = (event) => {
-    const data = event.data as PortMessage
-
-    // Response to a command request
     if ('id' in data && 'result' in data) {
       const res = data as PiResult
       const pending = sp.pending.get(res.id)
@@ -179,10 +176,18 @@ function setupPort(sessionId: string, port: MessagePort): void {
         sp.pending.delete(res.id)
         pending.resolve(res.result)
       }
-      return
     }
+  }
 
-    // Stream batch — coalesce with rAF
+  // Coalesce stream batches: buffer incoming batches and deliver at most once per
+  // animation frame. This keeps the main thread from being saturated by back-to-back
+  // React renders, leaving gaps for keyboard events (e.g. Escape to abort) to fire.
+  let pendingStreamBatches: StreamBatch[] = []
+  let streamRafScheduled = false
+
+  dataPort.onmessage = (event) => {
+    const data = event.data as DataPortMessage
+
     if ('type' in data && data.type === 'stream_batch') {
       pendingStreamBatches.push(data as StreamBatch)
       if (!streamRafScheduled) {
@@ -200,7 +205,6 @@ function setupPort(sessionId: string, port: MessagePort): void {
       return
     }
 
-    // Push event (session_ready, event, error)
     if ('type' in data) {
       for (const handler of sp.pushHandlers) {
         handler(data as PiPush)
@@ -222,15 +226,16 @@ function setupPort(sessionId: string, port: MessagePort): void {
     pendingStreamHandlers.delete(sessionId)
   }
 
-  port.start()
+  controlPort.start()
+  dataPort.start()
   resolvePendingPortWaiters(sessionId)
 }
 
-// Receive session port from main.
+// Receive session ports from main. ports[0] is low-volume control, ports[1] is data stream.
 ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionId: string }) => {
-  const [port] = event.ports
-  if (!port || !data?.sessionId) return
-  setupPort(data.sessionId, port)
+  const [controlPort, dataPort] = event.ports
+  if (!controlPort || !dataPort || !data?.sessionId) return
+  setupPort(data.sessionId, controlPort, dataPort)
 })
 
 // =============================================================================
@@ -321,7 +326,7 @@ const piApi = {
       }, 60000)
       sp.pending.set(id, { resolve, reject, timeoutId })
       const req: PiRequest = { id, cmd }
-      sp.port.postMessage(req)
+      sp.controlPort.postMessage(req)
     })
   },
 

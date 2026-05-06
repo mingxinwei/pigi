@@ -5,6 +5,8 @@ import { cn } from '../lib/utils'
 import type { ToolNode } from '../state/transcriptController'
 import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants'
 import SyntaxHighlightedCode from './syntaxHighlightedCode'
+import DiffView from './DiffView'
+import type { EditEntry } from '../lib/diffUtils'
 
 interface ToolBlockProps {
   node: ToolNode
@@ -149,6 +151,17 @@ function getLanguageFromPath(path: string): string | null {
   return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null
 }
 
+function getEditEntries(node: ToolNode): EditEntry[] | null {
+  if (node.name !== 'edit') return null
+  const args = node.args as Record<string, unknown> | undefined
+  if (!args) return null
+  const edits = args.edits as Array<{ oldText?: string; newText?: string }> | undefined
+  if (!Array.isArray(edits) || edits.length === 0) return null
+  return edits
+    .filter((e) => typeof e.oldText === 'string' && typeof e.newText === 'string')
+    .map((e) => ({ oldText: e.oldText!, newText: e.newText! }))
+}
+
 function formatDuration(durationMs: number | undefined): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs)) {
     return null
@@ -163,6 +176,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status]
   const command = getToolCommandParts(node)
+  const editEntries = getEditEntries(node)
   const hasOutput = node.output.length > 0
   const outputLines = node.output.split('\n')
   const visibleOutput = expanded
@@ -186,6 +200,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           </span>
         </div>
       )}
+
+      {editEntries && editEntries.length > 0 && <DiffView edits={editEntries} />}
 
       {hasOutput && (
         <>

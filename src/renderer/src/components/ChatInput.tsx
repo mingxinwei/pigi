@@ -71,6 +71,33 @@ export default function ChatInput({
   onSelectThinkingLevel,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const draftsRef = useRef<Map<string, string>>(new Map())
+  const prevSessionIdRef = useRef<string | null>(null)
+
+  // Save/restore draft per session
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const prevId = prevSessionIdRef.current
+    const currentId = session?.sessionId ?? null
+
+    // Save previous session's draft
+    if (prevId && prevId !== currentId) {
+      const draft = el.value
+      if (draft) {
+        draftsRef.current.set(prevId, draft)
+      } else {
+        draftsRef.current.delete(prevId)
+      }
+    }
+
+    // Restore current session's draft
+    if (currentId !== prevId) {
+      el.value = draftsRef.current.get(currentId ?? '') ?? ''
+    }
+
+    prevSessionIdRef.current = currentId
+  }, [session?.sessionId])
   const contextUsage = session?.contextUsage ?? null
   const autoCompactionEnabled = session?.autoCompactionEnabled ?? false
   const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled)

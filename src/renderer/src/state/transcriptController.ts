@@ -225,6 +225,8 @@ export class TranscriptController {
         content?: unknown[]
         model?: { name?: string; provider?: string }
         timestamp?: number | string
+        stopReason?: string
+        errorMessage?: string
       }
       if (!m.role) continue
 
@@ -244,7 +246,9 @@ export class TranscriptController {
             text,
             thinking,
             toolCalls: assistantToolCalls,
+            errorMessage: contentError,
           } = extractAssistantContent(m.content)
+          const assistantError = m.errorMessage || contentError
           const assistantTimestamp = tryNormalizeTimestamp(m.timestamp)
           for (const toolCall of assistantToolCalls) {
             toolCalls.set(toolCall.id, {
@@ -253,7 +257,7 @@ export class TranscriptController {
               startedAt: assistantTimestamp,
             })
           }
-          if (text || thinking) {
+          if (text || thinking || assistantError) {
             nodes.push({
               id: m.id || nextNodeId(),
               role: 'assistant',
@@ -261,6 +265,8 @@ export class TranscriptController {
               thinking,
               model: m.model?.name,
               provider: m.model?.provider,
+              stopReason: m.stopReason,
+              errorMessage: assistantError,
               isStreaming: false,
             })
           }
@@ -631,11 +637,13 @@ function extractAssistantContent(content: unknown[] | undefined): {
   text: string
   thinking: string
   toolCalls: Array<{ id: string; name: string; args: unknown }>
+  errorMessage: string | undefined
 } {
-  if (!content || !Array.isArray(content)) return { text: '', thinking: '', toolCalls: [] }
+  if (!content || !Array.isArray(content)) return { text: '', thinking: '', toolCalls: [], errorMessage: undefined }
   const textParts: string[] = []
   const thinkingParts: string[] = []
   const toolCalls: Array<{ id: string; name: string; args: unknown }> = []
+  let errorMessage: string | undefined
   for (const block of content) {
     const b = block as {
       type?: string
@@ -644,6 +652,7 @@ function extractAssistantContent(content: unknown[] | undefined): {
       id?: string
       name?: string
       arguments?: unknown
+      error?: string
     }
     if (b.type === 'text' && b.text) {
       textParts.push(b.text)
@@ -651,9 +660,11 @@ function extractAssistantContent(content: unknown[] | undefined): {
       thinkingParts.push(b.thinking)
     } else if (b.type === 'toolCall' && b.id && b.name) {
       toolCalls.push({ id: b.id, name: b.name, args: b.arguments })
+    } else if (b.type === 'error' && b.error) {
+      errorMessage = b.error
     }
   }
-  return { text: textParts.join('\n'), thinking: thinkingParts.join('\n'), toolCalls }
+  return { text: textParts.join('\n'), thinking: thinkingParts.join('\n'), toolCalls, errorMessage }
 }
 
 function extractToolResultText(result: unknown): string {

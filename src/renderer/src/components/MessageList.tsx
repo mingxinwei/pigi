@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type {
   TranscriptNode,
@@ -38,6 +38,7 @@ interface UserMessagePreview {
 export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const isAutoScrollRef = useRef(true)
+  const lastNodeIdRef = useRef<string | null>(null)
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
 
   const getItemKey = useCallback(
@@ -58,21 +59,38 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
     useFlushSync: false,
   })
 
+  const totalSize = rowVirtualizer.getTotalSize()
+
   const scrollToBottom = useCallback(() => {
-    if (isAutoScrollRef.current && displayNodes.length > 0) {
-      rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
+    const el = containerRef.current
+    if (!isAutoScrollRef.current || !el || displayNodes.length === 0) {
+      return
     }
+
+    rowVirtualizer.scrollToIndex(displayNodes.length - 1, { align: 'end' })
+    el.scrollTop = el.scrollHeight
   }, [displayNodes.length, rowVirtualizer])
 
+  useLayoutEffect(() => {
+    const lastNode = displayNodes[displayNodes.length - 1]
+    if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
+      isAutoScrollRef.current = true
+    }
+    lastNodeIdRef.current = lastNode?.id ?? null
+  }, [displayNodes])
+
   useEffect(() => {
-    const measureAndScroll = (): void => {
+    let nextFrameId = 0
+    const frameId = requestAnimationFrame(() => {
       scrollToBottom()
-    }
-    const rafId = requestAnimationFrame(measureAndScroll)
+      nextFrameId = requestAnimationFrame(scrollToBottom)
+    })
+
     return () => {
-      cancelAnimationFrame(rafId)
+      cancelAnimationFrame(frameId)
+      cancelAnimationFrame(nextFrameId)
     }
-  }, [displayNodes, rowVirtualizer, scrollToBottom])
+  }, [displayNodes, scrollToBottom, totalSize])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current

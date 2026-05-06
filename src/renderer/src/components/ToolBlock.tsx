@@ -40,6 +40,8 @@ const STATUS_CONFIG = {
 
 export const TOOL_OUTPUT_LINE_LIMIT = 10
 
+const SECONDS_PER_MILLISECOND = 1 / 1000
+
 const TOOL_OUTPUT_LANGUAGE_BY_NAME: Record<string, string> = {
   bash: 'bash',
 }
@@ -133,9 +135,19 @@ function getLanguageFromPath(path: string): string | null {
   return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null
 }
 
+function formatDuration(durationMs: number | undefined): string | null {
+  if (durationMs === undefined || !Number.isFinite(durationMs)) {
+    return null
+  }
+
+  const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND)
+  const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString()
+  return `Took ${formattedSeconds}s`
+}
+
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
-  const { label, Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status]
+  const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status]
   const command = getToolCommandParts(node)
   const hasOutput = node.output.length > 0
   const outputLines = node.output.split('\n')
@@ -144,6 +156,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
     : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n')
   const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT)
   const outputLanguage = getToolOutputLanguage(node)
+  const durationLabel = formatDuration(node.durationMs)
 
   return (
     <div
@@ -191,8 +204,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           statusClassName,
         )}
       >
+        {durationLabel && <span>{durationLabel}</span>}
         <StatusIcon className={cn('size-3.5', node.status === 'running' && 'animate-spin')} />
-        <span>{label}</span>
       </div>
     </div>
   )

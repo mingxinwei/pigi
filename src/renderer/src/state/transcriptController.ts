@@ -44,6 +44,8 @@ export interface ToolNode {
   status: 'running' | 'success' | 'error' | 'cancelled'
   output: string
   isError: boolean
+  startedAt?: number
+  durationMs?: number
 }
 
 export interface SystemNode {
@@ -107,6 +109,7 @@ interface SdkToolExecStart {
   toolCallId: string
   toolName: string
   args: unknown
+  timestamp?: number | string
 }
 interface SdkToolExecUpdate {
   type: 'tool_execution_update'
@@ -121,6 +124,9 @@ interface SdkToolExecEnd {
   toolName: string
   result: unknown
   isError: boolean
+  timestamp?: number | string
+  durationMs?: number
+  elapsedMs?: number
 }
 
 // =============================================================================
@@ -181,7 +187,7 @@ export class TranscriptController {
 
   hydrate(messages: unknown[]): void {
     const nodes: TranscriptNode[] = []
-    const toolCalls = new Map<string, { name: string; args: unknown }>()
+    const toolCalls = new Map<string, { name: string; args: unknown; startedAt?: number }>()
 
     for (const msg of messages) {
       const m = msg as {
@@ -210,8 +216,13 @@ export class TranscriptController {
             thinking,
             toolCalls: assistantToolCalls,
           } = extractAssistantContent(m.content)
+          const assistantTimestamp = tryNormalizeTimestamp(m.timestamp)
           for (const toolCall of assistantToolCalls) {
-            toolCalls.set(toolCall.id, { name: toolCall.name, args: toolCall.args })
+            toolCalls.set(toolCall.id, {
+              name: toolCall.name,
+              args: toolCall.args,
+              startedAt: assistantTimestamp,
+            })
           }
           if (text || thinking) {
             nodes.push({
@@ -233,8 +244,10 @@ export class TranscriptController {
             toolName?: string
             content?: unknown[]
             isError?: boolean
+            timestamp?: number | string
           }
           const call = toolMsg.toolCallId ? toolCalls.get(toolMsg.toolCallId) : undefined
+          const completedAt = tryNormalizeTimestamp(toolMsg.timestamp)
           const output = extractText(toolMsg.content)
           nodes.push({
             id: toolMsg.id || nextNodeId(),
@@ -245,6 +258,8 @@ export class TranscriptController {
             status: toolMsg.isError ? 'error' : 'success',
             output,
             isError: toolMsg.isError || false,
+            startedAt: call?.startedAt,
+            durationMs: getElapsedMs(call?.startedAt, completedAt),
           })
           break
         }
@@ -484,6 +499,7 @@ export class TranscriptController {
   }
 
   private handleToolStart(event: SdkToolExecStart): void {
+    const startedAt = normalizeTimestamp(event.timestamp)
     const node: ToolNode = {
       id: nextNodeId(),
       role: 'tool',
@@ -493,6 +509,7 @@ export class TranscriptController {
       status: 'running',
       output: '',
       isError: false,
+      startedAt,
     }
     this.setState({
       nodes: [...this._state.nodes, node],
@@ -517,6 +534,7 @@ export class TranscriptController {
   }
 
   private handleToolEnd(event: SdkToolExecEnd): void {
+    const endedAt = normalizeTimestamp(event.timestamp)
     const tool = this._state.nodes.find(
       (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
     ) as ToolNode | undefined
@@ -526,6 +544,10 @@ export class TranscriptController {
       tool.isError = event.isError
       const text = extractToolResultText(event.result)
       if (text) tool.output = text
+      tool.durationMs =
+        normalizeDurationMs(event.durationMs ?? event.elapsedMs) ??
+        extractToolDurationMs(event.result) ??
+        getElapsedMs(tool.startedAt, endedAt)
     }
 
     this.setState({
@@ -600,7 +622,52 @@ function extractToolResultText(result: unknown): string {
   return ''
 }
 
+function extractToolDurationMs(result: unknown): number | undefined {
+  if (!result || typeof result !== 'object') {
+    return undefined
+  }
+
+  const r = result as {
+    durationMs?: unknown
+    elapsedMs?: unknown
+    details?: {
+      durationMs?: unknown
+      elapsedMs?: unknown
+    }
+  }
+
+  return (
+    normalizeDurationMs(r.durationMs) ??
+    normalizeDurationMs(r.elapsedMs) ??
+    normalizeDurationMs(r.details?.durationMs) ??
+    normalizeDurationMs(r.details?.elapsedMs)
+  )
+}
+
+function normalizeDurationMs(duration: unknown): number | undefined {
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
+    return undefined
+  }
+
+  return duration
+}
+
+function getElapsedMs(
+  startedAt: number | undefined,
+  endedAt: number | undefined,
+): number | undefined {
+  if (startedAt === undefined || endedAt === undefined || endedAt < startedAt) {
+    return undefined
+  }
+
+  return endedAt - startedAt
+}
+
 function normalizeTimestamp(timestamp: number | string | undefined): number {
+  return tryNormalizeTimestamp(timestamp) ?? Date.now()
+}
+
+function tryNormalizeTimestamp(timestamp: number | string | undefined): number | undefined {
   if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
     return timestamp
   }
@@ -612,5 +679,5 @@ function normalizeTimestamp(timestamp: number | string | undefined): number {
     }
   }
 
-  return Date.now()
+  return undefined
 }

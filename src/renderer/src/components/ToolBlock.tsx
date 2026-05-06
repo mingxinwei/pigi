@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { IconBan, IconCheck, IconLoader2, IconX } from '@tabler/icons-react'
+import { useState, useEffect, useRef } from 'react'
+import { IconBan, IconCheck, IconX } from '@tabler/icons-react'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 import type { ToolNode } from '../state/transcriptController'
@@ -18,7 +18,7 @@ interface ToolCommandParts {
 const STATUS_CONFIG = {
   running: {
     label: 'Running',
-    Icon: IconLoader2,
+    Icon: null,
     className: 'bg-yellow-50 text-yellow-700',
   },
   success: {
@@ -37,6 +37,20 @@ const STATUS_CONFIG = {
     className: 'bg-muted/60 text-muted-foreground',
   },
 } as const
+
+function ElapsedTimer(): React.JSX.Element {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed((Date.now() - startRef.current) / 1000)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>
+}
 
 export const TOOL_OUTPUT_LINE_LIMIT = 10
 
@@ -204,8 +218,14 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           statusClassName,
         )}
       >
-        {durationLabel && <span>{durationLabel}</span>}
-        <StatusIcon className={cn('size-3.5', node.status === 'running' && 'animate-spin')} />
+        {node.status === 'running' ? (
+          <ElapsedTimer />
+        ) : (
+          <>
+            {durationLabel && <span>{durationLabel}</span>}
+            {StatusIcon && <StatusIcon className="size-3.5" />}
+          </>
+        )}
       </div>
     </div>
   )

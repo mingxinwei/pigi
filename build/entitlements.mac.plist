@@ -8,6 +8,9 @@
     <true/>
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
+    <!-- Required for ad-hoc signed Electron macOS builds with hardened runtime.
+         Without this entitlement, macOS can reject Electron Framework at launch with:
+         "mapping process and mapped file (non-platform) have different Team IDs". -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
   </dict>

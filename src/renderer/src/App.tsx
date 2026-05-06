@@ -1,6 +1,10 @@
 import { useEffect, useCallback, useState } from 'react'
 import { useAppStore } from './state/appStore'
-import { useTranscript } from './hooks/useTranscript'
+import {
+  disposeTranscriptSession,
+  ensureTranscriptSession,
+  useTranscript,
+} from './hooks/useTranscript'
 import {
   resumeSession,
   createSession,
@@ -53,7 +57,7 @@ function App(): React.JSX.Element {
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([])
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null
-  const { state: transcript, controller } = useTranscript(activeSessionId)
+  const { state: transcript } = useTranscript(activeSessionId)
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -178,6 +182,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     return window.piApi.onProcessExit(({ sessionId }) => {
+      disposeTranscriptSession(sessionId)
       removeSession(sessionId)
     })
   }, [removeSession])
@@ -201,7 +206,7 @@ function App(): React.JSX.Element {
     if (existing?.title === 'New chat') {
       useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) })
     }
-    controller.current.addUserMessage(message)
+    ensureTranscriptSession(sessionId).addUserMessage(message)
     await prompt(sessionId, message)
     void listProjectSessions([cwd])
   }
@@ -271,6 +276,8 @@ function App(): React.JSX.Element {
         error: null,
       })
       setActiveSession(sessionId)
+    } catch (err) {
+      console.error('Failed to resume session:', err)
     } finally {
       setPendingSelectedSessionId(null)
     }
@@ -335,7 +342,6 @@ function App(): React.JSX.Element {
         <Sidebar
           sessions={sessions}
           selectedSessionId={selectedSessionId}
-          isStreaming={transcript.status !== 'idle'}
           recentProjects={recentProjects}
           projectSessions={projectSessions}
           onNewSession={handleNewSession}
@@ -355,7 +361,7 @@ function App(): React.JSX.Element {
       </div>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <MessageList nodes={transcript.nodes} />
+        <MessageList nodes={transcript.nodes} isWorking={transcript.status !== 'idle'} />
         <ChatInput
           onSend={handleSend}
           onAbort={handleAbort}

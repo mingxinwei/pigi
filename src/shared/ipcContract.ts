@@ -3,15 +3,15 @@
  *
  * Architecture:
  *   One utility process per session.
- *   Renderer ←(MessagePort)→ Utility Process (1:1 with session)
+ *   Renderer ←(control/data MessagePorts)→ Utility Process (1:1 with session)
  *   Main only handles: process lifecycle + port handshake
  *
  * Flow:
  *   1. Renderer invokes create/resume on main
  *   2. Main spawns a new utility process, sends lifecycle command
  *   3. Utility creates session, reports back real sessionId
- *   4. Main creates MessageChannel, distributes ports, returns sessionId
- *   5. All subsequent communication flows over the MessagePort
+ *   4. Main creates MessageChannels, distributes ports, returns sessionId
+ *   5. Runtime communication flows over dedicated control/data MessagePorts
  */
 
 // =============================================================================
@@ -96,7 +96,7 @@ export interface SessionOptions {
 }
 
 // =============================================================================
-// Commands: Renderer → Utility (via MessagePort, after handshake)
+// Commands: Renderer → Utility (via control MessagePort, after handshake)
 // =============================================================================
 
 export type PiCommand =
@@ -125,7 +125,7 @@ export interface PiResult {
 }
 
 // =============================================================================
-// Push events: Utility → Renderer (via MessagePort, no request ID)
+// Push events: Utility → Renderer (via data MessagePort, no request ID)
 // =============================================================================
 
 export type PiPush =
@@ -141,7 +141,7 @@ export type PiPush =
   | { type: 'error'; error: string }
 
 // =============================================================================
-// Stream batches: Utility → Renderer (via MessagePort, high-frequency)
+// Stream batches: Utility → Renderer (via data MessagePort, high-frequency)
 // =============================================================================
 
 /** Batched streaming data, flushed every 16ms */
@@ -153,10 +153,17 @@ export interface StreamBatch {
 }
 
 // =============================================================================
-// Port message: union of everything that can flow over a session's MessagePort
+// Port messages
 // =============================================================================
 
-export type PortMessage = PiRequest | PiResult | PiPush | StreamBatch
+/** Low-volume control port: renderer → utility commands and utility → renderer responses. */
+export type ControlPortMessage = PiRequest | PiResult
+
+/** High-volume data port: utility → renderer push events and stream batches. */
+export type DataPortMessage = PiPush | StreamBatch
+
+/** Union of all session port messages. */
+export type PortMessage = ControlPortMessage | DataPortMessage
 
 // =============================================================================
 // IPC Channels (only used for lifecycle via main process)
@@ -171,7 +178,7 @@ export enum PiChannel {
   DestroySession = 'pi:destroy_session',
   /** renderer → main: mark a session as recently selected */
   TouchSession = 'pi:touch_session',
-  /** main → renderer: deliver a MessagePort for a session */
+  /** main → renderer: deliver control/data MessagePorts for a session */
   SessionPort = 'pi:session_port',
   /** main → renderer: a session's process exited unexpectedly */
   ProcessExit = 'pi:process_exit',
@@ -205,7 +212,7 @@ export type UtilityCommand =
   | { type: 'create_session'; cwd: string }
   | { type: 'resume_session'; sessionPath: string }
   | { type: 'prewarm_session_services'; cwds: string[] }
-  | { type: 'attach_port' }
+  | { type: 'attach_ports' }
 
 // =============================================================================
 // Internal: Utility → Main (parentPort, lifecycle only)

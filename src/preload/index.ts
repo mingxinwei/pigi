@@ -1,7 +1,7 @@
 /**
  * Preload script - exposes piApi to renderer via contextBridge.
  *
- * After session creation, communication goes directly over MessagePort.
+ * After session creation, communication goes directly over control/data MessagePorts.
  * Main process is only involved for lifecycle (create/resume/destroy session).
  */
 import { contextBridge, ipcRenderer } from 'electron'
@@ -12,7 +12,8 @@ import {
   type PiPush,
   type PiRequest,
   type PiResult,
-  type PortMessage,
+  type ControlPortMessage,
+  type DataPortMessage,
   type GitBranchResult,
   type ProjectSessionsChunk,
   type ProjectStateResult,
@@ -24,9 +25,22 @@ import {
 // Per-session port management
 // =============================================================================
 
+interface PendingCommand {
+  resolve: (v: unknown) => void
+  reject: (e: Error) => void
+  timeoutId: ReturnType<typeof setTimeout>
+}
+
+interface PendingPortWaiter {
+  resolve: () => void
+  reject: (e: Error) => void
+  timeoutId: ReturnType<typeof setTimeout>
+}
+
 interface SessionPort {
-  port: MessagePort
-  pending: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>
+  controlPort: MessagePort
+  dataPort: MessagePort
+  pending: Map<string, PendingCommand>
   pushHandlers: Set<(msg: PiPush) => void>
   streamHandlers: Set<(batch: StreamBatch) => void>
   requestId: number
@@ -34,53 +48,114 @@ interface SessionPort {
 
 const sessionPorts = new Map<string, SessionPort>()
 const SESSION_PORT_CLOSED_ERROR = 'session process exited'
+const PORT_READY_TIMEOUT_MS = 5000
 
 /** Handlers registered before port arrives */
 const pendingPushHandlers = new Map<string, Set<(msg: PiPush) => void>>()
 const pendingStreamHandlers = new Map<string, Set<(batch: StreamBatch) => void>>()
+const pendingPortWaiters = new Map<string, Set<PendingPortWaiter>>()
 
-function cleanupSessionPort(sessionId: string): void {
+function cleanupPendingPortWaiters(sessionId: string, error: Error): void {
+  const waiters = pendingPortWaiters.get(sessionId)
+  if (!waiters) {
+    return
+  }
+
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timeoutId)
+    waiter.reject(error)
+  }
+  pendingPortWaiters.delete(sessionId)
+}
+
+function waitForPort(sessionId: string): Promise<void> {
+  if (sessionPorts.has(sessionId)) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      const waiters = pendingPortWaiters.get(sessionId)
+      if (waiters) {
+        waiters.delete(waiter)
+        if (waiters.size === 0) {
+          pendingPortWaiters.delete(sessionId)
+        }
+      }
+      reject(new Error(`port for session ${sessionId} did not arrive`))
+    }, PORT_READY_TIMEOUT_MS)
+
+    const waiter: PendingPortWaiter = { resolve, reject, timeoutId }
+    const waiters = pendingPortWaiters.get(sessionId) ?? new Set<PendingPortWaiter>()
+    waiters.add(waiter)
+    pendingPortWaiters.set(sessionId, waiters)
+  })
+}
+
+function resolvePendingPortWaiters(sessionId: string): void {
+  const waiters = pendingPortWaiters.get(sessionId)
+  if (!waiters) {
+    return
+  }
+
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timeoutId)
+    waiter.resolve()
+  }
+  pendingPortWaiters.delete(sessionId)
+}
+
+function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): void {
   const sp = sessionPorts.get(sessionId)
   if (sp) {
     for (const pending of sp.pending.values()) {
+      clearTimeout(pending.timeoutId)
       pending.reject(new Error(SESSION_PORT_CLOSED_ERROR))
     }
     sp.pending.clear()
     sp.pushHandlers.clear()
     sp.streamHandlers.clear()
-    sp.port.close()
+    sp.controlPort.close()
+    sp.dataPort.close()
     sessionPorts.delete(sessionId)
   }
-  pendingPushHandlers.delete(sessionId)
-  pendingStreamHandlers.delete(sessionId)
+
+  if (clearPendingHandlers) {
+    pendingPushHandlers.delete(sessionId)
+    pendingStreamHandlers.delete(sessionId)
+    cleanupPendingPortWaiters(sessionId, new Error(SESSION_PORT_CLOSED_ERROR))
+  }
 }
 
-function setupPort(sessionId: string, port: MessagePort): void {
-  cleanupSessionPort(sessionId)
+function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
+  cleanupSessionPort(sessionId, false)
 
   const sp: SessionPort = {
-    port,
+    controlPort,
+    dataPort,
     pending: new Map(),
     pushHandlers: new Set(),
     streamHandlers: new Set(),
     requestId: 0,
   }
 
-  port.onmessage = (event) => {
-    const data = event.data as PortMessage
+  controlPort.onmessage = (event) => {
+    const data = event.data as ControlPortMessage
 
-    // Response to a command
     if ('id' in data && 'result' in data) {
       const res = data as PiResult
       const pending = sp.pending.get(res.id)
       if (pending) {
+        clearTimeout(pending.timeoutId)
         sp.pending.delete(res.id)
         pending.resolve(res.result)
       }
-      return
     }
+  }
 
-    // Stream batch
+  dataPort.onmessage = (event) => {
+    const data = event.data as DataPortMessage
+
     if ('type' in data && data.type === 'stream_batch') {
       for (const handler of sp.streamHandlers) {
         handler(data as StreamBatch)
@@ -88,7 +163,6 @@ function setupPort(sessionId: string, port: MessagePort): void {
       return
     }
 
-    // Push event
     if ('type' in data) {
       for (const handler of sp.pushHandlers) {
         handler(data as PiPush)
@@ -96,10 +170,9 @@ function setupPort(sessionId: string, port: MessagePort): void {
     }
   }
 
-  port.start()
   sessionPorts.set(sessionId, sp)
 
-  // Drain pending handlers registered before port arrived
+  // Drain pending handlers registered before port arrived before starting delivery.
   const pendingPush = pendingPushHandlers.get(sessionId)
   if (pendingPush) {
     for (const cb of pendingPush) sp.pushHandlers.add(cb)
@@ -110,13 +183,17 @@ function setupPort(sessionId: string, port: MessagePort): void {
     for (const cb of pendingStream) sp.streamHandlers.add(cb)
     pendingStreamHandlers.delete(sessionId)
   }
+
+  controlPort.start()
+  dataPort.start()
+  resolvePendingPortWaiters(sessionId)
 }
 
-// Receive session port from main
+// Receive session ports from main. ports[0] is low-volume control, ports[1] is data stream.
 ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionId: string }) => {
-  const [port] = event.ports
-  if (!port || !data?.sessionId) return
-  setupPort(data.sessionId, port)
+  const [controlPort, dataPort] = event.ports
+  if (!controlPort || !dataPort || !data?.sessionId) return
+  setupPort(data.sessionId, controlPort, dataPort)
 })
 
 // =============================================================================
@@ -124,15 +201,35 @@ ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionId: string }) => {
 // =============================================================================
 
 const piApi = {
-  /** Create a new session. Returns sessionId. Port arrives async via SessionPort channel. */
-  createSession: (cwd: string): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
-    ipcRenderer.invoke(PiChannel.CreateSession, cwd),
+  /** Create a new session. Resolves after the renderer-side ports are registered. */
+  createSession: async (
+    cwd: string,
+  ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
+    const result = (await ipcRenderer.invoke(PiChannel.CreateSession, cwd)) as {
+      success: boolean
+      sessionId?: string
+      error?: string
+    }
+    if (result.success && result.sessionId) {
+      await waitForPort(result.sessionId)
+    }
+    return result
+  },
 
-  /** Resume an existing session by file path. */
-  resumeSession: (
+  /** Resume an existing session by file path. Resolves after renderer-side ports are registered. */
+  resumeSession: async (
     sessionPath: string,
-  ): Promise<{ success: boolean; sessionId?: string; error?: string }> =>
-    ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath),
+  ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
+    const result = (await ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath)) as {
+      success: boolean
+      sessionId?: string
+      error?: string
+    }
+    if (result.success && result.sessionId) {
+      await waitForPort(result.sessionId)
+    }
+    return result
+  },
 
   /** Destroy a session. */
   destroySession: (sessionId: string): Promise<{ success: boolean }> =>
@@ -170,7 +267,7 @@ const piApi = {
     return () => ipcRenderer.removeListener(PiChannel.ProjectSessionsChunk, handler)
   },
 
-  /** Send a command to a session (via MessagePort). Returns result. */
+  /** Send a command to a session (via control MessagePort). Returns result. */
   send: (sessionId: string, cmd: PiCommand): Promise<unknown> => {
     const sp = sessionPorts.get(sessionId)
     if (!sp)
@@ -179,15 +276,15 @@ const piApi = {
       )
     const id = `req-${++sp.requestId}`
     return new Promise((resolve, reject) => {
-      sp.pending.set(id, { resolve, reject })
-      const req: PiRequest = { id, cmd }
-      sp.port.postMessage(req)
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (sp.pending.has(id)) {
           sp.pending.delete(id)
           reject(new Error('command timed out'))
         }
       }, 60000)
+      sp.pending.set(id, { resolve, reject, timeoutId })
+      const req: PiRequest = { id, cmd }
+      sp.controlPort.postMessage(req)
     })
   },
 

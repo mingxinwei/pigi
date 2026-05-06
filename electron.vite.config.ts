@@ -3,8 +3,15 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const PIGI_DEBUG_PANEL_ENV = 'PIGI_DEBUG_PANEL'
+const PIGI_DEBUG_PANEL_ENABLED_VALUE = '1'
+const pigiDebugPanelEnabled = process.env[PIGI_DEBUG_PANEL_ENV] === PIGI_DEBUG_PANEL_ENABLED_VALUE
+
 export default defineConfig({
   main: {
+    define: {
+      __PIGI_DEBUG_PANEL__: JSON.stringify(pigiDebugPanelEnabled),
+    },
     build: {
       rollupOptions: {
         input: {

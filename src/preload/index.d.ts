@@ -26,10 +26,10 @@ interface PiApi {
   listProjectSessions: (cwds: string[]) => Promise<SessionListResult>
   onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void) => () => void
 
-  // Commands (via MessagePort, direct to utility)
+  // Commands (via control MessagePort, direct to utility)
   send: (sessionId: string, cmd: PiCommand) => Promise<unknown>
 
-  // Subscriptions (via MessagePort)
+  // Subscriptions (via data MessagePort)
   onPush: (sessionId: string, callback: (msg: PiPush) => void) => () => void
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void
 

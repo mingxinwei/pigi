@@ -168,6 +168,13 @@ export class TranscriptController {
     this.notify()
   }
 
+  setStatus(status: AgentStatus): void {
+    if (this._state.status === status) {
+      return
+    }
+    this.setState({ status })
+  }
+
   private findNode<T extends TranscriptNode>(id: string): T | undefined {
     return this._state.nodes.find((n) => n.id === id) as T | undefined
   }
@@ -182,6 +189,32 @@ export class TranscriptController {
   // ===========================================================================
 
   hydrate(messages: unknown[]): void {
+    const nodes = this.createNodesFromMessages(messages)
+
+    this._state = {
+      nodes,
+      status: 'idle',
+      activeAssistantId: null,
+      activeToolCallId: null,
+    }
+    this.notify()
+  }
+
+  mergeHydratedMessages(messages: unknown[]): void {
+    const hydratedNodes = this.createNodesFromMessages(messages)
+    const currentNodes = this._state.nodes
+    const missingHistoricalNodes = hydratedNodes.filter(
+      (node) => !currentNodes.some((currentNode) => areDuplicateNodes(currentNode, node)),
+    )
+
+    if (missingHistoricalNodes.length === 0) {
+      return
+    }
+
+    this.setState({ nodes: [...missingHistoricalNodes, ...currentNodes] })
+  }
+
+  private createNodesFromMessages(messages: unknown[]): TranscriptNode[] {
     const nodes: TranscriptNode[] = []
     const toolCalls = new Map<string, { name: string; args: unknown; startedAt?: number }>()
 
@@ -262,13 +295,7 @@ export class TranscriptController {
       }
     }
 
-    this._state = {
-      nodes,
-      status: 'idle',
-      activeAssistantId: null,
-      activeToolCallId: null,
-    }
-    this.notify()
+    return nodes
   }
 
   // ===========================================================================
@@ -560,6 +587,33 @@ export class TranscriptController {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+function areDuplicateNodes(left: TranscriptNode, right: TranscriptNode): boolean {
+  if (left.id === right.id) {
+    return true
+  }
+
+  if (left.role !== right.role) {
+    return false
+  }
+
+  switch (left.role) {
+    case 'user':
+      return left.text === (right as UserNode).text
+    case 'assistant': {
+      const assistant = right as AssistantNode
+      return (
+        Boolean(left.text || left.thinking) &&
+        left.text === assistant.text &&
+        left.thinking === assistant.thinking
+      )
+    }
+    case 'tool':
+      return left.toolCallId === (right as ToolNode).toolCallId
+    case 'system':
+      return left.text === (right as SystemNode).text
+  }
+}
 
 function extractText(content: unknown[] | undefined): string {
   if (!content || !Array.isArray(content)) return ''

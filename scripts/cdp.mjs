@@ -8,6 +8,7 @@
  *   node scripts/cdp.mjs capture /tmp/pigi.png
  */
 import http from 'node:http'
+import fs from 'node:fs'
 // Node 22+ has built-in WebSocket
 
 const CDP_PORT = 9222
@@ -20,7 +21,7 @@ async function getWsUrl() {
         res.on('data', (chunk) => (data += chunk))
         res.on('end', () => {
           const pages = JSON.parse(data)
-          const page = pages.find((p) => p.type === 'page')
+          const page = pages.find((p) => p.type === 'page' && !p.url.startsWith('devtools://'))
           if (!page) reject(new Error('No page found'))
           else resolve(page.webSocketDebuggerUrl)
         })
@@ -82,7 +83,6 @@ if (cmd === 'eval') {
 } else if (cmd === 'capture') {
   const path = args[0] || '/tmp/pigi-capture.png'
   const result = await cdpCall('Page.captureScreenshot', { format: 'png' })
-  const fs = await import('node:fs')
   fs.writeFileSync(path, Buffer.from(result.data, 'base64'))
   console.log(`Saved to ${path}`)
 } else if (cmd === 'console') {

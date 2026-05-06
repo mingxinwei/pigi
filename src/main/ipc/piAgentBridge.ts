@@ -83,7 +83,7 @@ function listProjectSessions(cwds: string[]): SessionListResult {
 
 /**
  * Spawn a utility process, send lifecycle command, wait for real sessionId,
- * then establish MessagePort between renderer and utility.
+ * then establish dedicated control/data MessagePorts between renderer and utility.
  */
 function spawnSessionProcess(
   cmd: UtilityCommand,
@@ -116,14 +116,18 @@ function spawnSessionProcess(
           const sessionId = msg.sessionId
           processPool.registerSessionProcess(sessionId, proc)
 
-          // Establish MessagePort
-          const { port1, port2 } = new MessageChannelMain()
-          const attachCmd: UtilityCommand = { type: 'attach_port' }
-          proc.postMessage(attachCmd, [port1])
+          // Establish separate ports so high-volume stream output cannot delay controls.
+          const controlChannel = new MessageChannelMain()
+          const dataChannel = new MessageChannelMain()
+          const attachCmd: UtilityCommand = { type: 'attach_ports' }
+          proc.postMessage(attachCmd, [controlChannel.port1, dataChannel.port1])
 
           const win = getMainWindow()
           if (win && !win.isDestroyed()) {
-            win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [port2])
+            win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [
+              controlChannel.port2,
+              dataChannel.port2,
+            ])
           }
 
           resolve({ success: true, sessionId })

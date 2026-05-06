@@ -19,9 +19,10 @@
 │  - Per-session port mgmt    │   │   - Command handler              │
 └────────────┬────────────────┘   └─────────────▲──────────────┘
              │                                  │
-             └──────── MessagePort (direct) ────┘
-                    (commands, responses,
-                     push events, stream batches)
+             ├──────── Control MessagePort ─────┤
+             │        (commands, responses)      │
+             └──────── Data MessagePort ─────────┘
+                      (push events, stream batches)
 ```
 
 Each session gets its own utility process. Process lifecycle = session lifecycle.
@@ -44,28 +45,28 @@ Renderer                    Main                        Utility Process
    │                         │  postMessage({session_created, sessionId})
    │                         │<─────────────────────────────│
    │                         │                              │
-   │                         │  create MessageChannel       │
-   │                         │  postMessage(attach_port, [port1])
+   │                         │  create control/data MessageChannels
+   │                         │  postMessage(attach_ports, [control1, data1])
    │                         │─────────────────────────────>│
    │                         │                              │
-   │  postMessage(session_port, {sessionId}, [port2])       │
+   │  postMessage(session_port, {sessionId}, [control2, data2])
    │<────────────────────────│                              │
    │                         │                              │
    │ resolve({success, sessionId})                          │
    │<────────────────────────│                              │
    │                         │                              │
-   │        ═══════ MessagePort established ═══════         │
+   │        ═══════ MessagePorts established ═══════        │
    │                         │                              │
-   │  port.postMessage({id, cmd: {type:'prompt', ...}})     │
+   │  controlPort.postMessage({id, cmd: {type:'prompt', ...}})
    │───────────────────────────────────────────────────────>│
    │                                                        │
-   │  port.postMessage({id, result: {success: true}})       │
+   │  controlPort.postMessage({id, result: {success: true}})│
    │<───────────────────────────────────────────────────────│
    │                                                        │
-   │  port.postMessage({type:'stream_batch', text:{...}})   │
+   │  dataPort.postMessage({type:'stream_batch', text:{...}})
    │<───────────────────────────────────────────────────────│
    │                                                        │
-   │  port.postMessage({type:'event', event:{...}})         │
+   │  dataPort.postMessage({type:'event', event:{...}})     │
    │<───────────────────────────────────────────────────────│
 ```
 
@@ -78,7 +79,7 @@ Renderer                    Main                        Utility Process
 | `pi:create_session` | renderer → main | Spawn process, create session |
 | `pi:resume_session` | renderer → main | Spawn process, resume session |
 | `pi:destroy_session` | renderer → main | Kill session process |
-| `pi:session_port` | main → renderer | Deliver MessagePort |
+| `pi:session_port` | main → renderer | Deliver control/data MessagePorts |
 | `pi:process_exit` | main → renderer | Notify unexpected crash |
 
 These are the **only** IPC calls. After session creation, main is idle.
@@ -89,7 +90,7 @@ These are the **only** IPC calls. After session creation, main is idle.
 |---------|---------|
 | `{ type: 'create_session', cwd }` | Initialize new session |
 | `{ type: 'resume_session', sessionPath }` | Resume existing session |
-| `{ type: 'attach_port' }` + `[port]` | Deliver MessagePort to utility |
+| `{ type: 'attach_ports' }` + `[controlPort, dataPort]` | Deliver MessagePorts to utility |
 
 ### Utility → Main (parentPort, lifecycle only)
 
@@ -98,29 +99,29 @@ These are the **only** IPC calls. After session creation, main is idle.
 | `{ type: 'session_created', sessionId }` | Report real session ID |
 | `{ type: 'session_error', error }` | Report creation failure |
 
-### Renderer ↔ Utility (MessagePort, all runtime data)
+### Renderer ↔ Utility (MessagePorts, runtime data)
 
-Everything after handshake flows over a single MessagePort per session:
+Everything after handshake flows over two direct MessagePorts per session. Splitting low-volume controls from high-volume output prevents stream batches from delaying abort/escape commands.
 
-**Renderer → Utility (commands):**
+**Renderer → Utility (control port commands):**
 ```ts
 { id: string, cmd: PiCommand }
 // PiCommand = prompt | abort | get_state | get_messages | list_sessions | cycle_model | cycle_thinking_level
 ```
 
-**Utility → Renderer (responses):**
+**Utility → Renderer (control port responses):**
 ```ts
 { id: string, result: unknown }
 ```
 
-**Utility → Renderer (push events, no id):**
+**Utility → Renderer (data port push events, no id):**
 ```ts
 { type: 'session_ready', model, thinkingLevel }
 { type: 'event', event }       // agent lifecycle events
 { type: 'error', error }       // runtime errors
 ```
 
-**Utility → Renderer (stream batches, high-frequency):**
+**Utility → Renderer (data port stream batches, high-frequency):**
 ```ts
 { type: 'stream_batch', text?, thinking?, toolOutput? }
 // Flushed every 16ms by StreamBatcher
@@ -131,8 +132,8 @@ Everything after handshake flows over a single MessagePort per session:
 | Decision | Rationale |
 |----------|-----------|
 | One process per session | Crash isolation, no shared event loop blocking |
-| MessagePort for all data | Main not in hot path, lowest latency |
-| Single port per session | 16ms batched stream won't block commands (< 1ms processing per batch) |
+| Direct MessagePorts for runtime data | Main not in hot path, lowest latency |
+| Separate control/data ports per session | High-volume stream output cannot queue ahead of abort/escape controls |
 | Two-step handshake | Real sessionId from SDK, no temporary/generated IDs |
 | Main only does lifecycle | Minimal surface, easy to reason about |
 

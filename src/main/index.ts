@@ -3,22 +3,23 @@
  *
  * - Spawns pi-agent utility process (no sessions yet, just the process)
  * - Sessions are created on-demand from renderer
- * - Each session gets its own MessagePort for streaming
+ * - Each session gets control/data MessagePorts for commands and streaming
  */
 import { app, BrowserWindow } from 'electron'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows/createMainWindow'
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge'
 import { registerProjectHandlers } from './ipc/projectHandlers'
+import { configureDebugPanel } from './debugConfig'
+import { initializeNpmCommandDetection } from './processes/npmCommandDetector'
 
-if (is.dev) {
-  app.commandLine.appendSwitch('remote-debugging-port', '9222')
-}
+configureDebugPanel()
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pigi')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
+  initializeNpmCommandDetection()
   registerIpcHandlers()
   registerProjectHandlers()
   createMainWindow()

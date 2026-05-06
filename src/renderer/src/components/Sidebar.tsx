@@ -24,7 +24,6 @@ const NEW_PROJECT_SESSION_LABEL = 'New chat'
 interface SidebarProps {
   sessions: Map<string, SessionEntry>
   selectedSessionId: string | null
-  isStreaming: boolean
   recentProjects: ProjectDirectory[]
   projectSessions: Record<string, PiSessionInfo[]>
   onNewSession: () => void
@@ -38,7 +37,6 @@ interface SidebarProps {
 export default function Sidebar({
   sessions,
   selectedSessionId,
-  isStreaming,
   recentProjects,
   projectSessions,
   onNewSession,
@@ -156,7 +154,7 @@ export default function Sidebar({
           <div className="h-10" />
           <SidebarMenu style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={onNewSession} disabled={isStreaming}>
+              <SidebarMenuButton onClick={onNewSession}>
                 <IconPlus data-icon="inline-start" />
                 <span>New chat</span>
               </SidebarMenuButton>
@@ -219,7 +217,6 @@ export default function Sidebar({
                           <span>{project.name}</span>
                         </SidebarMenuButton>
                         <SidebarMenuAction
-                          disabled={isStreaming}
                           title={`${NEW_PROJECT_SESSION_LABEL} in ${project.name}`}
                           onClick={() => {
                             expandProjectSessions(project.path)

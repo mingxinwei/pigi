@@ -5,6 +5,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
+import { openDebugPanel } from '../debugConfig'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -44,6 +45,8 @@ export function createMainWindow(): BrowserWindow {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  openDebugPanel(mainWindow)
 
   return mainWindow
 }

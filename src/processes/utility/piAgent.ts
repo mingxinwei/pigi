@@ -4,8 +4,8 @@
  * Lifecycle:
  * 1. Receives create_session/resume_session from main via parentPort
  * 2. Creates session, reports back real sessionId
- * 3. Receives attach_port from main with a MessagePort
- * 4. All subsequent communication flows over that port
+ * 3. Receives attach_ports from main with control/data MessagePorts
+ * 4. Commands flow over the control port; push/stream output flows over the data port
  *
  * One process per session. Process exits when session is destroyed.
  */
@@ -19,6 +19,7 @@ import {
   createAgentSessionServices,
   getAgentDir,
   SessionManager,
+  SettingsManager,
 } from '@mariozechner/pi-coding-agent'
 import type {
   ModelInfo,
@@ -26,11 +27,12 @@ import type {
   PiPush,
   PiRequest,
   PiResult,
-  PortMessage,
+  ControlPortMessage,
   StreamBatch,
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract'
+import { PIGI_NPM_COMMAND_ENV, parseNpmCommand } from '../../shared/npmCommand'
 
 function toModelInfo(model: {
   name: string
@@ -118,8 +120,10 @@ class StreamBatcher {
 
 let runtime: AgentSessionRuntime | null = null
 let batcher: StreamBatcher | null = null
-let sessionPort: Port | null = null
+let controlPort: Port | null = null
+let dataPort: Port | null = null
 let unsubscribeEvents: (() => void) | null = null
+let isCleanedUp = false
 let isSessionBusy = false
 // Services are expensive to build; prewarm them while the user is browsing sessions.
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>()
@@ -138,11 +142,19 @@ function createServicesForCwd(cwd: string): Promise<AgentSessionServices> {
   return enqueueServiceCreation(async () => {
     const previousCwd = process.cwd()
     try {
+      const agentDir = getAgentDir()
+      const settingsManager = SettingsManager.create(cwd, agentDir)
+      const detectedNpmCommand = parseNpmCommand(process.env[PIGI_NPM_COMMAND_ENV])
+
+      if (detectedNpmCommand && !settingsManager.getNpmCommand()) {
+        settingsManager.applyOverrides({ npmCommand: detectedNpmCommand })
+      }
+
       // Some Pi extensions read process.cwd() while they register tools. Match the
       // Pi SDK cwd option during service construction so extension-local tools bind
       // to the project directory, not Electron's app directory.
       process.chdir(cwd)
-      return await createAgentSessionServices({ cwd })
+      return await createAgentSessionServices({ cwd, agentDir, settingsManager })
     } finally {
       process.chdir(previousCwd)
     }
@@ -281,7 +293,7 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
 }
 
 // =============================================================================
-// Command handling (via MessagePort from renderer)
+// Command handling (via control MessagePort from renderer)
 // =============================================================================
 
 async function handleCommand(cmd: PiCommand): Promise<unknown> {
@@ -293,12 +305,12 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
         return { success: false, error: 'prompt must be a non-empty string' }
       }
       runtime.session.prompt(cmd.message).catch((err) => {
-        if (sessionPort) {
+        if (dataPort) {
           const msg: PiPush = {
             type: 'error',
             error: err instanceof Error ? err.message : String(err),
           }
-          sessionPort.postMessage(msg)
+          dataPort.postMessage(msg)
         }
       })
       return { success: true }
@@ -387,9 +399,9 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
   }
 }
 
-function setupPortListener(port: Port): void {
+function setupControlPortListener(port: Port): void {
   port.on('message', async (event: { data: unknown }) => {
-    const data = event.data as PortMessage
+    const data = event.data as ControlPortMessage
     if ('id' in data && 'cmd' in data) {
       const req = data as PiRequest
       try {
@@ -456,17 +468,27 @@ async function resumeSession(sessionPath: string): Promise<void> {
   }
 }
 
-function attachPort(port: Port): void {
-  if (!runtime) return
+function attachPorts(nextControlPort: Port, nextDataPort: Port): void {
+  if (!runtime) {
+    nextControlPort.close()
+    nextDataPort.close()
+    return
+  }
 
-  sessionPort = port
+  unsubscribeEvents?.()
+  batcher?.stop()
+  controlPort?.close()
+  dataPort?.close()
+
+  controlPort = nextControlPort
+  dataPort = nextDataPort
   setSessionBusy(runtime.session.isStreaming)
   batcher = new StreamBatcher()
-  batcher.start(port)
-  unsubscribeEvents = subscribeToSession(runtime, port, batcher)
-  setupPortListener(port)
+  batcher.start(nextDataPort)
+  unsubscribeEvents = subscribeToSession(runtime, nextDataPort, batcher)
+  setupControlPortListener(nextControlPort)
 
-  // Send session_ready as first push on the port
+  // Send session_ready as first push on the data port
   const session = runtime.session
   const push: PiPush = {
     type: 'session_ready',
@@ -475,7 +497,7 @@ function attachPort(port: Port): void {
     contextUsage: session.getContextUsage() ?? null,
     autoCompactionEnabled: session.autoCompactionEnabled,
   }
-  port.postMessage(push)
+  nextDataPort.postMessage(push)
 }
 
 // =============================================================================
@@ -483,10 +505,21 @@ function attachPort(port: Port): void {
 // =============================================================================
 
 function cleanup(): void {
+  if (isCleanedUp) {
+    return
+  }
+  isCleanedUp = true
+
   unsubscribeEvents?.()
+  unsubscribeEvents = null
   batcher?.stop()
-  sessionPort?.close()
+  batcher = null
+  controlPort?.close()
+  controlPort = null
+  dataPort?.close()
+  dataPort = null
   runtime?.dispose()
+  runtime = null
 }
 
 process.on('exit', cleanup)
@@ -513,9 +546,9 @@ process.parentPort?.on('message', async (messageEvent) => {
     case 'prewarm_session_services':
       prewarmSessionServices(cmd.cwds)
       break
-    case 'attach_port':
-      if (ports.length > 0) {
-        attachPort(ports[0])
+    case 'attach_ports':
+      if (ports.length > 1) {
+        attachPorts(ports[0], ports[1])
       }
       break
   }

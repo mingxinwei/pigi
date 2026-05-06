@@ -109,7 +109,6 @@ interface SdkToolExecStart {
   toolCallId: string
   toolName: string
   args: unknown
-  timestamp?: number | string
 }
 interface SdkToolExecUpdate {
   type: 'tool_execution_update'
@@ -124,9 +123,6 @@ interface SdkToolExecEnd {
   toolName: string
   result: unknown
   isError: boolean
-  timestamp?: number | string
-  durationMs?: number
-  elapsedMs?: number
 }
 
 // =============================================================================
@@ -499,7 +495,6 @@ export class TranscriptController {
   }
 
   private handleToolStart(event: SdkToolExecStart): void {
-    const startedAt = normalizeTimestamp(event.timestamp)
     const node: ToolNode = {
       id: nextNodeId(),
       role: 'tool',
@@ -509,7 +504,7 @@ export class TranscriptController {
       status: 'running',
       output: '',
       isError: false,
-      startedAt,
+      startedAt: Date.now(),
     }
     this.setState({
       nodes: [...this._state.nodes, node],
@@ -534,7 +529,7 @@ export class TranscriptController {
   }
 
   private handleToolEnd(event: SdkToolExecEnd): void {
-    const endedAt = normalizeTimestamp(event.timestamp)
+    const endedAt = Date.now()
     const tool = this._state.nodes.find(
       (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
     ) as ToolNode | undefined
@@ -544,10 +539,7 @@ export class TranscriptController {
       tool.isError = event.isError
       const text = extractToolResultText(event.result)
       if (text) tool.output = text
-      tool.durationMs =
-        normalizeDurationMs(event.durationMs ?? event.elapsedMs) ??
-        extractToolDurationMs(event.result) ??
-        getElapsedMs(tool.startedAt, endedAt)
+      tool.durationMs = getElapsedMs(tool.startedAt, endedAt)
     }
 
     this.setState({
@@ -620,36 +612,6 @@ function extractToolResultText(result: unknown): string {
       .join('\n')
   }
   return ''
-}
-
-function extractToolDurationMs(result: unknown): number | undefined {
-  if (!result || typeof result !== 'object') {
-    return undefined
-  }
-
-  const r = result as {
-    durationMs?: unknown
-    elapsedMs?: unknown
-    details?: {
-      durationMs?: unknown
-      elapsedMs?: unknown
-    }
-  }
-
-  return (
-    normalizeDurationMs(r.durationMs) ??
-    normalizeDurationMs(r.elapsedMs) ??
-    normalizeDurationMs(r.details?.durationMs) ??
-    normalizeDurationMs(r.details?.elapsedMs)
-  )
-}
-
-function normalizeDurationMs(duration: unknown): number | undefined {
-  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
-    return undefined
-  }
-
-  return duration
 }
 
 function getElapsedMs(

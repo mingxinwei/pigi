@@ -101,6 +101,7 @@ export interface SessionOptions {
 
 export type PiCommand =
   | { type: 'prompt'; message: string }
+  | { type: 'steer'; message: string }
   | { type: 'abort' }
   | { type: 'get_state' }
   | { type: 'get_session_options' }

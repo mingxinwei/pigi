@@ -108,9 +108,7 @@ export default function ChatInput({
 
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        if (!isStreaming) {
-          handleSend()
-        }
+        handleSend()
       }
     },
     [handleSend, isStreaming, onAbort],

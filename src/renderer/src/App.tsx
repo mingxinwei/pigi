@@ -9,6 +9,7 @@ import {
   resumeSession,
   createSession,
   prompt,
+  steer,
   abort,
   getProjects,
   getGitBranch,
@@ -207,7 +208,13 @@ function App(): React.JSX.Element {
       useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) })
     }
     ensureTranscriptSession(sessionId).addUserMessage(message)
-    await prompt(sessionId, message)
+
+    // If the session is already streaming, steer instead of prompting
+    if (existing?.status !== 'idle') {
+      await steer(sessionId, message)
+    } else {
+      await prompt(sessionId, message)
+    }
     void listProjectSessions([cwd])
   }
 

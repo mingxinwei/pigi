@@ -90,6 +90,13 @@ export async function prompt(sessionId: string, message: string): Promise<void> 
   }
 }
 
+export async function steer(sessionId: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'steer', message })
+  if (!result.success) {
+    throw new Error(result.error || 'steer failed')
+  }
+}
+
 export async function abort(sessionId: string): Promise<void> {
   await send(sessionId, { type: 'abort' })
 }

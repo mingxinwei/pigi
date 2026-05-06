@@ -316,6 +316,14 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       return { success: true }
     }
 
+    case 'steer': {
+      if (!cmd.message || cmd.message.trim().length === 0) {
+        return { success: false, error: 'steer message must be a non-empty string' }
+      }
+      await runtime.session.steer(cmd.message)
+      return { success: true }
+    }
+
     case 'abort':
       await runtime.session.abort()
       setSessionBusy(runtime.session.isStreaming)

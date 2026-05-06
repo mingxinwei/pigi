@@ -210,7 +210,7 @@ function App(): React.JSX.Element {
     ensureTranscriptSession(sessionId).addUserMessage(message)
 
     // If the session is already streaming, steer instead of prompting
-    if (existing?.status !== 'idle') {
+    if (transcript.status !== 'idle') {
       await steer(sessionId, message)
     } else {
       await prompt(sessionId, message)

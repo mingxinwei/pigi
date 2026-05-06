@@ -107,6 +107,12 @@ If `electron-vite` does not pass the flag correctly, use the equivalent Electron
 
 ### 4. Agent Host Debugging
 
+The pi-agent runs in an Electron `utilityProcess`. By default, `console.log` from the utility process is **not** piped to the main process stdout. To see utility process logs during development, either:
+
+- Add `stdio: 'pipe'` to the `utilityProcess.fork()` options and forward stdout/stderr in main
+- Use the renderer console to confirm messages reach the utility (the `send()` round-trip confirms delivery)
+- Post diagnostic info back over the data port as a push event
+
 When pi SDK moves to `utilityProcess`/worker:
 
 - log Agent Host lifecycle events clearly

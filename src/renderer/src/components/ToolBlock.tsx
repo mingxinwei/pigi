@@ -1,38 +1,80 @@
 import { useState } from 'react'
-import {
-  IconBan,
-  IconCheck,
-  IconFilePlus,
-  IconFileText,
-  IconLoader2,
-  IconPencil,
-  IconTerminal2,
-  IconX,
-} from '@tabler/icons-react'
+import { IconBan, IconCheck, IconLoader2, IconX } from '@tabler/icons-react'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 import type { ToolNode } from '../state/transcriptController'
 import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants'
+import SyntaxHighlightedCode from './syntaxHighlightedCode'
 
 interface ToolBlockProps {
   node: ToolNode
 }
 
-const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  bash: IconTerminal2,
-  read: IconFileText,
-  edit: IconPencil,
-  write: IconFilePlus,
+interface ToolCommandParts {
+  prefix: string
+  body: string
 }
 
 const STATUS_CONFIG = {
-  running: { label: 'Running', Icon: IconLoader2, className: 'text-yellow-600' },
-  success: { label: 'Succeeded', Icon: IconCheck, className: 'text-green-600' },
-  error: { label: 'Failed', Icon: IconX, className: 'text-destructive' },
-  cancelled: { label: 'Cancelled', Icon: IconBan, className: 'text-muted-foreground' },
+  running: {
+    label: 'Running',
+    Icon: IconLoader2,
+    className: 'bg-yellow-50 text-yellow-700',
+  },
+  success: {
+    label: 'Succeeded',
+    Icon: IconCheck,
+    className: 'bg-green-50 text-green-700',
+  },
+  error: {
+    label: 'Failed',
+    Icon: IconX,
+    className: 'bg-red-50 text-red-700',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    Icon: IconBan,
+    className: 'bg-muted/60 text-muted-foreground',
+  },
 } as const
 
 export const TOOL_OUTPUT_LINE_LIMIT = 10
+
+const TOOL_OUTPUT_LANGUAGE_BY_NAME: Record<string, string> = {
+  bash: 'bash',
+}
+
+const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
+  c: 'c',
+  cc: 'cpp',
+  cjs: 'javascript',
+  cpp: 'cpp',
+  css: 'css',
+  cts: 'typescript',
+  h: 'c',
+  hpp: 'cpp',
+  html: 'html',
+  java: 'java',
+  js: 'javascript',
+  json: 'json',
+  jsonc: 'jsonc',
+  jsx: 'jsx',
+  md: 'markdown',
+  mjs: 'javascript',
+  mts: 'typescript',
+  php: 'php',
+  py: 'python',
+  scss: 'scss',
+  sh: 'bash',
+  sql: 'sql',
+  ts: 'typescript',
+  tsx: 'tsx',
+  vue: 'vue',
+  xml: 'xml',
+  yaml: 'yaml',
+  yml: 'yaml',
+  zsh: 'zsh',
+}
 
 function formatToolArgs(args: unknown): string {
   if (!args || typeof args !== 'object') {
@@ -47,40 +89,61 @@ function formatToolArgs(args: unknown): string {
   return JSON.stringify(record, null, 2)
 }
 
-function getToolCommand(node: ToolNode): string {
+function getToolCommandParts(node: ToolNode): ToolCommandParts | null {
   const args = node.args as Record<string, unknown> | undefined
   if (!args) {
-    return ''
+    return null
   }
 
   switch (node.name) {
     case 'bash': {
-      return `$ ${String(args.command ?? '')}`
+      return { prefix: '$', body: String(args.command ?? '') }
     }
     case 'read':
     case 'write': {
-      return String(args.path ?? '')
+      const path = String(args.path ?? '')
+      return path
+        ? { prefix: node.name, body: path }
+        : { prefix: node.name, body: formatToolArgs(args) }
     }
     case 'edit': {
       const path = String(args.path ?? '')
-      return path ? `${node.name} ${path}` : formatToolArgs(args)
+      return path
+        ? { prefix: node.name, body: path }
+        : { prefix: node.name, body: formatToolArgs(args) }
     }
     default:
-      return formatToolArgs(args)
+      return { prefix: node.name, body: formatToolArgs(args) }
   }
+}
+
+function getToolOutputLanguage(node: ToolNode): string {
+  const args = node.args as Record<string, unknown> | undefined
+  const path = typeof args?.path === 'string' ? args.path : ''
+  return getLanguageFromPath(path) ?? TOOL_OUTPUT_LANGUAGE_BY_NAME[node.name] ?? 'bash'
+}
+
+function getLanguageFromPath(path: string): string | null {
+  const fileName = path.split('/').pop() ?? ''
+  const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
+  if (!extension) {
+    return null
+  }
+
+  return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null
 }
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const { label, Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status]
-  const ToolIcon = TOOL_ICON_MAP[node.name] ?? IconTerminal2
-  const command = getToolCommand(node)
+  const command = getToolCommandParts(node)
   const hasOutput = node.output.length > 0
   const outputLines = node.output.split('\n')
   const visibleOutput = expanded
     ? node.output
     : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n')
   const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT)
+  const outputLanguage = getToolOutputLanguage(node)
 
   return (
     <div
@@ -88,30 +151,30 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
       style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       data-testid={`tool-block-${node.toolCallId}`}
     >
-      <div className="flex items-center gap-2">
-        <ToolIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-foreground">{node.name}</span>
-      </div>
-
       {command && (
-        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background/75 px-2 py-1.5 font-mono text-[14px] leading-5 text-foreground">
-          {command}
-        </pre>
+        <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
+          <span className="shrink-0">{command.prefix}</span>
+          <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {command.body}
+          </span>
+        </div>
       )}
 
       {hasOutput && (
         <>
           <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground">
-            {!expanded &&
-              hiddenLineCount > 0 &&
-              `... (${hiddenLineCount.toLocaleString()} earlier lines)\n`}
-            {visibleOutput}
+            {!expanded && hiddenLineCount > 0 && (
+              <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
+                {`... (${hiddenLineCount.toLocaleString()} earlier lines)`}
+              </code>
+            )}
+            <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
           </pre>
           {hiddenLineCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
+              className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
               onClick={() => {
                 setExpanded((current) => !current)
               }}
@@ -122,7 +185,12 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         </>
       )}
 
-      <div className={cn('mt-2 flex items-center justify-start gap-1.5 text-xs', statusClassName)}>
+      <div
+        className={cn(
+          '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs',
+          statusClassName,
+        )}
+      >
         <StatusIcon className={cn('size-3.5', node.status === 'running' && 'animate-spin')} />
         <span>{label}</span>
       </div>

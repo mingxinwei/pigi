@@ -20,6 +20,7 @@ export interface UserNode {
   id: string
   role: 'user'
   text: string
+  sentAt: number
 }
 
 export interface AssistantNode {
@@ -73,11 +74,11 @@ export interface TranscriptState {
 // SDK event shapes (only types actually used in casts are kept)
 interface SdkMessageStart {
   type: 'message_start'
-  message: { id?: string; role?: string; content?: unknown[] }
+  message: { id?: string; role?: string; content?: unknown[]; timestamp?: number | string }
 }
 interface SdkMessageUpdate {
   type: 'message_update'
-  message: { id?: string; role?: string }
+  message: { id?: string; role?: string; timestamp?: number | string }
   assistantMessageEvent: {
     type: string
     delta?: string
@@ -188,13 +189,19 @@ export class TranscriptController {
         role?: string
         content?: unknown[]
         model?: { name?: string; provider?: string }
+        timestamp?: number | string
       }
       if (!m.role) continue
 
       switch (m.role) {
         case 'user': {
           const text = extractText(m.content)
-          nodes.push({ id: m.id || nextNodeId(), role: 'user', text })
+          nodes.push({
+            id: m.id || nextNodeId(),
+            role: 'user',
+            text,
+            sentAt: normalizeTimestamp(m.timestamp),
+          })
           break
         }
         case 'assistant': {
@@ -272,7 +279,7 @@ export class TranscriptController {
   // ===========================================================================
 
   addUserMessage(text: string): void {
-    const node: UserNode = { id: nextNodeId(), role: 'user', text }
+    const node: UserNode = { id: nextNodeId(), role: 'user', text, sentAt: Date.now() }
     this.setState({ nodes: [...this._state.nodes, node] })
   }
 
@@ -591,4 +598,19 @@ function extractToolResultText(result: unknown): string {
       .join('\n')
   }
   return ''
+}
+
+function normalizeTimestamp(timestamp: number | string | undefined): number {
+  if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+    return timestamp
+  }
+
+  if (typeof timestamp === 'string') {
+    const parsed = Date.parse(timestamp)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return Date.now()
 }

@@ -1,6 +1,11 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { TranscriptNode, AssistantNode, ToolNode } from '../state/transcriptController'
+import type {
+  TranscriptNode,
+  AssistantNode,
+  ToolNode,
+  UserNode,
+} from '../state/transcriptController'
 import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants'
 import ToolBlock, { TOOL_OUTPUT_LINE_LIMIT } from './ToolBlock'
 import MarkdownMessage from './markdownMessage'
@@ -12,8 +17,11 @@ interface MessageListProps {
 
 const CHAT_INPUT_AREA_HEIGHT = 172
 const MESSAGE_ROW_GAP = 16
-const TOOL_BLOCK_ESTIMATE_BUFFER = 16
+const TOOL_BLOCK_ESTIMATE_BUFFER = 24
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24
+const USER_MESSAGE_TOOLBAR_HEIGHT = 24
+const USER_MESSAGE_LEADING_PADDING = 40
+const USER_MESSAGE_TRAILING_PADDING = 16
 const LONG_USER_MESSAGE_LINE_LIMIT = 100
 const LONG_USER_MESSAGE_HEAD_LINES = 24
 const LONG_USER_MESSAGE_TAIL_LINES = 12
@@ -135,7 +143,15 @@ function estimateUserHeight(text: string): number {
   const characterLineCount = Math.ceil(preview.text.length / USER_MESSAGE_WRAP_ESTIMATE_WIDTH)
   const estimatedLineCount = Math.max(visibleLineCount, characterLineCount)
   const buttonHeight = preview.isLong ? 36 : 0
-  return Math.max(56, estimatedLineCount * 24 + 32 + buttonHeight)
+  return Math.max(
+    56,
+    estimatedLineCount * 24 +
+      32 +
+      buttonHeight +
+      USER_MESSAGE_TOOLBAR_HEIGHT +
+      USER_MESSAGE_LEADING_PADDING +
+      USER_MESSAGE_TRAILING_PADDING,
+  )
 }
 
 function estimateAssistantHeight(node: AssistantNode): number {
@@ -154,8 +170,7 @@ function estimateToolHeight(node: ToolNode): number {
 
   return Math.max(
     96,
-    48 +
-      commandLineCount * 24 +
+    commandLineCount * 24 +
       (visibleOutputLineCount + hiddenHintLineCount) * 20 +
       showAllButtonHeight +
       TOOL_STATUS_LINE_ESTIMATE_HEIGHT +
@@ -174,10 +189,10 @@ function estimateToolCommandLineCount(node: ToolNode): number {
   const args = node.args as Record<string, unknown> | undefined
   const command =
     node.name === 'bash'
-      ? String(args?.command ?? '')
-      : node.name === 'read' || node.name === 'write'
-        ? String(args?.path ?? '')
-        : ''
+      ? `$ ${String(args?.command ?? '')}`
+      : node.name === 'read' || node.name === 'write' || node.name === 'edit'
+        ? `${node.name} ${String(args?.path ?? '')}`
+        : String(JSON.stringify(args ?? {}) ?? '')
 
   return Math.max(1, Math.ceil(command.length / 80))
 }
@@ -193,7 +208,7 @@ function isRenderableNode(node: TranscriptNode): boolean {
 function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
   switch (node.role) {
     case 'user':
-      return <UserBubble text={node.text} />
+      return <UserBubble node={node} />
     case 'assistant':
       return <AssistantBubble node={node} />
     case 'tool':
@@ -203,34 +218,40 @@ function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
   }
 }
 
-function UserBubble({ text }: { text: string }): React.JSX.Element {
+function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
+  const { text } = node
   const [expanded, setExpanded] = useState(false)
   const preview = useMemo(() => getUserMessagePreview(text), [text])
   const displayText = expanded || !preview.isLong ? text : preview.text
 
   return (
-    <div className="flex justify-end" data-testid="user-message">
-      <div
-        className={cn(
-          'min-w-16 rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
-          'max-w-[85%] whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
-          preview.isLong ? 'w-full' : 'w-fit',
-        )}
-      >
-        {displayText}
-        {preview.isLong && (
-          <div className="mt-2">
-            <button
-              type="button"
-              className="h-7 rounded px-2 text-sm font-medium text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
-              onClick={() => {
-                setExpanded((current) => !current)
-              }}
-            >
-              {expanded ? 'Show less' : 'Show more'}
-            </button>
-          </div>
-        )}
+    <div className="flex justify-end pb-4 pt-10" data-testid="user-message">
+      <div className="group flex max-w-[85%] flex-col items-end">
+        <div
+          className={cn(
+            'min-w-16 rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
+            'max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+            preview.isLong ? 'w-full' : 'w-fit',
+          )}
+        >
+          {displayText}
+          {preview.isLong && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="h-7 rounded px-2 text-sm font-medium text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                onClick={() => {
+                  setExpanded((current) => !current)
+                }}
+              >
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="h-6 w-full pt-1 text-right text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+          {formatUserMessageTime(node.sentAt)}
+        </div>
       </div>
     </div>
   )
@@ -265,6 +286,35 @@ function getCollapsedUserMessageByCharacters(text: string): string {
     `... (${hiddenCharacterCount.toLocaleString()} characters hidden)`,
     text.slice(-LONG_USER_MESSAGE_TAIL_CHARACTERS),
   ].join('\n')
+}
+
+function formatUserMessageTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  if (isSameLocalDay(date, new Date())) {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit',
+      hourCycle: 'h23',
+      minute: '2-digit',
+    }).format(date)
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: isSameLocalYear(date, new Date()) ? undefined : 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+function isSameLocalYear(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
 }
 
 function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {

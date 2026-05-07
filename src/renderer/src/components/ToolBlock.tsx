@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { IconBan, IconCheck, IconX } from '@tabler/icons-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { ToolNode } from '../state/transcriptController';
@@ -20,22 +19,18 @@ interface ToolCommandParts {
 const STATUS_CONFIG = {
   running: {
     label: 'Running',
-    Icon: null,
     className: 'bg-yellow-50 text-yellow-700',
   },
   success: {
     label: 'Succeeded',
-    Icon: IconCheck,
     className: 'bg-green-50 text-green-700',
   },
   error: {
     label: 'Failed',
-    Icon: IconX,
     className: 'bg-red-50 text-red-700',
   },
   cancelled: {
     label: 'Cancelled',
-    Icon: IconBan,
     className: 'bg-muted/60 text-muted-foreground',
   },
 } as const;
@@ -183,7 +178,7 @@ function formatDuration(durationMs: number | undefined): string | null {
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status];
+  const { className: statusClassName } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
   const writeEntries = getWriteEntries(node);
@@ -258,10 +253,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         {node.status === 'running' ? (
           <ElapsedTimer />
         ) : (
-          <>
-            {durationLabel && <span>{durationLabel}</span>}
-            {StatusIcon && <StatusIcon className="size-3.5" />}
-          </>
+          <>{durationLabel && <span>{durationLabel}</span>}</>
         )}
       </div>
     </div>

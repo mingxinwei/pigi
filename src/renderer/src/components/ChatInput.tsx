@@ -410,10 +410,7 @@ function ModelSettingsPicker({
                     key={key}
                     value={modelSearchValue(model)}
                     data-checked={key === selectedKey ? true : undefined}
-                    className={cn(
-                      'items-start py-1.5 data-selected:bg-accent',
-                      key === selectedKey && 'font-medium',
-                    )}
+                    className="items-start py-1.5"
                     onSelect={() => {
                       onSelectModel(model);
                       setOpen(false);

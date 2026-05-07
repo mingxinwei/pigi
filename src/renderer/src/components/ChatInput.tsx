@@ -169,10 +169,18 @@ export default function ChatInput({
           e.preventDefault();
           const cmd = slashMatches[selectedSlashIndex];
           if (cmd && textareaRef.current) {
-            if (cmd.hasArg) {
-              // Command needs an argument — complete it and keep focus
+            const currentInput = textareaRef.current.value.trim();
+            const isExactMatch = currentInput === `/${cmd.name}`;
+            if (cmd.hasArg && (e.key === 'Tab' || !isExactMatch)) {
+              // hasArg: Tab always completes to "/{name} "; Enter on partial also completes
               textareaRef.current.value = `/${cmd.name} `;
               setSlashMatches([]);
+            } else if (cmd.hasArg && isExactMatch && e.key === 'Enter') {
+              // hasArg + exact match + Enter — execute with empty arg
+              textareaRef.current.value = '';
+              textareaRef.current.style.height = 'auto';
+              setSlashMatches([]);
+              onSlashCommand(cmd.name, '');
             } else {
               // No argument needed — execute immediately
               textareaRef.current.value = '';

@@ -38,6 +38,7 @@ interface PiApi {
 
   // Utilities
   getCwd: () => string;
+  openExternal: (url: string) => void;
 }
 
 declare global {

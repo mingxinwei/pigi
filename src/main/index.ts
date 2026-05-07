@@ -5,11 +5,12 @@
  * - Sessions are created on-demand from renderer
  * - Each session gets control/data MessagePorts for commands and streaming
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { createMainWindow } from './windows/createMainWindow';
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
 import { registerProjectHandlers } from './ipc/projectHandlers';
+import { PiChannel } from '../shared/ipcContract';
 import { configureDebugPanel } from './debugConfig';
 import { initializeNpmCommandDetection } from './processes/npmCommandDetector';
 
@@ -22,6 +23,13 @@ app.whenReady().then(() => {
   initializeNpmCommandDetection();
   registerIpcHandlers();
   registerProjectHandlers();
+
+  ipcMain.on(PiChannel.OpenExternal, (_event, url: string) => {
+    if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+      shell.openExternal(url);
+    }
+  });
+
   createMainWindow();
 
   app.on('activate', () => {

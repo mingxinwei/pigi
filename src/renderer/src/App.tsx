@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { useAppStore } from './state/appStore';
 import {
   disposeTranscriptSession,
@@ -18,6 +19,10 @@ import {
   getGitBranch,
   getState,
   getSessionOptions,
+  getAuthProviders,
+  loginOAuth,
+  loginApiKey,
+  logout,
   listProjectSessions,
   onProjectSessionsChunk,
   openProjectDirectory,
@@ -27,6 +32,7 @@ import {
   setThinkingLevel,
 } from './services/piAgentClient';
 import type {
+  AuthProviderInfo,
   ModelInfo,
   PiSessionInfo,
   ProjectDirectory,
@@ -35,6 +41,7 @@ import type {
 import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
+import LoginDialog from './components/LoginDialog';
 import { SidebarProvider } from './components/ui/sidebar';
 
 function App(): React.JSX.Element {
@@ -62,6 +69,8 @@ function App(): React.JSX.Element {
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null;
   const { state: transcript } = useTranscript(activeSessionId);
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -396,6 +405,38 @@ function App(): React.JSX.Element {
             await handleNewSession();
             break;
           }
+          case 'login': {
+            let sessionId = activeSessionId;
+            if (!sessionId) {
+              await handleNewSession();
+              sessionId = useAppStore.getState().activeSessionId;
+            }
+            if (!sessionId) return;
+            if (arg) {
+              // /login <provider> — start OAuth flow directly
+              const result = await loginOAuth(sessionId, arg);
+              if (result.success) {
+                toast.success(`Authenticated with ${arg}`);
+              } else {
+                toast.error(result.error || 'Login failed');
+              }
+              await refreshSessionOptions(sessionId);
+            } else {
+              // /login — open login dialog
+              const result = await getAuthProviders(sessionId);
+              if (result.success) {
+                setAuthProviders(result.providers);
+              }
+              setLoginDialogOpen(true);
+            }
+            break;
+          }
+          case 'logout': {
+            if (!activeSessionId || !arg) return;
+            await logout(activeSessionId, arg);
+            await refreshSessionOptions(activeSessionId);
+            break;
+          }
         }
       } catch (err) {
         console.error(`[slash command /${command}] failed:`, err);
@@ -448,6 +489,36 @@ function App(): React.JSX.Element {
           onSelectThinkingLevel={handleSelectThinkingLevel}
         />
       </main>
+
+      <LoginDialog
+        open={loginDialogOpen}
+        onOpenChange={setLoginDialogOpen}
+        providers={authProviders}
+        onLoginOAuth={async (providerId) => {
+          if (!activeSessionId) return;
+          const result = await loginOAuth(activeSessionId, providerId);
+          if (!result.success) throw new Error(result.error || 'Login failed');
+          await refreshSessionOptions(activeSessionId);
+          const updated = await getAuthProviders(activeSessionId);
+          if (updated.success) setAuthProviders(updated.providers);
+        }}
+        onLoginApiKey={async (providerId, apiKey) => {
+          if (!activeSessionId) return;
+          const result = await loginApiKey(activeSessionId, providerId, apiKey);
+          if (!result.success) throw new Error(result.error || 'Failed to save API key');
+          await refreshSessionOptions(activeSessionId);
+          const updated = await getAuthProviders(activeSessionId);
+          if (updated.success) setAuthProviders(updated.providers);
+        }}
+        onLogout={async (providerId) => {
+          if (!activeSessionId) return;
+          await logout(activeSessionId, providerId);
+          await refreshSessionOptions(activeSessionId);
+          // Refresh provider list
+          const result = await getAuthProviders(activeSessionId);
+          if (result.success) setAuthProviders(result.providers);
+        }}
+      />
     </SidebarProvider>
   );
 }

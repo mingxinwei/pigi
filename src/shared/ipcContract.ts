@@ -99,6 +99,13 @@ export interface SessionOptions {
 // Commands: Renderer → Utility (via control MessagePort, after handshake)
 // =============================================================================
 
+export interface AuthProviderInfo {
+  id: string;
+  name: string;
+  hasAuth: boolean;
+  authStatus: { configured: boolean; source?: string; label?: string };
+}
+
 export type PiCommand =
   | { type: 'prompt'; message: string }
   | { type: 'steer'; message: string }
@@ -112,6 +119,10 @@ export type PiCommand =
   | { type: 'cycle_thinking_level' }
   | { type: 'set_model'; provider: string; modelId: string }
   | { type: 'set_thinking_level'; level: ThinkingLevel }
+  | { type: 'get_auth_providers' }
+  | { type: 'login_oauth'; providerId: string }
+  | { type: 'login_api_key'; providerId: string; apiKey: string }
+  | { type: 'logout'; providerId: string }
   | { type: 'debug' };
 
 /** Wire format for a command request (renderer → utility via port) */
@@ -140,7 +151,11 @@ export type PiPush =
     }
   | { type: 'session_error'; error: string }
   | { type: 'event'; event: unknown }
-  | { type: 'error'; error: string };
+  | { type: 'error'; error: string }
+  | { type: 'login_open_url'; url: string }
+  | { type: 'login_progress'; message: string }
+  | { type: 'login_complete'; providerId: string }
+  | { type: 'login_error'; error: string };
 
 // =============================================================================
 // Stream batches: Utility → Renderer (via data MessagePort, high-frequency)
@@ -196,6 +211,8 @@ export enum PiChannel {
   ProjectSessionsChunk = 'pi:project_sessions_chunk',
   /** renderer → main: get current git branch for a cwd */
   GetGitBranch = 'pi:get_git_branch',
+  /** renderer → main: open a URL in the system browser */
+  OpenExternal = 'pi:open_external',
 }
 
 export interface SessionIndexCommand {

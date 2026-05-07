@@ -382,6 +382,11 @@ const piApi = {
 
   /** Get the app's working directory (for session creation). */
   getCwd: (): string => process.cwd(),
+
+  /** Open a URL in the system browser. */
+  openExternal: (url: string): void => {
+    ipcRenderer.send(PiChannel.OpenExternal, url);
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

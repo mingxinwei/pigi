@@ -114,6 +114,19 @@ function ensureSessionSubscription(sessionId: string, controller: TranscriptCont
       case 'error':
         console.error(`[session ${sessionId}] error:`, msg.error);
         break;
+
+      case 'login_open_url':
+        window.piApi.openExternal(msg.url);
+        break;
+
+      case 'login_complete':
+        // Model list may have changed after login
+        break;
+
+      case 'login_progress':
+      case 'login_error':
+        // TODO: surface these to the user if needed (currently handled via RPC response)
+        break;
     }
   });
 

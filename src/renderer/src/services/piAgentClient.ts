@@ -4,6 +4,7 @@
  * Components use these instead of calling piApi directly.
  */
 import type {
+  AuthProviderInfo,
   PiCommand,
   PiPush,
   GitBranchResult,
@@ -148,6 +149,32 @@ export async function setThinkingLevel(sessionId: string, level: ThinkingLevel):
   if (!result.success) {
     throw new Error(result.error || 'set_thinking_level failed');
   }
+}
+
+// =============================================================================
+// Authentication
+// =============================================================================
+
+export async function getAuthProviders(
+  sessionId: string,
+): Promise<{ success: boolean; providers: AuthProviderInfo[] }> {
+  return send(sessionId, { type: 'get_auth_providers' });
+}
+
+export async function loginOAuth(sessionId: string, providerId: string): Promise<CommandResult> {
+  return send<CommandResult>(sessionId, { type: 'login_oauth', providerId });
+}
+
+export async function loginApiKey(
+  sessionId: string,
+  providerId: string,
+  apiKey: string,
+): Promise<CommandResult> {
+  return send<CommandResult>(sessionId, { type: 'login_api_key', providerId, apiKey });
+}
+
+export async function logout(sessionId: string, providerId: string): Promise<CommandResult> {
+  return send<CommandResult>(sessionId, { type: 'logout', providerId });
 }
 
 // =============================================================================

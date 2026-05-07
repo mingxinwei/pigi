@@ -409,6 +409,97 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       };
     }
 
+    case 'get_auth_providers': {
+      const authStorage = runtime.services.modelRegistry?.authStorage;
+      if (!authStorage) {
+        return { success: false, error: 'Auth storage not initialized' };
+      }
+      const oauthProviders = authStorage.getOAuthProviders();
+      const providers = oauthProviders.map((p) => {
+        const status = authStorage.getAuthStatus(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          hasAuth: authStorage.hasAuth(p.id),
+          authStatus: status,
+        };
+      });
+      return { success: true, providers };
+    }
+
+    case 'login_oauth': {
+      const authStorage = runtime.services.modelRegistry?.authStorage;
+      if (!authStorage) {
+        return { success: false, error: 'Auth storage not initialized' };
+      }
+      const providerId = cmd.providerId;
+      // Check if this is a registered OAuth provider
+      const oauthProviders = authStorage.getOAuthProviders();
+      const isOAuthProvider = oauthProviders.some((p) => p.id === providerId);
+      if (!isOAuthProvider) {
+        return {
+          success: false,
+          error: `"${providerId}" is not an OAuth provider. Use API key authentication instead.`,
+        };
+      }
+      try {
+        await authStorage.login(providerId, {
+          onAuth: (info) => {
+            if (dataPort) {
+              dataPort.postMessage({ type: 'login_open_url', url: info.url });
+            }
+          },
+          onPrompt: async () => {
+            // For now, we don't support interactive prompts in Electron.
+            // The callback server should handle the redirect automatically.
+            return '';
+          },
+          onProgress: (message) => {
+            if (dataPort) {
+              dataPort.postMessage({ type: 'login_progress', message });
+            }
+          },
+        });
+        runtime.services.modelRegistry.refresh();
+        if (dataPort) {
+          dataPort.postMessage({ type: 'login_complete', providerId });
+        }
+        return { success: true };
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        if (dataPort) {
+          dataPort.postMessage({ type: 'login_error', error });
+        }
+        return { success: false, error };
+      }
+    }
+
+    case 'login_api_key': {
+      if (!cmd.providerId?.trim() || !cmd.apiKey?.trim()) {
+        return { success: false, error: 'Provider and API key must not be empty' };
+      }
+      const authStorage = runtime.services.modelRegistry?.authStorage;
+      if (!authStorage) {
+        return { success: false, error: 'Auth storage not initialized' };
+      }
+      authStorage.set(cmd.providerId, { type: 'api_key', key: cmd.apiKey });
+      runtime.services.modelRegistry.refresh();
+      if (dataPort) {
+        dataPort.postMessage({ type: 'login_complete', providerId: cmd.providerId });
+      }
+      return { success: true };
+    }
+
+    case 'logout': {
+      const authStorage = runtime.services.modelRegistry?.authStorage;
+      if (!authStorage) {
+        return { success: false, error: 'Auth storage not initialized' };
+      }
+      authStorage.logout(cmd.providerId);
+      runtime.services.modelRegistry.refresh();
+      return { success: true };
+    }
+
     default:
       return { success: false, error: `Unknown command: ${(cmd as { type: string }).type}` };
   }

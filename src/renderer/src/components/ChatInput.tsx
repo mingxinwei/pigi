@@ -411,8 +411,8 @@ function ModelSettingsPicker({
                     value={modelSearchValue(model)}
                     data-checked={key === selectedKey ? true : undefined}
                     className={cn(
-                      'items-start py-1.5 data-selected:bg-transparent hover:bg-muted/60',
-                      key === selectedKey && 'bg-muted/70',
+                      'items-start py-1.5 data-selected:bg-accent',
+                      key === selectedKey && 'font-medium',
                     )}
                     onSelect={() => {
                       onSelectModel(model);

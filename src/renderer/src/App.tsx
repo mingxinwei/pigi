@@ -354,36 +354,40 @@ function App(): React.JSX.Element {
 
   const handleSlashCommand = useCallback(
     async (command: string, arg: string) => {
-      switch (command) {
-        case 'compact': {
-          if (!activeSessionId) return
-          await compact(activeSessionId)
-          break
+      try {
+        switch (command) {
+          case 'compact': {
+            if (!activeSessionId) return
+            await compact(activeSessionId)
+            break
+          }
+          case 'model': {
+            if (!activeSessionId) return
+            await cycleModel(activeSessionId)
+            await refreshSessionState(activeSessionId)
+            await refreshSessionOptions(activeSessionId)
+            break
+          }
+          case 'thinking': {
+            if (!activeSessionId) return
+            await cycleThinkingLevel(activeSessionId)
+            await refreshSessionState(activeSessionId)
+            await refreshSessionOptions(activeSessionId)
+            break
+          }
+          case 'name': {
+            if (!activeSessionId || !arg) return
+            useAppStore.getState().updateSession(activeSessionId, { title: arg })
+            break
+          }
+          case 'new':
+          case 'clear': {
+            await handleNewSession()
+            break
+          }
         }
-        case 'model': {
-          if (!activeSessionId) return
-          await cycleModel(activeSessionId)
-          await refreshSessionState(activeSessionId)
-          await refreshSessionOptions(activeSessionId)
-          break
-        }
-        case 'thinking': {
-          if (!activeSessionId) return
-          await cycleThinkingLevel(activeSessionId)
-          await refreshSessionState(activeSessionId)
-          await refreshSessionOptions(activeSessionId)
-          break
-        }
-        case 'name': {
-          if (!activeSessionId || !arg) return
-          useAppStore.getState().updateSession(activeSessionId, { title: arg })
-          break
-        }
-        case 'new':
-        case 'clear': {
-          await handleNewSession()
-          break
-        }
+      } catch (err) {
+        console.error(`[slash command /${command}] failed:`, err)
       }
     },
     [activeSessionId, refreshSessionOptions, refreshSessionState],

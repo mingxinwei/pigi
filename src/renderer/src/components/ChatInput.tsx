@@ -127,6 +127,7 @@ export default function ChatInput({
       const spaceIdx = msg.indexOf(' ')
       const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx)
       const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim()
+
       el.value = ''
       el.style.height = 'auto'
       setSlashMatches([])
@@ -157,12 +158,21 @@ export default function ChatInput({
           setSelectedSlashIndex((i) => (i + 1) % slashMatches.length)
           return
         }
-        if (e.key === 'Tab') {
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
           e.preventDefault()
           const cmd = slashMatches[selectedSlashIndex]
           if (cmd && textareaRef.current) {
-            textareaRef.current.value = `/${cmd.name} `
-            setSlashMatches([])
+            if (cmd.hasArg) {
+              // Command needs an argument — complete it and keep focus
+              textareaRef.current.value = `/${cmd.name} `
+              setSlashMatches([])
+            } else {
+              // No argument needed — execute immediately
+              textareaRef.current.value = ''
+              textareaRef.current.style.height = 'auto'
+              setSlashMatches([])
+              onSlashCommand(cmd.name, '')
+            }
           }
           return
         }

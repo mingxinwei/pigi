@@ -421,18 +421,22 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
 
 function SystemBubble({ text, isLoading }: { text: string; isLoading?: boolean }): React.JSX.Element {
   return (
-    <div className="flex justify-center" data-testid="system-message">
-      <div
-        className={cn(
-          'relative overflow-hidden rounded-full px-3 py-1 text-[13px] text-muted-foreground',
-          isLoading && 'bg-muted/50',
-        )}
-      >
+    <div className="flex items-center gap-3 py-2" data-testid="system-message">
+      <div className="h-px flex-1 bg-border" />
+      <span className="relative shrink-0 text-sm text-muted-foreground overflow-hidden">
+        {text}
         {isLoading && (
-          <div className="absolute inset-0 animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-foreground/[0.07] to-transparent" />
+          <span
+            className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"
+            style={{
+              background:
+                'linear-gradient(90deg, transparent 0%, transparent 30%, rgba(255,255,255,0.95) 50%, transparent 70%, transparent 100%)',
+              backgroundSize: '200% 100%',
+            }}
+          />
         )}
-        <span className="relative">{text}</span>
-      </div>
+      </span>
+      <div className="h-px flex-1 bg-border" />
     </div>
   )
 }

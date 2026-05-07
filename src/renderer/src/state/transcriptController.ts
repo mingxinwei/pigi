@@ -299,6 +299,15 @@ export class TranscriptController {
           })
           break
         }
+        case 'compactionSummary': {
+          nodes.push({
+            id: m.id || nextNodeId(),
+            role: 'system',
+            text: 'Context compacted',
+            isLoading: false,
+          })
+          break
+        }
       }
     }
 
@@ -594,7 +603,7 @@ export class TranscriptController {
   private addCompactionNode(): void {
     const id = `compaction-${Date.now()}`
     const node: SystemNode = { id, role: 'system', text: 'Compacting context...', isLoading: true }
-    this.pushNode(node)
+    this.setState({ nodes: [...this._state.nodes, node] })
   }
 
   private finalizeCompactionNode(): void {
@@ -602,9 +611,10 @@ export class TranscriptController {
     for (let i = nodes.length - 1; i >= 0; i--) {
       const n = nodes[i]
       if (n.role === 'system' && n.isLoading && n.text.startsWith('Compacting')) {
-        n.text = 'Context compacted'
-        n.isLoading = false
-        this.notify()
+        const updated = { ...n, text: 'Context compacted', isLoading: false }
+        const newNodes = [...nodes]
+        newNodes[i] = updated
+        this.setState({ nodes: newNodes })
         return
       }
     }

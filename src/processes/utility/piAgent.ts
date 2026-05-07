@@ -408,6 +408,9 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
         diagnostics: runtime.diagnostics,
       }
     }
+
+    default:
+      return { success: false, error: `Unknown command: ${cmd.type}` }
   }
 }
 
@@ -421,6 +424,7 @@ function setupControlPortListener(port: Port): void {
         const response: PiResult = { id: req.id, result }
         port.postMessage(response)
       } catch (err) {
+        console.error('[utility.controlPort] command failed:', req.cmd.type, err instanceof Error ? err.message : String(err))
         const response: PiResult = {
           id: req.id,
           result: { success: false, error: err instanceof Error ? err.message : String(err) },

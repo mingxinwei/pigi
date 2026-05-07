@@ -207,7 +207,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
 
       {hasOutput && (node.name !== 'edit' || node.status === 'error') && (
         <>
-          <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground">
+          <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
             {!expanded && hiddenLineCount > 0 && (
               <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
                 {`... (${hiddenLineCount.toLocaleString()} earlier lines)`}

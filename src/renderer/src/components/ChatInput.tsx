@@ -25,10 +25,12 @@ import { Separator } from './ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants'
 import { cn } from '../lib/utils'
+import { matchSlashCommands, type SlashCommand } from '../lib/slashCommands'
 
 interface ChatInputProps {
   onSend: (message: string) => void
   onAbort: () => void
+  onSlashCommand: (command: string, arg: string) => void
   isStreaming: boolean
   gitBranch: string | null
   session: SessionEntry | null
@@ -62,6 +64,7 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
 export default function ChatInput({
   onSend,
   onAbort,
+  onSlashCommand,
   isStreaming,
   gitBranch,
   session,
@@ -73,6 +76,8 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const draftsRef = useRef<Map<string, string>>(new Map())
   const prevSessionIdRef = useRef<string | null>(null)
+  const [slashMatches, setSlashMatches] = useState<SlashCommand[]>([])
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
 
   // Save/restore draft per session
   useEffect(() => {
@@ -116,10 +121,23 @@ export default function ChatInput({
     if (!msg) {
       return
     }
+
+    // Check for slash command
+    if (msg.startsWith('/')) {
+      const spaceIdx = msg.indexOf(' ')
+      const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx)
+      const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim()
+      el.value = ''
+      el.style.height = 'auto'
+      setSlashMatches([])
+      onSlashCommand(name, arg)
+      return
+    }
+
     el.value = ''
     el.style.height = 'auto'
     onSend(msg)
-  }, [onSend])
+  }, [onSend, onSlashCommand])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -127,12 +145,39 @@ export default function ChatInput({
         return
       }
 
+      // Slash command autocomplete navigation
+      if (slashMatches.length > 0) {
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSelectedSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length)
+          return
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSelectedSlashIndex((i) => (i + 1) % slashMatches.length)
+          return
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault()
+          const cmd = slashMatches[selectedSlashIndex]
+          if (cmd && textareaRef.current) {
+            textareaRef.current.value = `/${cmd.name} `
+            setSlashMatches([])
+          }
+          return
+        }
+        if (e.key === 'Escape') {
+          setSlashMatches([])
+          return
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSend()
       }
     },
-    [handleSend, isStreaming, onAbort],
+    [handleSend, slashMatches, selectedSlashIndex],
   )
 
   const handleInput = useCallback(() => {
@@ -142,6 +187,12 @@ export default function ChatInput({
     }
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 128) + 'px'
+
+    // Update slash command matches
+    const value = el.value
+    const matches = matchSlashCommands(value)
+    setSlashMatches(matches)
+    setSelectedSlashIndex(0)
   }, [])
 
   return (
@@ -157,6 +208,40 @@ export default function ChatInput({
           <div className="absolute inset-x-0 bottom-full z-[-1] flex items-center gap-2 rounded-t-2xl bg-muted/60 px-4 pb-6 pt-2 text-sm text-muted-foreground" style={{ marginBottom: '-20px' }}>
             <IconStarFilled className="size-4 animate-[spin_2s_linear_infinite] text-green-500" />
             <span className="-ml-0.5">Working...</span>
+          </div>
+        )}
+        {slashMatches.length > 0 && (
+          <div className="absolute inset-x-0 bottom-full mb-1 rounded-lg border border-border/60 bg-popover p-1 shadow-lg">
+            {slashMatches.map((cmd, i) => (
+              <button
+                key={cmd.name}
+                type="button"
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm',
+                  i === selectedSlashIndex ? 'bg-muted' : 'hover:bg-muted/60',
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  const el = textareaRef.current
+                  if (el) {
+                    if (cmd.hasArg) {
+                      el.value = `/${cmd.name} `
+                      setSlashMatches([])
+                      handleInput()
+                      el.focus()
+                    } else {
+                      el.value = ''
+                      el.style.height = 'auto'
+                      setSlashMatches([])
+                      onSlashCommand(cmd.name, '')
+                    }
+                  }
+                }}
+              >
+                <span className="font-mono text-foreground">/{cmd.name}</span>
+                <span className="text-muted-foreground">{cmd.description}</span>
+              </button>
+            ))}
           </div>
         )}
         <InputGroup className="h-auto min-h-28 flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">

@@ -329,6 +329,10 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       setSessionBusy(runtime.session.isStreaming)
       return { success: true }
 
+    case 'compact':
+      await runtime.session.compact()
+      return { success: true }
+
     case 'get_state': {
       const s = runtime.session
       return {

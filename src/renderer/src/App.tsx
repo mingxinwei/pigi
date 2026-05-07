@@ -11,6 +11,9 @@ import {
   prompt,
   steer,
   abort,
+  compact,
+  cycleModel,
+  cycleThinkingLevel,
   getProjects,
   getGitBranch,
   getState,
@@ -349,6 +352,43 @@ function App(): React.JSX.Element {
     [activeSessionId, refreshSessionOptions, refreshSessionState],
   )
 
+  const handleSlashCommand = useCallback(
+    async (command: string, arg: string) => {
+      switch (command) {
+        case 'compact': {
+          if (!activeSessionId) return
+          await compact(activeSessionId)
+          break
+        }
+        case 'model': {
+          if (!activeSessionId) return
+          await cycleModel(activeSessionId)
+          await refreshSessionState(activeSessionId)
+          await refreshSessionOptions(activeSessionId)
+          break
+        }
+        case 'thinking': {
+          if (!activeSessionId) return
+          await cycleThinkingLevel(activeSessionId)
+          await refreshSessionState(activeSessionId)
+          await refreshSessionOptions(activeSessionId)
+          break
+        }
+        case 'name': {
+          if (!activeSessionId || !arg) return
+          useAppStore.getState().updateSession(activeSessionId, { title: arg })
+          break
+        }
+        case 'new':
+        case 'clear': {
+          await handleNewSession()
+          break
+        }
+      }
+    },
+    [activeSessionId, refreshSessionOptions, refreshSessionState],
+  )
+
   return (
     <SidebarProvider
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
@@ -382,6 +422,7 @@ function App(): React.JSX.Element {
         <ChatInput
           onSend={handleSend}
           onAbort={handleAbort}
+          onSlashCommand={handleSlashCommand}
           isStreaming={transcript.status !== 'idle'}
           gitBranch={gitBranch}
           session={activeSession}

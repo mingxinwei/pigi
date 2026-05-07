@@ -103,6 +103,7 @@ export type PiCommand =
   | { type: 'prompt'; message: string }
   | { type: 'steer'; message: string }
   | { type: 'abort' }
+  | { type: 'compact' }
   | { type: 'get_state' }
   | { type: 'get_session_options' }
   | { type: 'get_messages' }

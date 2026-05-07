@@ -101,6 +101,13 @@ export async function abort(sessionId: string): Promise<void> {
   await send(sessionId, { type: 'abort' })
 }
 
+export async function compact(sessionId: string): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'compact' })
+  if (!result.success) {
+    throw new Error(result.error || 'compact failed')
+  }
+}
+
 export async function getState(sessionId: string): Promise<SessionState> {
   return send<SessionState>(sessionId, { type: 'get_state' })
 }

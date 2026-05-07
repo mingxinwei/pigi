@@ -239,21 +239,24 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleAbort, transcript.status])
 
-  async function createAndActivateSession(cwd: string): Promise<void> {
-    const sessionId = await createSession(cwd)
-    addSession(sessionId, cwd)
-    setPendingSelectedSessionId(null)
-    setActiveSession(sessionId)
-    void listProjectSessions([cwd])
-  }
+  const createAndActivateSession = useCallback(
+    async (cwd: string): Promise<void> => {
+      const sessionId = await createSession(cwd)
+      addSession(sessionId, cwd)
+      setPendingSelectedSessionId(null)
+      setActiveSession(sessionId)
+      void listProjectSessions([cwd])
+    },
+    [addSession, setActiveSession],
+  )
 
-  async function handleNewSession(): Promise<void> {
+  const handleNewSession = useCallback(async (): Promise<void> => {
     try {
       await createAndActivateSession(activeCwd)
     } catch (err) {
       console.error('Failed to create session:', err)
     }
-  }
+  }, [activeCwd, createAndActivateSession])
 
   async function handleNewSessionForProject(path: string): Promise<void> {
     try {
@@ -390,7 +393,7 @@ function App(): React.JSX.Element {
         console.error(`[slash command /${command}] failed:`, err)
       }
     },
-    [activeSessionId, refreshSessionOptions, refreshSessionState],
+    [activeSessionId, handleNewSession, refreshSessionOptions, refreshSessionState],
   )
 
   return (

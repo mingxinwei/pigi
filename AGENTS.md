@@ -28,3 +28,4 @@
 - Do NOT commit automatically after changes; wait for explicit commit instruction
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
+- Run `pnpm check` after any significant code change to catch type errors, lint issues, and formatting problems before committing

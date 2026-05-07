@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { IconFolder, IconFolderOpen, IconFolderPlus, IconLoader2, IconPlus } from '@tabler/icons-react'
+import {
+  IconFolder,
+  IconFolderOpen,
+  IconFolderPlus,
+  IconLoader2,
+  IconPlus,
+} from '@tabler/icons-react'
 import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
 import type { SessionEntry } from '../state/appStore'
 import {

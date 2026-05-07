@@ -40,6 +40,7 @@ Context7 lookups used:
   - `Page.captureScreenshot` captures PNG/JPEG screenshots
   - `Accessibility.getFullAXTree` can provide accessibility snapshots
   - `Performance.getMetrics` and tracing help investigate jank
+
 ## Recommended Debug Channels
 
 ### 1. Renderer: Chrome DevTools / CDP

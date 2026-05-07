@@ -48,7 +48,12 @@ function computeSingleDiffLines(oldText: string, newText: string): DiffLine[] {
       }
     } else {
       for (const line of lines) {
-        result.push({ type: 'context', content: line, lineNumber: newLineNum, oldLineNumber: oldLineNum })
+        result.push({
+          type: 'context',
+          content: line,
+          lineNumber: newLineNum,
+          oldLineNumber: oldLineNum,
+        })
         oldLineNum++
         newLineNum++
       }

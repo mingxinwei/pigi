@@ -42,9 +42,10 @@ const STATUS_CONFIG = {
 
 function ElapsedTimer(): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef(Date.now())
+  const startRef = useRef(0)
 
   useEffect(() => {
+    startRef.current = Date.now()
     const interval = setInterval(() => {
       setElapsed((Date.now() - startRef.current) / 1000)
     }, 1000)
@@ -185,6 +186,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT)
   const outputLanguage = getToolOutputLanguage(node)
   const durationLabel = formatDuration(node.durationMs)
+  const args = node.args as Record<string, unknown> | undefined
+  const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined
 
   return (
     <div
@@ -198,6 +201,11 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {command.body}
           </span>
+          {timeout !== undefined && (
+            <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
+              timeout {timeout}s
+            </span>
+          )}
         </div>
       )}
 

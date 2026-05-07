@@ -677,7 +677,8 @@ function extractAssistantContent(content: unknown[] | undefined): {
   toolCalls: Array<{ id: string; name: string; args: unknown }>
   errorMessage: string | undefined
 } {
-  if (!content || !Array.isArray(content)) return { text: '', thinking: '', toolCalls: [], errorMessage: undefined }
+  if (!content || !Array.isArray(content))
+    return { text: '', thinking: '', toolCalls: [], errorMessage: undefined }
   const textParts: string[] = []
   const thinkingParts: string[] = []
   const toolCalls: Array<{ id: string; name: string; args: unknown }> = []

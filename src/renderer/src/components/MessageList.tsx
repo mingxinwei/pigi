@@ -125,7 +125,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       el.removeEventListener('wheel', handleWheel, { capture: true })
       el.removeEventListener('scroll', handleScroll)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
@@ -145,31 +145,34 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
         data-testid="message-list"
       >
-      <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}>
-        {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
-
         <div
-          className="relative"
-          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-          data-testid="message-virtualizer"
+          className="mx-auto px-5 pb-8 pt-14"
+          style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
-          {virtualItems.map((virtualItem) => {
-            const node = displayNodes[virtualItem.index]
-            return (
-              <div
-                key={node.id}
-                ref={rowVirtualizer.measureElement}
-                data-index={virtualItem.index}
-                className="absolute left-0 top-0 w-full"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                <NodeRenderer node={node} />
-              </div>
-            )
-          })}
+          {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
+
+          <div
+            className="relative"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            data-testid="message-virtualizer"
+          >
+            {virtualItems.map((virtualItem) => {
+              const node = displayNodes[virtualItem.index]
+              return (
+                <div
+                  key={node.id}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <NodeRenderer node={node} />
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
-    </div>
       {showScrollButton && (
         <button
           type="button"
@@ -202,7 +205,6 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
 function isAtBottom(el: HTMLDivElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_BOTTOM_THRESHOLD
 }
-
 
 function estimateUserHeight(text: string): number {
   const preview = getUserMessagePreview(text)
@@ -323,7 +325,9 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
         </div>
         <div className="flex h-6 w-full items-center justify-end gap-2 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
           <MessageToolbar text={node.text} />
-          <span className="text-xs text-muted-foreground">{formatUserMessageTime(node.sentAt)}</span>
+          <span className="text-xs text-muted-foreground">
+            {formatUserMessageTime(node.sentAt)}
+          </span>
         </div>
       </div>
     </div>
@@ -427,7 +431,13 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   )
 }
 
-function SystemBubble({ text, isLoading }: { text: string; isLoading?: boolean }): React.JSX.Element {
+function SystemBubble({
+  text,
+  isLoading,
+}: {
+  text: string
+  isLoading?: boolean
+}): React.JSX.Element {
   return (
     <div className="flex items-center gap-3 py-2" data-testid="system-message">
       <div className="h-px flex-1 bg-border" />

@@ -187,7 +187,7 @@ export default function ChatInput({
         handleSend()
       }
     },
-    [handleSend, slashMatches, selectedSlashIndex],
+    [handleSend, slashMatches, selectedSlashIndex, onSlashCommand],
   )
 
   const handleInput = useCallback(() => {
@@ -215,7 +215,10 @@ export default function ChatInput({
         style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
       >
         {isStreaming && (
-          <div className="absolute inset-x-0 bottom-full z-[-1] flex items-center gap-2 rounded-t-2xl bg-muted/60 px-4 pb-6 pt-2 text-sm text-muted-foreground" style={{ marginBottom: '-20px' }}>
+          <div
+            className="absolute inset-x-0 bottom-full z-[-1] flex items-center gap-2 rounded-t-2xl bg-muted/60 px-4 pb-6 pt-2 text-sm text-muted-foreground"
+            style={{ marginBottom: '-20px' }}
+          >
             <IconStarFilled className="size-4 animate-[spin_2s_linear_infinite] text-green-500" />
             <span className="-ml-0.5">Working...</span>
           </div>

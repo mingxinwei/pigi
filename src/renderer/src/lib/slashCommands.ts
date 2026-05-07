@@ -18,9 +18,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
  * Parse a slash command from input text.
  * Returns the command and argument if valid, null otherwise.
  */
-export function parseSlashCommand(
-  input: string,
-): { command: SlashCommand; arg: string } | null {
+export function parseSlashCommand(input: string): { command: SlashCommand; arg: string } | null {
   const trimmed = input.trim()
   if (!trimmed.startsWith('/')) return null
 

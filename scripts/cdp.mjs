@@ -68,8 +68,14 @@ async function createCdpSession() {
         reject(new Error(`CDP timeout: ${method}`))
       }, 30000)
       pending.set(id, {
-        resolve: (r) => { clearTimeout(timer); resolve(r) },
-        reject: (e) => { clearTimeout(timer); reject(e) },
+        resolve: (r) => {
+          clearTimeout(timer)
+          resolve(r)
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        },
       })
       const msg = { id, method, params }
       if (sessionId) msg.sessionId = sessionId
@@ -105,7 +111,10 @@ try {
       returnByValue: true,
     })
     if (result.exceptionDetails) {
-      console.error('Error:', result.exceptionDetails.text || result.exceptionDetails.exception?.description)
+      console.error(
+        'Error:',
+        result.exceptionDetails.text || result.exceptionDetails.exception?.description,
+      )
       process.exit(1)
     }
     const val = result.result.value
@@ -161,22 +170,53 @@ try {
     }
     const { x, y } = loc.result.value
 
-    await session.call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
-    await session.call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+    await session.call('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x,
+      y,
+      button: 'left',
+      clickCount: 1,
+    })
+    await session.call('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x,
+      y,
+      button: 'left',
+      clickCount: 1,
+    })
     await new Promise((r) => setTimeout(r, 100))
 
     for (const ch of text) {
-      await session.call('Input.dispatchKeyEvent', { type: 'keyDown', text: ch, key: ch, unmodifiedText: ch })
+      await session.call('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        text: ch,
+        key: ch,
+        unmodifiedText: ch,
+      })
       await session.call('Input.dispatchKeyEvent', { type: 'keyUp', key: ch })
     }
     await new Promise((r) => setTimeout(r, 100))
 
-    await session.call('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
-    await session.call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+    await session.call('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+    })
+    await session.call('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+    })
     console.log(`Typed and sent: "${text}"`)
     session.close()
   } else {
-    console.log('Usage: cdp.mjs eval <expr> | snapshot | capture [path] | console [seconds] | type <text>')
+    console.log(
+      'Usage: cdp.mjs eval <expr> | snapshot | capture [path] | console [seconds] | type <text>',
+    )
   }
 } catch (err) {
   console.error(err.message)

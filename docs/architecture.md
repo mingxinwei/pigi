@@ -74,54 +74,64 @@ Renderer                    Main                        Utility Process
 
 ### Main ↔ Renderer (IPC, lifecycle only)
 
-| Channel | Direction | Purpose |
-|---------|-----------|---------|
-| `pi:create_session` | renderer → main | Spawn process, create session |
-| `pi:resume_session` | renderer → main | Spawn process, resume session |
-| `pi:destroy_session` | renderer → main | Kill session process |
-| `pi:session_port` | main → renderer | Deliver control/data MessagePorts |
-| `pi:process_exit` | main → renderer | Notify unexpected crash |
+| Channel              | Direction       | Purpose                           |
+| -------------------- | --------------- | --------------------------------- |
+| `pi:create_session`  | renderer → main | Spawn process, create session     |
+| `pi:resume_session`  | renderer → main | Spawn process, resume session     |
+| `pi:destroy_session` | renderer → main | Kill session process              |
+| `pi:session_port`    | main → renderer | Deliver control/data MessagePorts |
+| `pi:process_exit`    | main → renderer | Notify unexpected crash           |
 
 These are the **only** IPC calls. After session creation, main is idle.
 
 ### Main → Utility (parentPort, lifecycle only)
 
-| Message | Purpose |
-|---------|---------|
-| `{ type: 'create_session', cwd }` | Initialize new session |
-| `{ type: 'resume_session', sessionPath }` | Resume existing session |
+| Message                                                | Purpose                         |
+| ------------------------------------------------------ | ------------------------------- |
+| `{ type: 'create_session', cwd }`                      | Initialize new session          |
+| `{ type: 'resume_session', sessionPath }`              | Resume existing session         |
 | `{ type: 'attach_ports' }` + `[controlPort, dataPort]` | Deliver MessagePorts to utility |
 
 ### Utility → Main (parentPort, lifecycle only)
 
-| Message | Purpose |
-|---------|---------|
-| `{ type: 'session_created', sessionId }` | Report real session ID |
-| `{ type: 'session_error', error }` | Report creation failure |
+| Message                                  | Purpose                 |
+| ---------------------------------------- | ----------------------- |
+| `{ type: 'session_created', sessionId }` | Report real session ID  |
+| `{ type: 'session_error', error }`       | Report creation failure |
 
 ### Renderer ↔ Utility (MessagePorts, runtime data)
 
 Everything after handshake flows over two direct MessagePorts per session. Splitting low-volume controls from high-volume output prevents stream batches from delaying abort/escape commands.
 
 **Renderer → Utility (control port commands):**
+
 ```ts
 { id: string, cmd: PiCommand }
 // PiCommand = prompt | abort | get_state | get_messages | list_sessions | cycle_model | cycle_thinking_level
 ```
 
 **Utility → Renderer (control port responses):**
+
 ```ts
 { id: string, result: unknown }
 ```
 
 **Utility → Renderer (data port push events, no id):**
+
 ```ts
-{ type: 'session_ready', model, thinkingLevel }
-{ type: 'event', event }       // agent lifecycle events
-{ type: 'error', error }       // runtime errors
+{
+  type: ('session_ready', model, thinkingLevel)
+}
+{
+  type: ('event', event)
+} // agent lifecycle events
+{
+  type: ('error', error)
+} // runtime errors
 ```
 
 **Utility → Renderer (data port stream batches, high-frequency):**
+
 ```ts
 { type: 'stream_batch', text?, thinking?, toolOutput? }
 // Flushed every 16ms by StreamBatcher
@@ -129,13 +139,13 @@ Everything after handshake flows over two direct MessagePorts per session. Split
 
 ## Why This Design
 
-| Decision | Rationale |
-|----------|-----------|
-| One process per session | Crash isolation, no shared event loop blocking |
-| Direct MessagePorts for runtime data | Main not in hot path, lowest latency |
+| Decision                                | Rationale                                                             |
+| --------------------------------------- | --------------------------------------------------------------------- |
+| One process per session                 | Crash isolation, no shared event loop blocking                        |
+| Direct MessagePorts for runtime data    | Main not in hot path, lowest latency                                  |
 | Separate control/data ports per session | High-volume stream output cannot queue ahead of abort/escape controls |
-| Two-step handshake | Real sessionId from SDK, no temporary/generated IDs |
-| Main only does lifecycle | Minimal surface, easy to reason about |
+| Two-step handshake                      | Real sessionId from SDK, no temporary/generated IDs                   |
+| Main only does lifecycle                | Minimal surface, easy to reason about                                 |
 
 ## File Map
 

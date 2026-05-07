@@ -95,11 +95,12 @@ The product surface stays small; the technical base should still be production-s
    - Keep pigi built around `AgentSessionRuntime`, pi JSONL sessions, Electron process isolation, MessagePort streaming, and React virtualization.
 
 10. **Use small, composable UI/state libraries**
-   - Use shadcn/ui for accessible primitives and consistent styling.
-   - Use Zustand for app-shell/UI state.
-   - Keep transcript/streaming state in a local reducer/controller so high-frequency and large-message paths stay isolated.
-   - Do not introduce Redux.
-   - Do not add TanStack Query unless session indexing/search grows into query-cache style data fetching.
+
+- Use shadcn/ui for accessible primitives and consistent styling.
+- Use Zustand for app-shell/UI state.
+- Keep transcript/streaming state in a local reducer/controller so high-frequency and large-message paths stay isolated.
+- Do not introduce Redux.
+- Do not add TanStack Query unless session indexing/search grows into query-cache style data fetching.
 
 ---
 
@@ -327,11 +328,7 @@ interface TranscriptState {
 Keep the model simple but not string-only:
 
 ```ts
-type TranscriptNode =
-  | UserNode
-  | AssistantNode
-  | ToolNode
-  | SystemNode
+type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode
 
 interface AssistantNode {
   id: string

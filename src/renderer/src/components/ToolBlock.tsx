@@ -201,7 +201,9 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         </div>
       )}
 
-      {editEntries && editEntries.length > 0 && <DiffView edits={editEntries} />}
+      {editEntries && editEntries.length > 0 && node.status !== 'error' && (
+        <DiffView edits={editEntries} />
+      )}
 
       {hasOutput && (node.name !== 'edit' || node.status === 'error') && (
         <>

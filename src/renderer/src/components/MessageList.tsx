@@ -1,5 +1,6 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { IconArrowDown } from '@tabler/icons-react'
 import type {
   TranscriptNode,
   AssistantNode,
@@ -18,6 +19,7 @@ interface MessageListProps {
 const CHAT_INPUT_AREA_HEIGHT = 172
 const MESSAGE_ROW_GAP = 16
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2
+const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24
@@ -40,6 +42,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
   const containerRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
   const lastNodeIdRef = useRef<string | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes])
 
   const getItemKey = useCallback(
@@ -105,7 +108,14 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         autoScrollRef.current = true
       }
     }
+
+    function handleScroll(): void {
+      const distanceFromBottom = el!.scrollHeight - el!.scrollTop - el!.clientHeight
+      setShowScrollButton(distanceFromBottom > el!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER)
+    }
+
     el.addEventListener('wheel', handleWheel, { capture: true, passive: true })
+    el.addEventListener('scroll', handleScroll, { passive: true })
 
     scrollToBottom()
 
@@ -113,18 +123,28 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       ro.disconnect()
       if (pendingRaf) cancelAnimationFrame(pendingRaf)
       el.removeEventListener('wheel', handleWheel, { capture: true })
+      el.removeEventListener('scroll', handleScroll)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
+  function handleScrollToBottom(): void {
+    const el = containerRef.current
+    if (!el) return
+    autoScrollRef.current = true
+    el.scrollTop = el.scrollHeight
+    setShowScrollButton(false)
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className="min-h-0 flex-1 overflow-y-auto bg-background [overflow-anchor:none]"
-      style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
-      data-testid="message-list"
-    >
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto bg-background [overflow-anchor:none]"
+        style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
+        data-testid="message-list"
+      >
       <div className="mx-auto px-5 pb-8 pt-14" style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}>
         {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
@@ -149,6 +169,17 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
           })}
         </div>
       </div>
+    </div>
+      {showScrollButton && (
+        <button
+          type="button"
+          onClick={handleScrollToBottom}
+          className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm transition-opacity hover:bg-muted"
+        >
+          <IconArrowDown className="size-3.5" />
+          Scroll to bottom
+        </button>
+      )}
     </div>
   )
 }

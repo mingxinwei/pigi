@@ -24,7 +24,7 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
   }, [edits]);
 
   return (
-    <div className="mt-2 overflow-hidden rounded border border-border/40 font-mono text-[13px] leading-5">
+    <div className="my-4 overflow-hidden rounded border border-border/40 font-mono text-[13px] leading-5">
       {sections.map((section, sectionIdx) => (
         <div key={sectionIdx}>
           {sectionIdx > 0 && (

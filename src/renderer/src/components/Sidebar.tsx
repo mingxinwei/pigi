@@ -162,7 +162,7 @@ export default function Sidebar({
     <>
       <ShadcnSidebar
         collapsible="none"
-        className="border-r [&_.tabler-icon]:stroke-[1.25]"
+        className="[&_.tabler-icon]:stroke-[1.25]"
         data-testid="sidebar"
       >
         <SidebarHeader style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>

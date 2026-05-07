@@ -645,34 +645,33 @@ export class TranscriptController {
   private handleToolUpdate(event: SdkToolExecUpdate): void {
     // Tool output is handled via StreamBatcher (toolOutput field)
     // But handle here as fallback
-    const tool = this._state.nodes.find(
-      (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
-    ) as ToolNode | undefined;
-    if (tool && event.partialResult) {
-      const text = extractToolResultText(event.partialResult);
-      if (text) {
-        tool.output = text;
-        this.setState({ nodes: [...this._state.nodes] });
-      }
-    }
+    if (!event.partialResult) return;
+    const text = extractToolResultText(event.partialResult);
+    if (!text) return;
+    const nodes = this._state.nodes.map((n) => {
+      if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
+      return { ...(n as ToolNode), output: text };
+    });
+    this.setState({ nodes });
   }
 
   private handleToolEnd(event: SdkToolExecEnd): void {
     const endedAt = Date.now();
-    const tool = this._state.nodes.find(
-      (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
-    ) as ToolNode | undefined;
-
-    if (tool) {
-      tool.status = event.isError ? 'error' : 'success';
-      tool.isError = event.isError;
+    const nodes = this._state.nodes.map((n) => {
+      if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
+      const tool = n as ToolNode;
       const text = extractToolResultText(event.result);
-      if (text) tool.output = text;
-      tool.durationMs = getElapsedMs(tool.startedAt, endedAt);
-    }
+      return {
+        ...tool,
+        status: event.isError ? 'error' : ('success' as ToolNode['status']),
+        isError: event.isError,
+        output: text || tool.output,
+        durationMs: getElapsedMs(tool.startedAt, endedAt),
+      };
+    });
 
     this.setState({
-      nodes: [...this._state.nodes],
+      nodes,
       activeToolCallId: null,
       status: 'streaming',
     });

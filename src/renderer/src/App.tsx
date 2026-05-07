@@ -504,7 +504,7 @@ function App(): React.JSX.Element {
   return (
     <SidebarProvider
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
-      className="h-screen min-h-0 bg-background"
+      className="h-screen min-h-0 bg-sidebar"
       data-testid="app-shell"
     >
       <div className="relative flex h-full shrink-0">
@@ -520,16 +520,16 @@ function App(): React.JSX.Element {
           onOpenProject={handleOpenProject}
           onSelectProject={handleSelectProject}
         />
+      </div>
+
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-2xl border-l border-border/60 bg-background">
         <div
           aria-label="Resize sidebar"
           role="separator"
           aria-orientation="vertical"
-          className="absolute inset-y-0 right-0 w-2 cursor-col-resize"
+          className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize"
           onPointerDown={handleSidebarResizeStart}
         />
-      </div>
-
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <MessageList nodes={transcript.nodes} />
         <StreamingQueue
           isStreaming={transcript.status !== 'idle'}

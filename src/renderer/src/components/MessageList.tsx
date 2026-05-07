@@ -24,12 +24,8 @@ const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
 const USER_MESSAGE_LEADING_PADDING = 24;
 const USER_MESSAGE_TRAILING_PADDING = 8;
-const LONG_USER_MESSAGE_LINE_LIMIT = 100;
-const LONG_USER_MESSAGE_HEAD_LINES = 24;
-const LONG_USER_MESSAGE_TAIL_LINES = 12;
-const LONG_USER_MESSAGE_CHARACTER_LIMIT = 4_000;
-const LONG_USER_MESSAGE_HEAD_CHARACTERS = 2_400;
-const LONG_USER_MESSAGE_TAIL_CHARACTERS = 1_200;
+const LONG_USER_MESSAGE_LINE_LIMIT = 50;
+const LONG_USER_MESSAGE_CHARACTER_LIMIT = 3_000;
 const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72;
 
 interface UserMessagePreview {
@@ -316,12 +312,13 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
       <div className="group flex max-w-[85%] flex-col items-end">
         <div
           className={cn(
-            'min-w-16 rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
+            'rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
             'max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
             preview.isLong ? 'w-full' : 'w-fit',
           )}
         >
           {displayText}
+          {preview.isLong && !expanded && <span className="text-muted-foreground">{'\n...'}</span>}
           {preview.isLong && (
             <div className="mt-2">
               <button
@@ -350,32 +347,14 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
 function getUserMessagePreview(text: string): UserMessagePreview {
   const lines = text.split('\n');
   if (lines.length > LONG_USER_MESSAGE_LINE_LIMIT) {
-    return { isLong: true, text: getCollapsedUserMessageByLines(lines) };
+    return { isLong: true, text: lines.slice(0, LONG_USER_MESSAGE_LINE_LIMIT).join('\n') };
   }
 
   if (text.length > LONG_USER_MESSAGE_CHARACTER_LIMIT) {
-    return { isLong: true, text: getCollapsedUserMessageByCharacters(text) };
+    return { isLong: true, text: text.slice(0, LONG_USER_MESSAGE_CHARACTER_LIMIT) };
   }
 
   return { isLong: false, text };
-}
-
-function getCollapsedUserMessageByLines(lines: string[]): string {
-  const omittedLineCount =
-    lines.length - LONG_USER_MESSAGE_HEAD_LINES - LONG_USER_MESSAGE_TAIL_LINES;
-  const head = lines.slice(0, LONG_USER_MESSAGE_HEAD_LINES);
-  const tail = lines.slice(-LONG_USER_MESSAGE_TAIL_LINES);
-  return [...head, `... (${omittedLineCount.toLocaleString()} lines hidden)`, ...tail].join('\n');
-}
-
-function getCollapsedUserMessageByCharacters(text: string): string {
-  const hiddenCharacterCount =
-    text.length - LONG_USER_MESSAGE_HEAD_CHARACTERS - LONG_USER_MESSAGE_TAIL_CHARACTERS;
-  return [
-    text.slice(0, LONG_USER_MESSAGE_HEAD_CHARACTERS),
-    `... (${hiddenCharacterCount.toLocaleString()} characters hidden)`,
-    text.slice(-LONG_USER_MESSAGE_TAIL_CHARACTERS),
-  ].join('\n');
 }
 
 function formatUserMessageTime(timestamp: number): string {

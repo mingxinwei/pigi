@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { ToolNode } from '../state/transcriptController';
@@ -6,6 +6,7 @@ import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
 import DiffView from './DiffView';
 import type { EditEntry } from '../lib/diffUtils';
+import ImagePreview from './ImagePreview';
 
 interface ToolBlockProps {
   node: ToolNode;
@@ -52,6 +53,9 @@ function ElapsedTimer(): React.JSX.Element {
 
 export const TOOL_OUTPUT_LINE_LIMIT = 10;
 const TOOL_OUTPUT_BYTE_LIMIT = 2000;
+
+const READ_MORE_LINES_RE = /^\[\d+ more lines in file\. Use offset=\d+ to continue\.\]$/;
+const READ_IMAGE_RE = /^Read image file \[(.+)\]$/;
 
 const SECONDS_PER_MILLISECOND = 1 / 1000;
 
@@ -177,6 +181,21 @@ function formatDuration(durationMs: number | undefined): string | null {
   return `Took ${formattedSeconds}s`;
 }
 
+function cleanReadOutput(node: ToolNode): string {
+  if (node.name !== 'read') return node.output;
+  const lines = node.output.split('\n');
+  if (lines[0]?.match(READ_IMAGE_RE)) return '';
+  return lines.filter((line) => !READ_MORE_LINES_RE.test(line)).join('\n');
+}
+
+function getReadImagePath(node: ToolNode): string | null {
+  if (node.name !== 'read') return null;
+  const lines = node.output.split('\n');
+  if (!lines[0]?.match(READ_IMAGE_RE)) return null;
+  const args = node.args as Record<string, unknown> | undefined;
+  return typeof args?.path === 'string' ? args.path : null;
+}
+
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const { className: statusClassName } = STATUS_CONFIG[node.status];
@@ -184,15 +203,20 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const editEntries = getEditEntries(node);
   const writeEntries = getWriteEntries(node);
   const diffEntries = editEntries ?? writeEntries;
-  const hasOutput = node.output.length > 0;
-  const outputLines = node.output.split('\n');
+
+  // For read tool: filter hint lines and detect images
+  const cleanedOutput = useMemo(() => cleanReadOutput(node), [node]);
+  const imagePath = useMemo(() => getReadImagePath(node), [node]);
+
+  const hasOutput = cleanedOutput.length > 0;
+  const outputLines = cleanedOutput.split('\n');
   const isTruncatedByLines = outputLines.length > TOOL_OUTPUT_LINE_LIMIT;
-  const isTruncatedByBytes = node.output.length > TOOL_OUTPUT_BYTE_LIMIT;
+  const isTruncatedByBytes = cleanedOutput.length > TOOL_OUTPUT_BYTE_LIMIT;
   const isTruncated = !expanded && (isTruncatedByLines || isTruncatedByBytes);
   const visibleOutput = expanded
-    ? node.output
+    ? cleanedOutput
     : isTruncatedByBytes && !isTruncatedByLines
-      ? node.output.slice(-TOOL_OUTPUT_BYTE_LIMIT)
+      ? cleanedOutput.slice(-TOOL_OUTPUT_BYTE_LIMIT)
       : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n');
   const outputLanguage = getToolOutputLanguage(node);
   const durationLabel = formatDuration(node.durationMs);
@@ -200,67 +224,70 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   return (
-    <div
-      className="overflow-hidden rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
-      style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
-      data-testid={`tool-block-${node.toolCallId}`}
-    >
-      {command && (
-        <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
-          <span className="shrink-0">{command.prefix}</span>
-          <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-            {command.body}
-          </span>
-          {timeout !== undefined && (
-            <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
-              timeout {timeout}s
+    <>
+      <div
+        className="overflow-hidden rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
+        style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
+        data-testid={`tool-block-${node.toolCallId}`}
+      >
+        {command && (
+          <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
+            <span className="shrink-0">{command.prefix}</span>
+            <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              {command.body}
             </span>
+            {timeout !== undefined && (
+              <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
+                timeout {timeout}s
+              </span>
+            )}
+          </div>
+        )}
+
+        {diffEntries && diffEntries.length > 0 && node.status !== 'error' && (
+          <DiffView edits={diffEntries} />
+        )}
+
+        {hasOutput &&
+          ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
+            <>
+              <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+                {!expanded && isTruncated && (
+                  <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
+                    {'... (truncated)'}
+                  </code>
+                )}
+                <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
+              </pre>
+              {isTruncated && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
+                  onClick={() => {
+                    setExpanded((current) => !current);
+                  }}
+                >
+                  {expanded ? 'Show less' : 'Show all'}
+                </Button>
+              )}
+            </>
+          )}
+
+        <div
+          className={cn(
+            '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs',
+            statusClassName,
+          )}
+        >
+          {node.status === 'running' ? (
+            <ElapsedTimer />
+          ) : (
+            <>{durationLabel && <span>{durationLabel}</span>}</>
           )}
         </div>
-      )}
-
-      {diffEntries && diffEntries.length > 0 && node.status !== 'error' && (
-        <DiffView edits={diffEntries} />
-      )}
-
-      {hasOutput &&
-        ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
-          <>
-            <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-              {!expanded && isTruncated && (
-                <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
-                  {'... (truncated)'}
-                </code>
-              )}
-              <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
-            </pre>
-            {isTruncated && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
-                onClick={() => {
-                  setExpanded((current) => !current);
-                }}
-              >
-                {expanded ? 'Show less' : 'Show all'}
-              </Button>
-            )}
-          </>
-        )}
-
-      <div
-        className={cn(
-          '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs',
-          statusClassName,
-        )}
-      >
-        {node.status === 'running' ? (
-          <ElapsedTimer />
-        ) : (
-          <>{durationLabel && <span>{durationLabel}</span>}</>
-        )}
       </div>
-    </div>
+      {imagePath && <ImagePreview src={`local-file://${imagePath}`} alt={imagePath} />}
+    </>
   );
 }

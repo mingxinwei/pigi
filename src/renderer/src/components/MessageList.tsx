@@ -281,7 +281,7 @@ function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
     case 'tool':
       return <ToolBlock node={node} />
     case 'system':
-      return <SystemBubble text={node.text} />
+      return <SystemBubble text={node.text} isLoading={node.isLoading} />
   }
 }
 
@@ -419,10 +419,20 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   )
 }
 
-function SystemBubble({ text }: { text: string }): React.JSX.Element {
+function SystemBubble({ text, isLoading }: { text: string; isLoading?: boolean }): React.JSX.Element {
   return (
     <div className="flex justify-center" data-testid="system-message">
-      <div className="text-[14px] text-muted-foreground">{text}</div>
+      <div
+        className={cn(
+          'relative overflow-hidden rounded-full px-3 py-1 text-[13px] text-muted-foreground',
+          isLoading && 'bg-muted/50',
+        )}
+      >
+        {isLoading && (
+          <div className="absolute inset-0 animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-foreground/[0.07] to-transparent" />
+        )}
+        <span className="relative">{text}</span>
+      </div>
     </div>
   )
 }

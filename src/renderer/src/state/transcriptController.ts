@@ -52,6 +52,7 @@ export interface SystemNode {
   id: string
   role: 'system'
   text: string
+  isLoading?: boolean
 }
 
 export type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode
@@ -377,6 +378,14 @@ export class TranscriptController {
         this.handleToolEnd(raw as unknown as SdkToolExecEnd)
         break
 
+      case 'compaction_start':
+        this.addCompactionNode()
+        break
+
+      case 'compaction_end':
+        this.finalizeCompactionNode()
+        break
+
       default:
         break
     }
@@ -580,6 +589,25 @@ export class TranscriptController {
       activeToolCallId: null,
       status: 'streaming',
     })
+  }
+
+  private addCompactionNode(): void {
+    const id = `compaction-${Date.now()}`
+    const node: SystemNode = { id, role: 'system', text: 'Compacting context...', isLoading: true }
+    this.pushNode(node)
+  }
+
+  private finalizeCompactionNode(): void {
+    const nodes = this._state.nodes
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i]
+      if (n.role === 'system' && n.isLoading && n.text.startsWith('Compacting')) {
+        n.text = 'Context compacted'
+        n.isLoading = false
+        this.notify()
+        return
+      }
+    }
   }
 
   private finalizeCurrent(): void {

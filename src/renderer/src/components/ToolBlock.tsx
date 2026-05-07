@@ -163,6 +163,14 @@ function getEditEntries(node: ToolNode): EditEntry[] | null {
     .map((e) => ({ oldText: e.oldText!, newText: e.newText! }));
 }
 
+function getWriteEntries(node: ToolNode): EditEntry[] | null {
+  if (node.name !== 'write') return null;
+  const args = node.args as Record<string, unknown> | undefined;
+  const content = typeof args?.content === 'string' ? args.content : null;
+  if (!content) return null;
+  return [{ oldText: '', newText: content }];
+}
+
 function formatDuration(durationMs: number | undefined): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs)) {
     return null;
@@ -178,6 +186,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
+  const writeEntries = getWriteEntries(node);
+  const diffEntries = editEntries ?? writeEntries;
   const hasOutput = node.output.length > 0;
   const outputLines = node.output.split('\n');
   const visibleOutput = expanded
@@ -209,34 +219,35 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         </div>
       )}
 
-      {editEntries && editEntries.length > 0 && node.status !== 'error' && (
-        <DiffView edits={editEntries} />
+      {diffEntries && diffEntries.length > 0 && node.status !== 'error' && (
+        <DiffView edits={diffEntries} />
       )}
 
-      {hasOutput && (node.name !== 'edit' || node.status === 'error') && (
-        <>
-          <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-            {!expanded && hiddenLineCount > 0 && (
-              <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
-                {`... (${hiddenLineCount.toLocaleString()} earlier lines)`}
-              </code>
+      {hasOutput &&
+        ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
+          <>
+            <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+              {!expanded && hiddenLineCount > 0 && (
+                <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
+                  {`... (${hiddenLineCount.toLocaleString()} earlier lines)`}
+                </code>
+              )}
+              <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
+            </pre>
+            {hiddenLineCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
+                onClick={() => {
+                  setExpanded((current) => !current);
+                }}
+              >
+                {expanded ? 'Show less' : 'Show all'}
+              </Button>
             )}
-            <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
-          </pre>
-          {hiddenLineCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
-              onClick={() => {
-                setExpanded((current) => !current);
-              }}
-            >
-              {expanded ? 'Show less' : 'Show all'}
-            </Button>
-          )}
-        </>
-      )}
+          </>
+        )}
 
       <div
         className={cn(

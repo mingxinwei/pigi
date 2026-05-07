@@ -109,7 +109,9 @@ export interface AuthProviderInfo {
 export type PiCommand =
   | { type: 'prompt'; message: string }
   | { type: 'steer'; message: string }
+  | { type: 'follow_up'; message: string }
   | { type: 'abort' }
+  | { type: 'clear_queue' }
   | { type: 'compact' }
   | { type: 'get_state' }
   | { type: 'get_session_options' }

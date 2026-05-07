@@ -34,10 +34,13 @@ import { matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
+  onFollowUp: (message: string) => void;
   onAbort: () => void;
   onSlashCommand: (command: string, arg: string) => void;
   isStreaming: boolean;
   gitBranch: string | null;
+  restoreText: string | null;
+  onRestoredText: () => void;
   onRefreshGitBranch: () => Promise<void>;
   session: SessionEntry | null;
   modelOptions: ModelInfo[];
@@ -69,10 +72,13 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
 
 export default function ChatInput({
   onSend,
+  onFollowUp,
   onAbort,
   onSlashCommand,
   isStreaming,
   gitBranch,
+  restoreText,
+  onRestoredText,
   onRefreshGitBranch,
   session,
   modelOptions,
@@ -110,6 +116,21 @@ export default function ChatInput({
 
     prevSessionIdRef.current = currentId;
   }, [session?.sessionId]);
+
+  // Restore text from abort/dequeue
+  useEffect(() => {
+    if (restoreText === null) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    // Join restored text with current input (current goes last)
+    const currentText = el.value.trim();
+    const combined = [restoreText, currentText].filter((t) => t).join('\n\n');
+    el.value = combined;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+    el.focus();
+    onRestoredText();
+  }, [restoreText, onRestoredText]);
   const contextUsage = session?.contextUsage ?? null;
   const autoCompactionEnabled = session?.autoCompactionEnabled ?? false;
   const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled);
@@ -146,6 +167,16 @@ export default function ChatInput({
     el.style.height = 'auto';
     onSend(msg);
   }, [onSend, onSlashCommand]);
+
+  const handleFollowUpSend = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const msg = el.value.trim();
+    if (!msg) return;
+    el.value = '';
+    el.style.height = 'auto';
+    onFollowUp(msg);
+  }, [onFollowUp]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -197,12 +228,17 @@ export default function ChatInput({
         }
       }
 
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         handleSend();
       }
+      // Alt+Enter queues a follow-up message during streaming
+      if (e.key === 'Enter' && e.altKey && isStreaming) {
+        e.preventDefault();
+        handleFollowUpSend();
+      }
     },
-    [handleSend, slashMatches, selectedSlashIndex, onSlashCommand],
+    [handleSend, handleFollowUpSend, isStreaming, slashMatches, selectedSlashIndex, onSlashCommand],
   );
 
   const handleInput = useCallback(() => {
@@ -221,23 +257,8 @@ export default function ChatInput({
   }, []);
 
   return (
-    <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-background via-background/95 to-transparent px-8 pb-3 pt-10"
-      data-testid="chat-input"
-    >
-      <div
-        className="pointer-events-auto relative mx-auto w-full"
-        style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
-      >
-        {isStreaming && (
-          <div
-            className="absolute inset-x-0 bottom-full z-[-1] flex items-center gap-2 rounded-t-2xl bg-muted/60 px-4 pb-6 pt-2 text-sm text-muted-foreground"
-            style={{ marginBottom: '-20px' }}
-          >
-            <IconStarFilled className="size-4 animate-[spin_2s_linear_infinite] text-green-500" />
-            <span className="-ml-0.5">Working...</span>
-          </div>
-        )}
+    <div className="relative z-10 shrink-0 px-8 pb-3" data-testid="chat-input">
+      <div className="relative mx-auto w-full" style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}>
         {slashMatches.length > 0 && (
           <div className="absolute inset-x-0 bottom-full mb-1 rounded-lg border border-border/60 bg-popover p-1 shadow-lg">
             {slashMatches.map((cmd, i) => (

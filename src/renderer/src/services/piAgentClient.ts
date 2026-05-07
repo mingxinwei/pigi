@@ -98,6 +98,24 @@ export async function steer(sessionId: string, message: string): Promise<void> {
   }
 }
 
+export async function followUp(sessionId: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'follow_up', message });
+  if (!result.success) {
+    throw new Error(result.error || 'follow_up failed');
+  }
+}
+
+interface ClearQueueResult {
+  success: boolean;
+  steering?: string[];
+  followUp?: string[];
+  error?: string;
+}
+
+export async function clearQueue(sessionId: string): Promise<ClearQueueResult> {
+  return send<ClearQueueResult>(sessionId, { type: 'clear_queue' });
+}
+
 export async function abort(sessionId: string): Promise<void> {
   await send(sessionId, { type: 'abort' });
 }

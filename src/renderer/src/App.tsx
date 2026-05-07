@@ -23,6 +23,8 @@ import {
   loginOAuth,
   loginApiKey,
   logout,
+  followUp,
+  clearQueue,
   listProjectSessions,
   onProjectSessionsChunk,
   openProjectDirectory,
@@ -41,6 +43,7 @@ import type {
 import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
+import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
 import { SidebarProvider } from './components/ui/sidebar';
 
@@ -71,6 +74,7 @@ function App(): React.JSX.Element {
   const { state: transcript } = useTranscript(activeSessionId);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
+  const [restoreText, setRestoreText] = useState<string | null>(null);
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -227,22 +231,74 @@ function App(): React.JSX.Element {
     if (existing?.title === 'New chat') {
       useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) });
     }
-    ensureTranscriptSession(sessionId).addUserMessage(message);
 
     // If the session is already streaming, steer instead of prompting
     if (transcript.status !== 'idle') {
       await steer(sessionId, message);
     } else {
+      ensureTranscriptSession(sessionId).addUserMessage(message);
       await prompt(sessionId, message);
     }
     void listProjectSessions([cwd]);
   }
 
+  const handleFollowUp = useCallback(
+    async (message: string): Promise<void> => {
+      const sessionId = activeSessionId;
+      if (!sessionId) return;
+      if (transcript.status !== 'idle') {
+        await followUp(sessionId, message);
+      } else {
+        ensureTranscriptSession(sessionId).addUserMessage(message);
+        await prompt(sessionId, message);
+      }
+    },
+    [activeSessionId, transcript.status],
+  );
+
   const handleAbort = useCallback(async () => {
     if (!activeSessionId) {
       return;
     }
+    // Clear queued messages and restore them to input
+    const result = await clearQueue(activeSessionId);
+    let queued = [...(result.steering ?? []), ...(result.followUp ?? [])];
+    // Fallback: use local transcript state if clearQueue returned nothing
+    if (queued.length === 0) {
+      const ts = ensureTranscriptSession(activeSessionId).state;
+      queued = [...ts.queuedSteering, ...ts.queuedFollowUp];
+    }
     await abort(activeSessionId);
+    if (queued.length > 0) {
+      setRestoreText(queued.join('\n\n'));
+    }
+  }, [activeSessionId]);
+
+  const handleEditQueuedMessage = useCallback(
+    async (type: 'steer' | 'followUp', index: number, newText: string) => {
+      if (!activeSessionId) return;
+      // Clear all, modify, re-queue
+      const result = await clearQueue(activeSessionId);
+      const steeringMsgs = [...(result.steering ?? [])];
+      const followUpMsgs = [...(result.followUp ?? [])];
+      if (type === 'steer') steeringMsgs[index] = newText;
+      else followUpMsgs[index] = newText;
+      // Re-queue all
+      for (const msg of steeringMsgs) await steer(activeSessionId, msg);
+      for (const msg of followUpMsgs) await followUp(activeSessionId, msg);
+    },
+    [activeSessionId],
+  );
+
+  const handleRestoredText = useCallback(() => setRestoreText(null), []);
+
+  const handleDequeue = useCallback(async () => {
+    if (!activeSessionId) return;
+    const result = await clearQueue(activeSessionId);
+    const queued = [...(result.steering ?? []), ...(result.followUp ?? [])];
+    if (queued.length > 0) {
+      setRestoreText(queued.join('\n\n'));
+    }
   }, [activeSessionId]);
 
   // Global Escape key to abort streaming
@@ -475,12 +531,22 @@ function App(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <MessageList nodes={transcript.nodes} />
+        <StreamingQueue
+          isStreaming={transcript.status !== 'idle'}
+          queuedSteering={transcript.queuedSteering}
+          queuedFollowUp={transcript.queuedFollowUp}
+          onEditQueuedMessage={handleEditQueuedMessage}
+          onDequeue={handleDequeue}
+        />
         <ChatInput
           onSend={handleSend}
+          onFollowUp={handleFollowUp}
           onAbort={handleAbort}
           onSlashCommand={handleSlashCommand}
           isStreaming={transcript.status !== 'idle'}
           gitBranch={gitBranch}
+          restoreText={restoreText}
+          onRestoredText={handleRestoredText}
           onRefreshGitBranch={refreshGitBranch}
           session={activeSession}
           modelOptions={activeSessionId ? modelOptions : []}

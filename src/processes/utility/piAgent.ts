@@ -324,6 +324,19 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       return { success: true };
     }
 
+    case 'follow_up': {
+      if (!cmd.message || cmd.message.trim().length === 0) {
+        return { success: false, error: 'follow_up message must be a non-empty string' };
+      }
+      await runtime.session.followUp(cmd.message);
+      return { success: true };
+    }
+
+    case 'clear_queue': {
+      const { steering, followUp } = runtime.session.clearQueue();
+      return { success: true, steering, followUp };
+    }
+
     case 'abort':
       await runtime.session.abort();
       setSessionBusy(runtime.session.isStreaming);

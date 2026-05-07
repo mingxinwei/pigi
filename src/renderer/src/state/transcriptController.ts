@@ -68,6 +68,8 @@ export interface TranscriptState {
   status: AgentStatus;
   activeAssistantId: string | null;
   activeToolCallId: string | null;
+  queuedSteering: string[];
+  queuedFollowUp: string[];
 }
 
 // =============================================================================
@@ -143,6 +145,8 @@ export class TranscriptController {
     status: 'idle',
     activeAssistantId: null,
     activeToolCallId: null,
+    queuedSteering: [],
+    queuedFollowUp: [],
   };
 
   private listeners = new Set<Listener>();
@@ -190,6 +194,7 @@ export class TranscriptController {
   // ===========================================================================
 
   hydrate(messages: unknown[]): void {
+    this._optimisticUserMessages.clear();
     const nodes = this.createNodesFromMessages(messages);
 
     this._state = {
@@ -197,6 +202,8 @@ export class TranscriptController {
       status: 'idle',
       activeAssistantId: null,
       activeToolCallId: null,
+      queuedSteering: [],
+      queuedFollowUp: [],
     };
     this.notify();
   }
@@ -319,22 +326,41 @@ export class TranscriptController {
   // ===========================================================================
 
   reset(): void {
+    this._optimisticUserMessages.clear();
     this._state = {
       nodes: [],
       status: 'idle',
       activeAssistantId: null,
       activeToolCallId: null,
+      queuedSteering: [],
+      queuedFollowUp: [],
     };
     this.notify();
   }
 
   // ===========================================================================
+  private _optimisticUserMessages = new Map<string, number>();
+
   // Optimistic user message (shown immediately before SDK echo)
   // ===========================================================================
 
   addUserMessage(text: string): void {
+    this._optimisticUserMessages.set(text, (this._optimisticUserMessages.get(text) ?? 0) + 1);
     const node: UserNode = { id: nextNodeId(), role: 'user', text, sentAt: Date.now() };
     this.setState({ nodes: [...this._state.nodes, node] });
+  }
+
+  private _hasOptimisticUserMessage(text: string): boolean {
+    const count = this._optimisticUserMessages.get(text);
+    if (count && count > 0) {
+      if (count === 1) {
+        this._optimisticUserMessages.delete(text);
+      } else {
+        this._optimisticUserMessages.set(text, count - 1);
+      }
+      return true;
+    }
+    return false;
   }
 
   // ===========================================================================
@@ -351,7 +377,13 @@ export class TranscriptController {
 
       case 'agent_end':
         this.finalizeCurrent();
-        this.setState({ status: 'idle', activeAssistantId: null, activeToolCallId: null });
+        this.setState({
+          status: 'idle',
+          activeAssistantId: null,
+          activeToolCallId: null,
+          queuedSteering: [],
+          queuedFollowUp: [],
+        });
         break;
 
       case 'turn_start':
@@ -360,8 +392,17 @@ export class TranscriptController {
 
       case 'message_start': {
         const msg = (raw as unknown as SdkMessageStart).message;
-        // Skip user messages — we add them optimistically via addUserMessage()
-        if (msg?.role === 'assistant' && !this._state.activeAssistantId) {
+        if (msg?.role === 'user') {
+          // Check if this user message was already added optimistically
+          const text =
+            (msg.content as Array<{ type?: string; text?: string }> | undefined)
+              ?.filter((c) => c.type === 'text')
+              .map((c) => c.text)
+              .join('') ?? '';
+          if (text && !this._hasOptimisticUserMessage(text)) {
+            this.addUserMessage(text);
+          }
+        } else if (msg?.role === 'assistant' && !this._state.activeAssistantId) {
           this.createAssistantNode(msg.id);
         }
         break;
@@ -394,6 +435,35 @@ export class TranscriptController {
       case 'compaction_end':
         this.finalizeCompactionNode();
         break;
+
+      case 'queue_update': {
+        // Runtime guard for expected shape (#10)
+        if (typeof event !== 'object' || event === null) break;
+        const qe = event as Record<string, unknown>;
+        const newSteering: string[] = Array.isArray(qe.steering) ? qe.steering : [];
+        const newFollowUp: string[] = Array.isArray(qe.followUp) ? qe.followUp : [];
+
+        // Detect delivered messages by comparing old vs new arrays index-by-index.
+        // A message is "delivered" if it was in the old array but not at the same
+        // position in the new array. We diff from the front: items removed from
+        // the front have been delivered (SDK processes queue FIFO).
+        const prevSteering = this._state.queuedSteering;
+        const prevFollowUp = this._state.queuedFollowUp;
+        const deliveredSteering = prevSteering.slice(0, prevSteering.length - newSteering.length);
+        const deliveredFollowUp = prevFollowUp.slice(0, prevFollowUp.length - newFollowUp.length);
+        for (const msg of deliveredSteering) {
+          this.addUserMessage(msg);
+        }
+        for (const msg of deliveredFollowUp) {
+          this.addUserMessage(msg);
+        }
+
+        this.setState({
+          queuedSteering: newSteering,
+          queuedFollowUp: newFollowUp,
+        });
+        break;
+      }
 
       default:
         break;

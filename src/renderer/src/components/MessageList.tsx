@@ -16,7 +16,6 @@ interface MessageListProps {
   nodes: TranscriptNode[];
 }
 
-const CHAT_INPUT_AREA_HEIGHT = 172;
 const MESSAGE_ROW_GAP = 16;
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
@@ -101,6 +100,16 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
     const content = el.firstElementChild;
     if (content) ro.observe(content);
 
+    // Also observe the container itself — when it shrinks (e.g. StreamingQueue appears)
+    // we need to scroll to bottom so content isn't hidden.
+    const containerRo = new ResizeObserver(() => {
+      if (autoScrollRef.current) {
+        if (pendingRaf) cancelAnimationFrame(pendingRaf);
+        pendingRaf = requestAnimationFrame(scrollToBottom);
+      }
+    });
+    containerRo.observe(el);
+
     function handleWheel(event: WheelEvent): void {
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
@@ -123,6 +132,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
 
     return () => {
       ro.disconnect();
+      containerRo.disconnect();
       if (pendingRaf) cancelAnimationFrame(pendingRaf);
       el.removeEventListener('wheel', handleWheel, { capture: true });
       el.removeEventListener('scroll', handleScroll);
@@ -144,7 +154,6 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       <div
         ref={containerRef}
         className="h-full overflow-y-auto bg-background [overflow-anchor:none]"
-        style={{ paddingBottom: `${CHAT_INPUT_AREA_HEIGHT}px` }}
         data-testid="message-list"
       >
         <div
@@ -175,11 +184,13 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
           </div>
         </div>
       </div>
+      {/* Bottom gradient fade */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent" />
       {showScrollButton && (
         <button
           type="button"
           onClick={handleScrollToBottom}
-          className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 shadow-md backdrop-blur-sm transition-opacity hover:bg-muted size-9"
+          className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 shadow-md backdrop-blur-sm transition-opacity hover:bg-muted size-9"
         >
           <IconArrowDown className="size-5 text-muted-foreground" stroke={1.5} />
         </button>

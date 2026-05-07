@@ -38,6 +38,7 @@ interface ChatInputProps {
   onSlashCommand: (command: string, arg: string) => void;
   isStreaming: boolean;
   gitBranch: string | null;
+  onRefreshGitBranch: () => Promise<void>;
   session: SessionEntry | null;
   modelOptions: ModelInfo[];
   thinkingLevelOptions: ThinkingLevel[];
@@ -72,6 +73,7 @@ export default function ChatInput({
   onSlashCommand,
   isStreaming,
   gitBranch,
+  onRefreshGitBranch,
   session,
   modelOptions,
   thinkingLevelOptions,
@@ -318,7 +320,10 @@ export default function ChatInput({
         </InputGroup>
 
         <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
-          <span className="flex min-w-0 items-center gap-1.5">
+          <span
+            className="flex min-w-0 cursor-pointer items-center gap-1.5"
+            onClick={() => void onRefreshGitBranch()}
+          >
             <IconGitBranch className="size-4 shrink-0" />
             <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
           </span>

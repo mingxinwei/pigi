@@ -171,18 +171,26 @@ function App(): React.JSX.Element {
     };
   }, [activeSessionId]);
 
+  const refreshGitBranch = useCallback(async () => {
+    const result = await getGitBranch(activeCwd);
+    setGitBranch(result.success ? result.branch : null);
+  }, [activeCwd]);
+
+  const isIdle = transcript.status === 'idle';
   useEffect(() => {
+    if (!isIdle) {
+      return;
+    }
     let cancelled = false;
-    void getGitBranch(activeCwd).then((result) => {
-      if (cancelled) {
-        return;
+    getGitBranch(activeCwd).then((result) => {
+      if (!cancelled) {
+        setGitBranch(result.success ? result.branch : null);
       }
-      setGitBranch(result.success ? result.branch : null);
     });
     return () => {
       cancelled = true;
     };
-  }, [activeCwd, transcript.status]);
+  }, [activeCwd, isIdle]);
 
   useEffect(() => {
     return window.piApi.onProcessExit(({ sessionId }) => {
@@ -432,6 +440,7 @@ function App(): React.JSX.Element {
           onSlashCommand={handleSlashCommand}
           isStreaming={transcript.status !== 'idle'}
           gitBranch={gitBranch}
+          onRefreshGitBranch={refreshGitBranch}
           session={activeSession}
           modelOptions={activeSessionId ? modelOptions : []}
           thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}

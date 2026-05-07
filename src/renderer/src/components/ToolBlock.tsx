@@ -51,6 +51,7 @@ function ElapsedTimer(): React.JSX.Element {
 }
 
 export const TOOL_OUTPUT_LINE_LIMIT = 10;
+const TOOL_OUTPUT_BYTE_LIMIT = 2000;
 
 const SECONDS_PER_MILLISECOND = 1 / 1000;
 
@@ -185,10 +186,14 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const diffEntries = editEntries ?? writeEntries;
   const hasOutput = node.output.length > 0;
   const outputLines = node.output.split('\n');
+  const isTruncatedByLines = outputLines.length > TOOL_OUTPUT_LINE_LIMIT;
+  const isTruncatedByBytes = node.output.length > TOOL_OUTPUT_BYTE_LIMIT;
+  const isTruncated = !expanded && (isTruncatedByLines || isTruncatedByBytes);
   const visibleOutput = expanded
     ? node.output
-    : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n');
-  const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT);
+    : isTruncatedByBytes && !isTruncatedByLines
+      ? node.output.slice(-TOOL_OUTPUT_BYTE_LIMIT)
+      : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n');
   const outputLanguage = getToolOutputLanguage(node);
   const durationLabel = formatDuration(node.durationMs);
   const args = node.args as Record<string, unknown> | undefined;
@@ -222,14 +227,14 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
           <>
             <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-              {!expanded && hiddenLineCount > 0 && (
+              {!expanded && isTruncated && (
                 <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
-                  {`... (${hiddenLineCount.toLocaleString()} earlier lines)`}
+                  {'... (truncated)'}
                 </code>
               )}
               <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
             </pre>
-            {hiddenLineCount > 0 && (
+            {isTruncated && (
               <Button
                 variant="ghost"
                 size="sm"

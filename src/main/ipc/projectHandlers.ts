@@ -1,47 +1,47 @@
-import { dialog, ipcMain } from 'electron'
-import { PiChannel, type ProjectStateResult } from '../../shared/ipcContract'
-import { getMainWindow } from '../windows/createMainWindow'
-import { addRecentProject, getProjectState, setActiveProject } from '../projects/projectStore'
-import { getGitBranch } from '../projects/gitStatus'
+import { dialog, ipcMain } from 'electron';
+import { PiChannel, type ProjectStateResult } from '../../shared/ipcContract';
+import { getMainWindow } from '../windows/createMainWindow';
+import { addRecentProject, getProjectState, setActiveProject } from '../projects/projectStore';
+import { getGitBranch } from '../projects/gitStatus';
 
 function projectStateResult(): ProjectStateResult {
   return {
     success: true,
     ...getProjectState(),
-  }
+  };
 }
 
 export function registerProjectHandlers(): void {
-  ipcMain.handle(PiChannel.GetProjects, async () => projectStateResult())
+  ipcMain.handle(PiChannel.GetProjects, async () => projectStateResult());
 
   ipcMain.handle(PiChannel.GetGitBranch, async (_event, cwd: string) => {
-    return getGitBranch(cwd)
-  })
+    return getGitBranch(cwd);
+  });
 
   ipcMain.handle(PiChannel.SetActiveProject, async (_event, path: string) => {
     if (!path || typeof path !== 'string' || path.trim().length === 0) {
-      return { success: false, error: 'path must be a non-empty string' }
+      return { success: false, error: 'path must be a non-empty string' };
     }
 
-    setActiveProject(path)
-    return projectStateResult()
-  })
+    setActiveProject(path);
+    return projectStateResult();
+  });
 
   ipcMain.handle(PiChannel.OpenProjectDirectory, async () => {
-    const win = getMainWindow()
+    const win = getMainWindow();
     const result = win
       ? await dialog.showOpenDialog(win, {
           properties: ['openDirectory'],
         })
       : await dialog.showOpenDialog({
           properties: ['openDirectory'],
-        })
+        });
 
     if (result.canceled || result.filePaths.length === 0) {
-      return { success: false, canceled: true }
+      return { success: false, canceled: true };
     }
 
-    addRecentProject(result.filePaths[0])
-    return projectStateResult()
-  })
+    addRecentProject(result.filePaths[0]);
+    return projectStateResult();
+  });
 }

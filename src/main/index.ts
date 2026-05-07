@@ -5,38 +5,38 @@
  * - Sessions are created on-demand from renderer
  * - Each session gets control/data MessagePorts for commands and streaming
  */
-import { app, BrowserWindow } from 'electron'
-import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { createMainWindow } from './windows/createMainWindow'
-import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge'
-import { registerProjectHandlers } from './ipc/projectHandlers'
-import { configureDebugPanel } from './debugConfig'
-import { initializeNpmCommandDetection } from './processes/npmCommandDetector'
+import { app, BrowserWindow } from 'electron';
+import { electronApp, optimizer } from '@electron-toolkit/utils';
+import { createMainWindow } from './windows/createMainWindow';
+import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
+import { registerProjectHandlers } from './ipc/projectHandlers';
+import { configureDebugPanel } from './debugConfig';
+import { initializeNpmCommandDetection } from './processes/npmCommandDetector';
 
-configureDebugPanel()
+configureDebugPanel();
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.pigi')
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+  electronApp.setAppUserModelId('com.pigi');
+  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
 
-  initializeNpmCommandDetection()
-  registerIpcHandlers()
-  registerProjectHandlers()
-  createMainWindow()
+  initializeNpmCommandDetection();
+  registerIpcHandlers();
+  registerProjectHandlers();
+  createMainWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow()
+      createMainWindow();
     }
-  })
-})
+  });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit()
+    app.quit();
   }
-})
+});
 
 app.on('before-quit', () => {
-  stopAllProcesses()
-})
+  stopAllProcesses();
+});

@@ -19,80 +19,80 @@
 // =============================================================================
 
 export interface ModelInfo {
-  name: string
-  provider: string
-  id: string
-  api: string
-  contextWindow: number
-  maxTokens: number
-  reasoning: boolean
+  name: string;
+  provider: string;
+  id: string;
+  api: string;
+  contextWindow: number;
+  maxTokens: number;
+  reasoning: boolean;
 }
 
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface ProjectDirectory {
-  path: string
-  name: string
+  path: string;
+  name: string;
 }
 
 export interface ProjectState {
-  recentProjects: ProjectDirectory[]
-  activeProject: ProjectDirectory | null
+  recentProjects: ProjectDirectory[];
+  activeProject: ProjectDirectory | null;
 }
 
 export type GitBranchResult =
   | { success: true; branch: string | null; detached: boolean }
-  | { success: false; error?: string }
+  | { success: false; error?: string };
 
 export type ProjectStateResult =
   | ({ success: true } & ProjectState)
-  | { success: false; error?: string; canceled?: boolean }
+  | { success: false; error?: string; canceled?: boolean };
 
 export interface PiSessionInfo {
-  path: string
-  id: string
-  cwd: string
-  name?: string
-  parentSessionPath?: string
-  created: string
-  modified: string
-  messageCount: number
-  firstMessage: string
-  allMessagesText: string
+  path: string;
+  id: string;
+  cwd: string;
+  name?: string;
+  parentSessionPath?: string;
+  created: string;
+  modified: string;
+  messageCount: number;
+  firstMessage: string;
+  allMessagesText: string;
 }
 
 export type SessionListResult =
   | { success: true; requestId: string }
-  | { success: false; error?: string }
+  | { success: false; error?: string };
 
 export interface ProjectSessionsChunk {
-  requestId: string
-  cwd: string
-  success: boolean
-  sessions?: PiSessionInfo[]
-  error?: string
+  requestId: string;
+  cwd: string;
+  success: boolean;
+  sessions?: PiSessionInfo[];
+  error?: string;
 }
 
 export interface SessionState {
-  model: ModelInfo | null
-  thinkingLevel: string | null
-  isStreaming: boolean
-  sessionFile: string | undefined
-  sessionId: string
-  messageCount: number
-  contextUsage: ContextUsage | null
-  autoCompactionEnabled: boolean
+  model: ModelInfo | null;
+  thinkingLevel: string | null;
+  isStreaming: boolean;
+  sessionFile: string | undefined;
+  sessionId: string;
+  messageCount: number;
+  contextUsage: ContextUsage | null;
+  autoCompactionEnabled: boolean;
 }
 
 export interface ContextUsage {
-  tokens: number | null
-  contextWindow: number
-  percent: number | null
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
 }
 
 export interface SessionOptions {
-  models: ModelInfo[]
-  thinkingLevels: ThinkingLevel[]
+  models: ModelInfo[];
+  thinkingLevels: ThinkingLevel[];
 }
 
 // =============================================================================
@@ -112,18 +112,18 @@ export type PiCommand =
   | { type: 'cycle_thinking_level' }
   | { type: 'set_model'; provider: string; modelId: string }
   | { type: 'set_thinking_level'; level: ThinkingLevel }
-  | { type: 'debug' }
+  | { type: 'debug' };
 
 /** Wire format for a command request (renderer → utility via port) */
 export interface PiRequest {
-  id: string
-  cmd: PiCommand
+  id: string;
+  cmd: PiCommand;
 }
 
 /** Wire format for a command response (utility → renderer via port) */
 export interface PiResult {
-  id: string
-  result: unknown
+  id: string;
+  result: unknown;
 }
 
 // =============================================================================
@@ -132,15 +132,15 @@ export interface PiResult {
 
 export type PiPush =
   | {
-      type: 'session_ready'
-      model: ModelInfo | null
-      thinkingLevel: string | null
-      contextUsage: ContextUsage | null
-      autoCompactionEnabled: boolean
+      type: 'session_ready';
+      model: ModelInfo | null;
+      thinkingLevel: string | null;
+      contextUsage: ContextUsage | null;
+      autoCompactionEnabled: boolean;
     }
   | { type: 'session_error'; error: string }
   | { type: 'event'; event: unknown }
-  | { type: 'error'; error: string }
+  | { type: 'error'; error: string };
 
 // =============================================================================
 // Stream batches: Utility → Renderer (via data MessagePort, high-frequency)
@@ -148,10 +148,10 @@ export type PiPush =
 
 /** Batched streaming data, flushed every 16ms */
 export interface StreamBatch {
-  type: 'stream_batch'
-  text?: Record<string, string>
-  thinking?: Record<string, string>
-  toolOutput?: Record<string, string>
+  type: 'stream_batch';
+  text?: Record<string, string>;
+  thinking?: Record<string, string>;
+  toolOutput?: Record<string, string>;
 }
 
 // =============================================================================
@@ -159,13 +159,13 @@ export interface StreamBatch {
 // =============================================================================
 
 /** Low-volume control port: renderer → utility commands and utility → renderer responses. */
-export type ControlPortMessage = PiRequest | PiResult
+export type ControlPortMessage = PiRequest | PiResult;
 
 /** High-volume data port: utility → renderer push events and stream batches. */
-export type DataPortMessage = PiPush | StreamBatch
+export type DataPortMessage = PiPush | StreamBatch;
 
 /** Union of all session port messages. */
-export type PortMessage = ControlPortMessage | DataPortMessage
+export type PortMessage = ControlPortMessage | DataPortMessage;
 
 // =============================================================================
 // IPC Channels (only used for lifecycle via main process)
@@ -199,12 +199,12 @@ export enum PiChannel {
 }
 
 export interface SessionIndexCommand {
-  type: 'list_project_sessions'
-  requestId: string
-  cwds: string[]
+  type: 'list_project_sessions';
+  requestId: string;
+  cwds: string[];
 }
 
-export type SessionIndexResponse = { type: 'project_sessions_chunk' } & ProjectSessionsChunk
+export type SessionIndexResponse = { type: 'project_sessions_chunk' } & ProjectSessionsChunk;
 
 // =============================================================================
 // Internal: Main → Utility (parentPort, lifecycle only)
@@ -214,7 +214,7 @@ export type UtilityCommand =
   | { type: 'create_session'; cwd: string }
   | { type: 'resume_session'; sessionPath: string }
   | { type: 'prewarm_session_services'; cwds: string[] }
-  | { type: 'attach_ports' }
+  | { type: 'attach_ports' };
 
 // =============================================================================
 // Internal: Utility → Main (parentPort, lifecycle only)
@@ -223,4 +223,4 @@ export type UtilityCommand =
 export type UtilityResponse =
   | { type: 'session_created'; sessionId: string }
   | { type: 'session_error'; error: string }
-  | { type: 'session_busy_changed'; isBusy: boolean }
+  | { type: 'session_busy_changed'; isBusy: boolean };

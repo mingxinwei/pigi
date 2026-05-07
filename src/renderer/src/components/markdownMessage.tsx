@@ -1,15 +1,15 @@
-import type { ReactNode } from 'react'
-import Markdown, { type Components } from 'react-markdown'
-import rehypeSanitize from 'rehype-sanitize'
-import remarkGfm from 'remark-gfm'
-import { cn } from '../lib/utils'
-import SyntaxHighlightedCode from './syntaxHighlightedCode'
+import type { ReactNode } from 'react';
+import Markdown, { type Components } from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
+import { cn } from '../lib/utils';
+import SyntaxHighlightedCode from './syntaxHighlightedCode';
 
 interface MarkdownMessageProps {
-  text: string
+  text: string;
 }
 
-const LANGUAGE_CLASS_PREFIX = 'language-'
+const LANGUAGE_CLASS_PREFIX = 'language-';
 const CODE_LANGUAGE_LABELS: Record<string, string> = {
   bash: 'Bash',
   css: 'CSS',
@@ -31,7 +31,7 @@ const CODE_LANGUAGE_LABELS: Record<string, string> = {
   xml: 'XML',
   yaml: 'YAML',
   yml: 'YAML',
-}
+};
 
 const markdownComponents: Components = {
   a: ({ href, children }) => (
@@ -64,8 +64,8 @@ const markdownComponents: Components = {
     </pre>
   ),
   code: ({ className, children }) => {
-    const language = getCodeLanguage(className)
-    const code = getCodeText(children)
+    const language = getCodeLanguage(className);
+    const code = getCodeText(children);
     if (language) {
       return (
         <>
@@ -74,14 +74,14 @@ const markdownComponents: Components = {
           </span>
           <SyntaxHighlightedCode code={code} language={language} />
         </>
-      )
+      );
     }
 
     return (
       <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-[14px]', className)}>
         {children}
       </code>
-    )
+    );
   },
   table: ({ children }) => (
     <div className="mb-3 overflow-x-auto last:mb-0">
@@ -95,22 +95,22 @@ const markdownComponents: Components = {
   img: ({ src, alt, title }) => (
     <img src={src} alt={alt ?? ''} title={title} className="my-3 max-w-full rounded-md" />
   ),
-}
+};
 
 function getCodeLanguage(className: string | undefined): string | null {
   const languageClass = className
     ?.split(/\s+/)
-    .find((item) => item.startsWith(LANGUAGE_CLASS_PREFIX))
-  return languageClass?.slice(LANGUAGE_CLASS_PREFIX.length) ?? null
+    .find((item) => item.startsWith(LANGUAGE_CLASS_PREFIX));
+  return languageClass?.slice(LANGUAGE_CLASS_PREFIX.length) ?? null;
 }
 
 function getCodeText(children: ReactNode): string {
-  return String(children).replace(/\n$/, '')
+  return String(children).replace(/\n$/, '');
 }
 
 function getCodeLanguageLabel(language: string): string {
-  const normalizedLanguage = language.toLowerCase()
-  return CODE_LANGUAGE_LABELS[normalizedLanguage] ?? language
+  const normalizedLanguage = language.toLowerCase();
+  return CODE_LANGUAGE_LABELS[normalizedLanguage] ?? language;
 }
 
 export default function MarkdownMessage({ text }: MarkdownMessageProps): React.JSX.Element {
@@ -124,5 +124,5 @@ export default function MarkdownMessage({ text }: MarkdownMessageProps): React.J
         {text}
       </Markdown>
     </div>
-  )
+  );
 }

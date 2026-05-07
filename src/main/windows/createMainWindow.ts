@@ -1,16 +1,16 @@
 /**
  * Create and configure the main BrowserWindow.
  */
-import { BrowserWindow, shell } from 'electron'
-import { join } from 'path'
-import { is } from '@electron-toolkit/utils'
-import icon from '../../../resources/icon.png?asset'
-import { openDebugPanel } from '../debugConfig'
+import { BrowserWindow, shell } from 'electron';
+import { join } from 'path';
+import { is } from '@electron-toolkit/utils';
+import icon from '../../../resources/icon.png?asset';
+import { openDebugPanel } from '../debugConfig';
 
-let mainWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null;
 
 export function getMainWindow(): BrowserWindow | null {
-  return mainWindow
+  return mainWindow;
 }
 
 export function createMainWindow(): BrowserWindow {
@@ -29,24 +29,24 @@ export function createMainWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
     },
-  })
+  });
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow!.show()
-  })
+    mainWindow!.show();
+  });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+    shell.openExternal(details.url);
+    return { action: 'deny' };
+  });
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
-  openDebugPanel(mainWindow)
+  openDebugPanel(mainWindow);
 
-  return mainWindow
+  return mainWindow;
 }

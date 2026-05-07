@@ -1,27 +1,27 @@
-import { useMemo } from 'react'
-import { computeEditDiffLines, collapseContext, type EditEntry } from '../lib/diffUtils'
+import { useMemo } from 'react';
+import { computeEditDiffLines, collapseContext, type EditEntry } from '../lib/diffUtils';
 
 interface DiffViewProps {
-  edits: EditEntry[]
+  edits: EditEntry[];
 }
 
 const LINE_STYLES = {
   add: 'bg-green-500/15 text-green-700 dark:text-green-400',
   remove: 'bg-red-500/15 text-red-700 dark:text-red-400',
   context: 'text-muted-foreground',
-} as const
+} as const;
 
 const PREFIX = {
   add: '+',
   remove: '-',
   context: ' ',
-} as const
+} as const;
 
 export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
   const sections = useMemo(() => {
-    const allDiffLines = computeEditDiffLines(edits)
-    return allDiffLines.map((lines) => collapseContext(lines))
-  }, [edits])
+    const allDiffLines = computeEditDiffLines(edits);
+    return allDiffLines.map((lines) => collapseContext(lines));
+  }, [edits]);
 
   return (
     <div className="mt-2 overflow-hidden rounded border border-border/40 font-mono text-[13px] leading-5">
@@ -41,7 +41,7 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
                 >
                   ⋯
                 </div>
-              )
+              );
             }
             return (
               <div key={lineIdx} className={`flex ${LINE_STYLES[item.type]}`}>
@@ -50,10 +50,10 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
                 </span>
                 <span className="min-w-0 whitespace-pre-wrap break-all px-2">{item.content}</span>
               </div>
-            )
+            );
           })}
         </div>
       ))}
     </div>
-  )
+  );
 }

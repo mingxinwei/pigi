@@ -232,7 +232,7 @@ Helpful patterns to copy conceptually:
    - Preserve the IME guard from pi-web-ui:
 
 ```ts
-if (e.isComposing || e.key === 'Process') return
+if (e.isComposing || e.key === 'Process') return;
 ```
 
 6. **Usage formatting**
@@ -285,11 +285,11 @@ Minimal stream shape:
 
 ```ts
 type StreamBatch = {
-  type: 'stream_batch'
-  text?: Record<string, string>
-  thinking?: Record<string, string>
-  toolOutput?: Record<string, string>
-}
+  type: 'stream_batch';
+  text?: Record<string, string>;
+  thinking?: Record<string, string>;
+  toolOutput?: Record<string, string>;
+};
 ```
 
 ---
@@ -316,10 +316,10 @@ UI components should receive clean state:
 
 ```ts
 interface TranscriptState {
-  nodes: TranscriptNode[]
-  activeAssistantId?: string
-  activeToolId?: string
-  status: 'idle' | 'streaming' | 'tool_running' | 'error'
+  nodes: TranscriptNode[];
+  activeAssistantId?: string;
+  activeToolId?: string;
+  status: 'idle' | 'streaming' | 'tool_running' | 'error';
 }
 ```
 
@@ -328,28 +328,28 @@ interface TranscriptState {
 Keep the model simple but not string-only:
 
 ```ts
-type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode
+type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode;
 
 interface AssistantNode {
-  id: string
-  role: 'assistant'
-  text: string
-  thinking?: string
-  model?: string
-  provider?: string
-  stopReason?: string
-  errorMessage?: string
-  isStreaming?: boolean
+  id: string;
+  role: 'assistant';
+  text: string;
+  thinking?: string;
+  model?: string;
+  provider?: string;
+  stopReason?: string;
+  errorMessage?: string;
+  isStreaming?: boolean;
 }
 
 interface ToolNode {
-  id: string
-  role: 'tool'
-  name: string
-  status: 'running' | 'success' | 'error' | 'cancelled'
-  preview: string
-  fullOutputRef?: string
-  truncated?: boolean
+  id: string;
+  role: 'tool';
+  name: string;
+  status: 'running' | 'success' | 'error' | 'cancelled';
+  preview: string;
+  fullOutputRef?: string;
+  truncated?: boolean;
 }
 ```
 

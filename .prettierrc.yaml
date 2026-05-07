@@ -1,4 +1,8 @@
 singleQuote: true
-semi: false
+semi: true
 printWidth: 100
 trailingComma: all
+useTabs: false
+tabWidth: 2
+bracketSpacing: true
+arrowParens: always

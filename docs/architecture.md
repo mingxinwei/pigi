@@ -120,13 +120,13 @@ Everything after handshake flows over two direct MessagePorts per session. Split
 
 ```ts
 {
-  type: ('session_ready', model, thinkingLevel)
+  type: ('session_ready', model, thinkingLevel);
 }
 {
-  type: ('event', event)
+  type: ('event', event);
 } // agent lifecycle events
 {
-  type: ('error', error)
+  type: ('error', error);
 } // runtime errors
 ```
 

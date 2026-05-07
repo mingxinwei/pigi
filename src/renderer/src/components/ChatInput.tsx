@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState, type KeyboardEvent } from 'react'
+import { useRef, useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import {
   IconArrowUp,
   IconCheck,
@@ -7,11 +7,16 @@ import {
   IconPlus,
   IconSquare,
   IconStarFilled,
-} from '@tabler/icons-react'
-import type { ContextUsage, ModelInfo, ThinkingLevel } from '../../../shared/ipcContract'
-import type { SessionEntry } from '../state/appStore'
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from './ui/input-group'
-import { Button } from './ui/button'
+} from '@tabler/icons-react';
+import type { ContextUsage, ModelInfo, ThinkingLevel } from '../../../shared/ipcContract';
+import type { SessionEntry } from '../state/appStore';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupTextarea,
+} from './ui/input-group';
+import { Button } from './ui/button';
 import {
   Command,
   CommandEmpty,
@@ -19,39 +24,39 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from './ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Separator } from './ui/separator'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
-import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants'
-import { cn } from '../lib/utils'
-import { matchSlashCommands, type SlashCommand } from '../lib/slashCommands'
+} from './ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Separator } from './ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants';
+import { cn } from '../lib/utils';
+import { matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
 
 interface ChatInputProps {
-  onSend: (message: string) => void
-  onAbort: () => void
-  onSlashCommand: (command: string, arg: string) => void
-  isStreaming: boolean
-  gitBranch: string | null
-  session: SessionEntry | null
-  modelOptions: ModelInfo[]
-  thinkingLevelOptions: ThinkingLevel[]
-  onSelectModel: (model: ModelInfo) => void
-  onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void
+  onSend: (message: string) => void;
+  onAbort: () => void;
+  onSlashCommand: (command: string, arg: string) => void;
+  isStreaming: boolean;
+  gitBranch: string | null;
+  session: SessionEntry | null;
+  modelOptions: ModelInfo[];
+  thinkingLevelOptions: ThinkingLevel[];
+  onSelectModel: (model: ModelInfo) => void;
+  onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
 }
 
-const TOKEN_UNIT = 1000
-const TOKEN_SUFFIX = 'k'
-const UNKNOWN_STATUS = '--'
-const MODEL_FALLBACK = 'Model'
-const THINKING_FALLBACK = 'Thinking'
-const MODEL_OPTION_KEY_SEPARATOR = '|'
-const CONTEXT_USAGE_UNAVAILABLE = 'context --'
-const AUTO_COMPACT_LABEL = 'auto'
-const MODEL_SEARCH_PLACEHOLDER = 'Search models'
-const MODEL_EMPTY_TEXT = 'No models found'
-const MODEL_LIST_MAX_HEIGHT_CLASS = 'max-h-56'
-const THINKING_MENU_LABEL = 'Thinking'
+const TOKEN_UNIT = 1000;
+const TOKEN_SUFFIX = 'k';
+const UNKNOWN_STATUS = '--';
+const MODEL_FALLBACK = 'Model';
+const THINKING_FALLBACK = 'Thinking';
+const MODEL_OPTION_KEY_SEPARATOR = '|';
+const CONTEXT_USAGE_UNAVAILABLE = 'context --';
+const AUTO_COMPACT_LABEL = 'auto';
+const MODEL_SEARCH_PLACEHOLDER = 'Search models';
+const MODEL_EMPTY_TEXT = 'No models found';
+const MODEL_LIST_MAX_HEIGHT_CLASS = 'max-h-56';
+const THINKING_MENU_LABEL = 'Thinking';
 const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
   'off',
   'minimal',
@@ -59,7 +64,7 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
   'medium',
   'high',
   'xhigh',
-]
+];
 
 export default function ChatInput({
   onSend,
@@ -73,137 +78,137 @@ export default function ChatInput({
   onSelectModel,
   onSelectThinkingLevel,
 }: ChatInputProps): React.JSX.Element {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const draftsRef = useRef<Map<string, string>>(new Map())
-  const prevSessionIdRef = useRef<string | null>(null)
-  const [slashMatches, setSlashMatches] = useState<SlashCommand[]>([])
-  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftsRef = useRef<Map<string, string>>(new Map());
+  const prevSessionIdRef = useRef<string | null>(null);
+  const [slashMatches, setSlashMatches] = useState<SlashCommand[]>([]);
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
 
   // Save/restore draft per session
   useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    const prevId = prevSessionIdRef.current
-    const currentId = session?.sessionId ?? null
+    const el = textareaRef.current;
+    if (!el) return;
+    const prevId = prevSessionIdRef.current;
+    const currentId = session?.sessionId ?? null;
 
     // Save previous session's draft
     if (prevId && prevId !== currentId) {
-      const draft = el.value
+      const draft = el.value;
       if (draft) {
-        draftsRef.current.set(prevId, draft)
+        draftsRef.current.set(prevId, draft);
       } else {
-        draftsRef.current.delete(prevId)
+        draftsRef.current.delete(prevId);
       }
     }
 
     // Restore current session's draft
     if (currentId !== prevId) {
-      el.value = draftsRef.current.get(currentId ?? '') ?? ''
+      el.value = draftsRef.current.get(currentId ?? '') ?? '';
     }
 
-    prevSessionIdRef.current = currentId
-  }, [session?.sessionId])
-  const contextUsage = session?.contextUsage ?? null
-  const autoCompactionEnabled = session?.autoCompactionEnabled ?? false
-  const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled)
-  const modelLabel = session?.model?.name ?? MODEL_FALLBACK
-  const rawThinkingLevel = session?.thinkingLevel ?? null
+    prevSessionIdRef.current = currentId;
+  }, [session?.sessionId]);
+  const contextUsage = session?.contextUsage ?? null;
+  const autoCompactionEnabled = session?.autoCompactionEnabled ?? false;
+  const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled);
+  const modelLabel = session?.model?.name ?? MODEL_FALLBACK;
+  const rawThinkingLevel = session?.thinkingLevel ?? null;
   const thinkingValue =
-    rawThinkingLevel && isThinkingLevel(rawThinkingLevel) ? rawThinkingLevel : null
-  const thinkingLabel = rawThinkingLevel ?? THINKING_FALLBACK
+    rawThinkingLevel && isThinkingLevel(rawThinkingLevel) ? rawThinkingLevel : null;
+  const thinkingLabel = rawThinkingLevel ?? THINKING_FALLBACK;
 
   const handleSend = useCallback(() => {
-    const el = textareaRef.current
+    const el = textareaRef.current;
     if (!el) {
-      return
+      return;
     }
-    const msg = el.value.trim()
+    const msg = el.value.trim();
     if (!msg) {
-      return
+      return;
     }
 
     // Check for slash command
     if (msg.startsWith('/')) {
-      const spaceIdx = msg.indexOf(' ')
-      const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx)
-      const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim()
+      const spaceIdx = msg.indexOf(' ');
+      const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx);
+      const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim();
 
-      el.value = ''
-      el.style.height = 'auto'
-      setSlashMatches([])
-      onSlashCommand(name, arg)
-      return
+      el.value = '';
+      el.style.height = 'auto';
+      setSlashMatches([]);
+      onSlashCommand(name, arg);
+      return;
     }
 
-    el.value = ''
-    el.style.height = 'auto'
-    onSend(msg)
-  }, [onSend, onSlashCommand])
+    el.value = '';
+    el.style.height = 'auto';
+    onSend(msg);
+  }, [onSend, onSlashCommand]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.nativeEvent.isComposing || e.key === 'Process') {
-        return
+        return;
       }
 
       // Slash command autocomplete navigation
       if (slashMatches.length > 0) {
         if (e.key === 'ArrowUp') {
-          e.preventDefault()
-          setSelectedSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length)
-          return
+          e.preventDefault();
+          setSelectedSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+          return;
         }
         if (e.key === 'ArrowDown') {
-          e.preventDefault()
-          setSelectedSlashIndex((i) => (i + 1) % slashMatches.length)
-          return
+          e.preventDefault();
+          setSelectedSlashIndex((i) => (i + 1) % slashMatches.length);
+          return;
         }
         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-          e.preventDefault()
-          const cmd = slashMatches[selectedSlashIndex]
+          e.preventDefault();
+          const cmd = slashMatches[selectedSlashIndex];
           if (cmd && textareaRef.current) {
             if (cmd.hasArg) {
               // Command needs an argument — complete it and keep focus
-              textareaRef.current.value = `/${cmd.name} `
-              setSlashMatches([])
+              textareaRef.current.value = `/${cmd.name} `;
+              setSlashMatches([]);
             } else {
               // No argument needed — execute immediately
-              textareaRef.current.value = ''
-              textareaRef.current.style.height = 'auto'
-              setSlashMatches([])
-              onSlashCommand(cmd.name, '')
+              textareaRef.current.value = '';
+              textareaRef.current.style.height = 'auto';
+              setSlashMatches([]);
+              onSlashCommand(cmd.name, '');
             }
           }
-          return
+          return;
         }
         if (e.key === 'Escape') {
-          setSlashMatches([])
-          return
+          setSlashMatches([]);
+          return;
         }
       }
 
       if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        handleSend()
+        e.preventDefault();
+        handleSend();
       }
     },
     [handleSend, slashMatches, selectedSlashIndex, onSlashCommand],
-  )
+  );
 
   const handleInput = useCallback(() => {
-    const el = textareaRef.current
+    const el = textareaRef.current;
     if (!el) {
-      return
+      return;
     }
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 128) + 'px'
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
 
     // Update slash command matches
-    const value = el.value
-    const matches = matchSlashCommands(value)
-    setSlashMatches(matches)
-    setSelectedSlashIndex(0)
-  }, [])
+    const value = el.value;
+    const matches = matchSlashCommands(value);
+    setSlashMatches(matches);
+    setSelectedSlashIndex(0);
+  }, []);
 
   return (
     <div
@@ -234,19 +239,19 @@ export default function ChatInput({
                   i === selectedSlashIndex ? 'bg-muted' : 'hover:bg-muted/60',
                 )}
                 onMouseDown={(e) => {
-                  e.preventDefault()
-                  const el = textareaRef.current
+                  e.preventDefault();
+                  const el = textareaRef.current;
                   if (el) {
                     if (cmd.hasArg) {
-                      el.value = `/${cmd.name} `
-                      setSlashMatches([])
-                      handleInput()
-                      el.focus()
+                      el.value = `/${cmd.name} `;
+                      setSlashMatches([]);
+                      handleInput();
+                      el.focus();
                     } else {
-                      el.value = ''
-                      el.style.height = 'auto'
-                      setSlashMatches([])
-                      onSlashCommand(cmd.name, '')
+                      el.value = '';
+                      el.style.height = 'auto';
+                      setSlashMatches([]);
+                      onSlashCommand(cmd.name, '');
                     }
                   }
                 }}
@@ -325,7 +330,7 @@ export default function ChatInput({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function ModelSettingsPicker({
@@ -338,45 +343,45 @@ function ModelSettingsPicker({
   thinkingOptions,
   onSelectThinkingLevel,
 }: {
-  modelLabel: string
-  modelValue: ModelInfo | null
-  modelOptions: ModelInfo[]
-  onSelectModel: (model: ModelInfo) => void
-  thinkingLabel: string
-  thinkingValue: ThinkingLevel | null
-  thinkingOptions: ThinkingLevel[]
-  onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void
+  modelLabel: string;
+  modelValue: ModelInfo | null;
+  modelOptions: ModelInfo[];
+  onSelectModel: (model: ModelInfo) => void;
+  thinkingLabel: string;
+  thinkingValue: ThinkingLevel | null;
+  thinkingOptions: ThinkingLevel[];
+  onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
-  const [modelSearch, setModelSearch] = useState('')
-  const modelListRef = useRef<HTMLDivElement>(null)
-  const selectedKey = modelValue ? modelOptionKey(modelValue) : ''
-  const canOpen = modelOptions.length > 0 || thinkingOptions.length > 0
+  const [open, setOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
+  const modelListRef = useRef<HTMLDivElement>(null);
+  const selectedKey = modelValue ? modelOptionKey(modelValue) : '';
+  const canOpen = modelOptions.length > 0 || thinkingOptions.length > 0;
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
-    setOpen(nextOpen)
+    setOpen(nextOpen);
     if (!nextOpen) {
-      setModelSearch('')
+      setModelSearch('');
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
     const frame = window.requestAnimationFrame(() => {
-      modelListRef.current?.scrollTo({ top: 0 })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [open])
+      modelListRef.current?.scrollTo({ top: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      modelListRef.current?.scrollTo({ top: 0 })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [modelSearch])
+      modelListRef.current?.scrollTo({ top: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [modelSearch]);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -399,7 +404,7 @@ function ModelSettingsPicker({
             <CommandEmpty>{MODEL_EMPTY_TEXT}</CommandEmpty>
             <CommandGroup>
               {modelOptions.map((model) => {
-                const key = modelOptionKey(model)
+                const key = modelOptionKey(model);
                 return (
                   <CommandItem
                     key={key}
@@ -410,8 +415,8 @@ function ModelSettingsPicker({
                       key === selectedKey && 'bg-muted/70',
                     )}
                     onSelect={() => {
-                      onSelectModel(model)
-                      setOpen(false)
+                      onSelectModel(model);
+                      setOpen(false);
                     }}
                   >
                     <span className="flex min-w-0 flex-col">
@@ -421,7 +426,7 @@ function ModelSettingsPicker({
                       </span>
                     </span>
                   </CommandItem>
-                )
+                );
               })}
             </CommandGroup>
           </CommandList>
@@ -432,13 +437,13 @@ function ModelSettingsPicker({
           label={thinkingLabel}
           options={thinkingOptions}
           onSelect={(level) => {
-            onSelectThinkingLevel(level)
-            setOpen(false)
+            onSelectThinkingLevel(level);
+            setOpen(false);
           }}
         />
       </PopoverContent>
     </Popover>
-  )
+  );
 }
 
 function ModelSettingsButton({
@@ -447,8 +452,8 @@ function ModelSettingsButton({
   className,
   ...props
 }: React.ComponentProps<typeof Button> & {
-  modelLabel: string
-  thinkingLabel: string
+  modelLabel: string;
+  thinkingLabel: string;
 }): React.JSX.Element {
   return (
     <Button
@@ -465,7 +470,7 @@ function ModelSettingsButton({
       <span className="min-w-0 truncate text-foreground">{modelLabel}</span>
       <span className="shrink-0 text-muted-foreground">{thinkingLabel}</span>
     </Button>
-  )
+  );
 }
 
 function ThinkingLevelFlyout({
@@ -474,12 +479,12 @@ function ThinkingLevelFlyout({
   options,
   onSelect,
 }: {
-  label: string
-  value: ThinkingLevel | null
-  options: ThinkingLevel[]
-  onSelect: (thinkingLevel: ThinkingLevel) => void
+  label: string;
+  value: ThinkingLevel | null;
+  options: ThinkingLevel[];
+  onSelect: (thinkingLevel: ThinkingLevel) => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
     <div
@@ -523,7 +528,7 @@ function ThinkingLevelFlyout({
                   level === value && 'bg-muted text-foreground',
                 )}
                 onClick={() => {
-                  onSelect(level)
+                  onSelect(level);
                 }}
               >
                 <span>{level}</span>
@@ -534,7 +539,7 @@ function ThinkingLevelFlyout({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function ContextUsageTooltip({
@@ -542,9 +547,9 @@ function ContextUsageTooltip({
   contextUsage,
   autoCompactionEnabled,
 }: {
-  label: string
-  contextUsage: ContextUsage | null
-  autoCompactionEnabled: boolean
+  label: string;
+  contextUsage: ContextUsage | null;
+  autoCompactionEnabled: boolean;
 }): React.JSX.Element {
   return (
     <TooltipProvider>
@@ -566,23 +571,23 @@ function ContextUsageTooltip({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }
 
 function modelOptionKey(model: ModelInfo): string {
-  return `${model.provider}${MODEL_OPTION_KEY_SEPARATOR}${model.id}`
+  return `${model.provider}${MODEL_OPTION_KEY_SEPARATOR}${model.id}`;
 }
 
 function modelSearchValue(model: ModelInfo): string {
-  return [model.name, model.provider, model.id, model.api].join(' ')
+  return [model.name, model.provider, model.id, model.api].join(' ');
 }
 
 function formatModelDetails(model: ModelInfo): string {
-  return `${model.provider}/${model.id} - ${formatTokenCount(model.contextWindow)} context`
+  return `${model.provider}/${model.id} - ${formatTokenCount(model.contextWindow)} context`;
 }
 
 function isThinkingLevel(level: string): level is ThinkingLevel {
-  return THINKING_LEVEL_VALUES.includes(level as ThinkingLevel)
+  return THINKING_LEVEL_VALUES.includes(level as ThinkingLevel);
 }
 
 function formatContextUsage(
@@ -590,37 +595,37 @@ function formatContextUsage(
   autoCompactionEnabled: boolean,
 ): string {
   if (!contextUsage || contextUsage.tokens === null || contextUsage.percent === null) {
-    return CONTEXT_USAGE_UNAVAILABLE
+    return CONTEXT_USAGE_UNAVAILABLE;
   }
-  const suffix = autoCompactionEnabled ? ` (${AUTO_COMPACT_LABEL})` : ''
-  return `${formatPercent(contextUsage.percent)}/${formatTokenCount(contextUsage.contextWindow)}${suffix}`
+  const suffix = autoCompactionEnabled ? ` (${AUTO_COMPACT_LABEL})` : '';
+  return `${formatPercent(contextUsage.percent)}/${formatTokenCount(contextUsage.contextWindow)}${suffix}`;
 }
 
 function formatContextWindow(contextUsage: ContextUsage | null): string {
   if (!contextUsage) {
-    return UNKNOWN_STATUS
+    return UNKNOWN_STATUS;
   }
-  return formatTokenCount(contextUsage.contextWindow)
+  return formatTokenCount(contextUsage.contextWindow);
 }
 
 function formatUsedContext(contextUsage: ContextUsage | null): string {
   if (!contextUsage || contextUsage.tokens === null || contextUsage.percent === null) {
-    return UNKNOWN_STATUS
+    return UNKNOWN_STATUS;
   }
-  return `${formatTokenCount(contextUsage.tokens)} (${formatPercent(contextUsage.percent)})`
+  return `${formatTokenCount(contextUsage.tokens)} (${formatPercent(contextUsage.percent)})`;
 }
 
 function formatAutoCompactExplanation(autoCompactionEnabled: boolean): string {
   if (autoCompactionEnabled) {
-    return 'Context auto compact is enabled.'
+    return 'Context auto compact is enabled.';
   }
-  return 'Context auto compact is not enabled.'
+  return 'Context auto compact is not enabled.';
 }
 
 function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`
+  return `${value.toFixed(1)}%`;
 }
 
 function formatTokenCount(value: number): string {
-  return `${Math.round(value / TOKEN_UNIT)}${TOKEN_SUFFIX}`
+  return `${Math.round(value / TOKEN_UNIT)}${TOKEN_SUFFIX}`;
 }

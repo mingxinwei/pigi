@@ -14,7 +14,7 @@ This project should be easy to inspect while the agent is developing it. Use thr
 
 ```ts
 if (is.dev) {
-  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+  app.commandLine.appendSwitch('remote-debugging-port', '9222');
 }
 ```
 
@@ -77,10 +77,10 @@ Example from Electron docs:
 
 ```ts
 try {
-  win.webContents.debugger.attach('1.1')
-  await win.webContents.debugger.sendCommand('Network.enable')
+  win.webContents.debugger.attach('1.1');
+  await win.webContents.debugger.sendCommand('Network.enable');
 } catch (err) {
-  console.error('Debugger attach failed', err)
+  console.error('Debugger attach failed', err);
 }
 ```
 
@@ -246,9 +246,9 @@ Recommended error shape:
 
 ```ts
 interface AppError {
-  code: string
-  message: string
-  details?: unknown
+  code: string;
+  message: string;
+  details?: unknown;
 }
 ```
 

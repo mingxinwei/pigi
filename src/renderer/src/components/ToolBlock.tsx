@@ -1,20 +1,20 @@
-import { useState, useEffect, useRef } from 'react'
-import { IconBan, IconCheck, IconX } from '@tabler/icons-react'
-import { Button } from './ui/button'
-import { cn } from '../lib/utils'
-import type { ToolNode } from '../state/transcriptController'
-import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants'
-import SyntaxHighlightedCode from './syntaxHighlightedCode'
-import DiffView from './DiffView'
-import type { EditEntry } from '../lib/diffUtils'
+import { useState, useEffect, useRef } from 'react';
+import { IconBan, IconCheck, IconX } from '@tabler/icons-react';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
+import type { ToolNode } from '../state/transcriptController';
+import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
+import SyntaxHighlightedCode from './syntaxHighlightedCode';
+import DiffView from './DiffView';
+import type { EditEntry } from '../lib/diffUtils';
 
 interface ToolBlockProps {
-  node: ToolNode
+  node: ToolNode;
 }
 
 interface ToolCommandParts {
-  prefix: string
-  body: string
+  prefix: string;
+  body: string;
 }
 
 const STATUS_CONFIG = {
@@ -38,30 +38,30 @@ const STATUS_CONFIG = {
     Icon: IconBan,
     className: 'bg-muted/60 text-muted-foreground',
   },
-} as const
+} as const;
 
 function ElapsedTimer(): React.JSX.Element {
-  const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef(0)
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(0);
 
   useEffect(() => {
-    startRef.current = Date.now()
+    startRef.current = Date.now();
     const interval = setInterval(() => {
-      setElapsed((Date.now() - startRef.current) / 1000)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
+      setElapsed((Date.now() - startRef.current) / 1000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>
+  return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>;
 }
 
-export const TOOL_OUTPUT_LINE_LIMIT = 10
+export const TOOL_OUTPUT_LINE_LIMIT = 10;
 
-const SECONDS_PER_MILLISECOND = 1 / 1000
+const SECONDS_PER_MILLISECOND = 1 / 1000;
 
 const TOOL_OUTPUT_LANGUAGE_BY_NAME: Record<string, string> = {
   bash: 'bash',
-}
+};
 
 const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   c: 'c',
@@ -93,101 +93,101 @@ const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   yaml: 'yaml',
   yml: 'yaml',
   zsh: 'zsh',
-}
+};
 
 function formatToolArgs(args: unknown): string {
   if (!args || typeof args !== 'object') {
-    return ''
+    return '';
   }
 
-  const record = args as Record<string, unknown>
+  const record = args as Record<string, unknown>;
   if (Object.keys(record).length === 0) {
-    return ''
+    return '';
   }
 
-  return JSON.stringify(record, null, 2)
+  return JSON.stringify(record, null, 2);
 }
 
 function getToolCommandParts(node: ToolNode): ToolCommandParts | null {
-  const args = node.args as Record<string, unknown> | undefined
+  const args = node.args as Record<string, unknown> | undefined;
   if (!args) {
-    return null
+    return null;
   }
 
   switch (node.name) {
     case 'bash': {
-      return { prefix: '$', body: String(args.command ?? '') }
+      return { prefix: '$', body: String(args.command ?? '') };
     }
     case 'read':
     case 'write': {
-      const path = String(args.path ?? '')
+      const path = String(args.path ?? '');
       return path
         ? { prefix: node.name, body: path }
-        : { prefix: node.name, body: formatToolArgs(args) }
+        : { prefix: node.name, body: formatToolArgs(args) };
     }
     case 'edit': {
-      const path = String(args.path ?? '')
+      const path = String(args.path ?? '');
       return path
         ? { prefix: node.name, body: path }
-        : { prefix: node.name, body: formatToolArgs(args) }
+        : { prefix: node.name, body: formatToolArgs(args) };
     }
     default:
-      return { prefix: node.name, body: formatToolArgs(args) }
+      return { prefix: node.name, body: formatToolArgs(args) };
   }
 }
 
 function getToolOutputLanguage(node: ToolNode): string {
-  const args = node.args as Record<string, unknown> | undefined
-  const path = typeof args?.path === 'string' ? args.path : ''
-  return getLanguageFromPath(path) ?? TOOL_OUTPUT_LANGUAGE_BY_NAME[node.name] ?? 'bash'
+  const args = node.args as Record<string, unknown> | undefined;
+  const path = typeof args?.path === 'string' ? args.path : '';
+  return getLanguageFromPath(path) ?? TOOL_OUTPUT_LANGUAGE_BY_NAME[node.name] ?? 'bash';
 }
 
 function getLanguageFromPath(path: string): string | null {
-  const fileName = path.split('/').pop() ?? ''
-  const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
+  const fileName = path.split('/').pop() ?? '';
+  const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : '';
   if (!extension) {
-    return null
+    return null;
   }
 
-  return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null
+  return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null;
 }
 
 function getEditEntries(node: ToolNode): EditEntry[] | null {
-  if (node.name !== 'edit') return null
-  const args = node.args as Record<string, unknown> | undefined
-  if (!args) return null
-  const edits = args.edits as Array<{ oldText?: string; newText?: string }> | undefined
-  if (!Array.isArray(edits) || edits.length === 0) return null
+  if (node.name !== 'edit') return null;
+  const args = node.args as Record<string, unknown> | undefined;
+  if (!args) return null;
+  const edits = args.edits as Array<{ oldText?: string; newText?: string }> | undefined;
+  if (!Array.isArray(edits) || edits.length === 0) return null;
   return edits
     .filter((e) => typeof e.oldText === 'string' && typeof e.newText === 'string')
-    .map((e) => ({ oldText: e.oldText!, newText: e.newText! }))
+    .map((e) => ({ oldText: e.oldText!, newText: e.newText! }));
 }
 
 function formatDuration(durationMs: number | undefined): string | null {
   if (durationMs === undefined || !Number.isFinite(durationMs)) {
-    return null
+    return null;
   }
 
-  const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND)
-  const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString()
-  return `Took ${formattedSeconds}s`
+  const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND);
+  const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString();
+  return `Took ${formattedSeconds}s`;
 }
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
-  const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status]
-  const command = getToolCommandParts(node)
-  const editEntries = getEditEntries(node)
-  const hasOutput = node.output.length > 0
-  const outputLines = node.output.split('\n')
+  const [expanded, setExpanded] = useState(false);
+  const { Icon: StatusIcon, className: statusClassName } = STATUS_CONFIG[node.status];
+  const command = getToolCommandParts(node);
+  const editEntries = getEditEntries(node);
+  const hasOutput = node.output.length > 0;
+  const outputLines = node.output.split('\n');
   const visibleOutput = expanded
     ? node.output
-    : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n')
-  const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT)
-  const outputLanguage = getToolOutputLanguage(node)
-  const durationLabel = formatDuration(node.durationMs)
-  const args = node.args as Record<string, unknown> | undefined
-  const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined
+    : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n');
+  const hiddenLineCount = Math.max(0, outputLines.length - TOOL_OUTPUT_LINE_LIMIT);
+  const outputLanguage = getToolOutputLanguage(node);
+  const durationLabel = formatDuration(node.durationMs);
+  const args = node.args as Record<string, unknown> | undefined;
+  const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   return (
     <div
@@ -229,7 +229,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
               size="sm"
               className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
               onClick={() => {
-                setExpanded((current) => !current)
+                setExpanded((current) => !current);
               }}
             >
               {expanded ? 'Show less' : 'Show all'}
@@ -254,5 +254,5 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 import {
   IconFolder,
   IconFolderOpen,
   IconFolderPlus,
   IconLoader2,
   IconPlus,
-} from '@tabler/icons-react'
-import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract'
-import type { SessionEntry } from '../state/appStore'
+} from '@tabler/icons-react';
+import type { PiSessionInfo, ProjectDirectory } from '../../../shared/ipcContract';
+import type { SessionEntry } from '../state/appStore';
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -23,21 +23,21 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from './ui/sidebar'
+} from './ui/sidebar';
 
-const NEW_PROJECT_SESSION_LABEL = 'New chat'
+const NEW_PROJECT_SESSION_LABEL = 'New chat';
 
 interface SidebarProps {
-  sessions: Map<string, SessionEntry>
-  selectedSessionId: string | null
-  recentProjects: ProjectDirectory[]
-  projectSessions: Record<string, PiSessionInfo[]>
-  onNewSession: () => void
-  onNewSessionForProject: (path: string) => void
-  onSwitchSession: (sessionId: string) => void
-  onResumeSession: (session: PiSessionInfo) => void
-  onOpenProject: () => void
-  onSelectProject: (path: string) => void
+  sessions: Map<string, SessionEntry>;
+  selectedSessionId: string | null;
+  recentProjects: ProjectDirectory[];
+  projectSessions: Record<string, PiSessionInfo[]>;
+  onNewSession: () => void;
+  onNewSessionForProject: (path: string) => void;
+  onSwitchSession: (sessionId: string) => void;
+  onResumeSession: (session: PiSessionInfo) => void;
+  onOpenProject: () => void;
+  onSelectProject: (path: string) => void;
 }
 
 export default function Sidebar({
@@ -52,25 +52,25 @@ export default function Sidebar({
   onOpenProject,
   onSelectProject,
 }: SidebarProps): React.JSX.Element {
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [expandedSessionLists, setExpandedSessionLists] = useState<Set<string>>(new Set())
-  const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now())
-  const visibleSessionCount = 5
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedSessionLists, setExpandedSessionLists] = useState<Set<string>>(new Set());
+  const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now());
+  const visibleSessionCount = 5;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setRelativeTimeBase(Date.now())
-    }, 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
+      setRelativeTimeBase(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   function getSessionTitle(session: PiSessionInfo): string {
-    return (session.name ?? session.firstMessage).replace(/\s+/g, ' ').trim()
+    return (session.name ?? session.firstMessage).replace(/\s+/g, ' ').trim();
   }
 
   function getProjectSessions(projectPath: string): PiSessionInfo[] {
-    const listedSessions = projectSessions[projectPath] ?? []
-    const listedIds = new Set(listedSessions.map((session) => session.id))
+    const listedSessions = projectSessions[projectPath] ?? [];
+    const listedIds = new Set(listedSessions.map((session) => session.id));
     const runningSessions = Array.from(sessions.values())
       .filter(
         (session) => session.cwd === projectPath && !listedIds.has(session.persistedSessionId),
@@ -84,53 +84,53 @@ export default function Sidebar({
         messageCount: 0,
         firstMessage: session.title,
         allMessagesText: session.title,
-      }))
+      }));
 
-    return [...runningSessions, ...listedSessions]
+    return [...runningSessions, ...listedSessions];
   }
 
   function toggleProjectSessions(projectPath: string): void {
     setExpandedProjects((current) => {
-      const next = new Set(current)
+      const next = new Set(current);
       if (next.has(projectPath)) {
-        next.delete(projectPath)
+        next.delete(projectPath);
       } else {
-        next.add(projectPath)
+        next.add(projectPath);
       }
-      return next
-    })
+      return next;
+    });
   }
 
   function expandProjectSessions(projectPath: string): void {
     setExpandedProjects((current) => {
       if (current.has(projectPath)) {
-        return current
+        return current;
       }
-      const next = new Set(current)
-      next.add(projectPath)
-      return next
-    })
+      const next = new Set(current);
+      next.add(projectPath);
+      return next;
+    });
   }
 
   function toggleSessionList(projectPath: string): void {
     setExpandedSessionLists((current) => {
-      const next = new Set(current)
+      const next = new Set(current);
       if (next.has(projectPath)) {
-        next.delete(projectPath)
+        next.delete(projectPath);
       } else {
-        next.add(projectPath)
+        next.add(projectPath);
       }
-      return next
-    })
+      return next;
+    });
   }
 
   function formatRelativeTime(value: string): string {
-    const created = new Date(value).getTime()
+    const created = new Date(value).getTime();
     if (!Number.isFinite(created)) {
-      return ''
+      return '';
     }
 
-    const elapsedSeconds = Math.max(0, Math.round((relativeTimeBase - created) / 1000))
+    const elapsedSeconds = Math.max(0, Math.round((relativeTimeBase - created) / 1000));
     const ranges: Array<[string, number]> = [
       ['y', 60 * 60 * 24 * 365],
       ['mo', 60 * 60 * 24 * 30],
@@ -138,24 +138,24 @@ export default function Sidebar({
       ['d', 60 * 60 * 24],
       ['h', 60 * 60],
       ['m', 60],
-    ]
+    ];
 
     for (const [suffix, seconds] of ranges) {
       if (elapsedSeconds >= seconds) {
-        return `${Math.floor(elapsedSeconds / seconds)}${suffix}`
+        return `${Math.floor(elapsedSeconds / seconds)}${suffix}`;
       }
     }
 
-    return 'now'
+    return 'now';
   }
 
   function isSessionRunning(sessionId: string): boolean {
     for (const entry of sessions.values()) {
       if (entry.persistedSessionId === sessionId && entry.status !== 'idle') {
-        return true
+        return true;
       }
     }
-    return false
+    return false;
   }
 
   return (
@@ -203,13 +203,13 @@ export default function Sidebar({
                   </SidebarMenuItem>
                 ) : (
                   recentProjects.map((project) => {
-                    const sessionsForProject = getProjectSessions(project.path)
-                    const isExpanded = expandedProjects.has(project.path)
-                    const isSessionListExpanded = expandedSessionLists.has(project.path)
+                    const sessionsForProject = getProjectSessions(project.path);
+                    const isExpanded = expandedProjects.has(project.path);
+                    const isSessionListExpanded = expandedSessionLists.has(project.path);
                     const visibleSessions = isSessionListExpanded
                       ? sessionsForProject
-                      : sessionsForProject.slice(0, visibleSessionCount)
-                    const hiddenSessionCount = sessionsForProject.length - visibleSessions.length
+                      : sessionsForProject.slice(0, visibleSessionCount);
+                    const hiddenSessionCount = sessionsForProject.length - visibleSessions.length;
 
                     return (
                       <SidebarMenuItem
@@ -218,8 +218,8 @@ export default function Sidebar({
                       >
                         <SidebarMenuButton
                           onClick={() => {
-                            onSelectProject(project.path)
-                            toggleProjectSessions(project.path)
+                            onSelectProject(project.path);
+                            toggleProjectSessions(project.path);
                           }}
                           title={project.path}
                           className="font-medium text-sidebar-foreground/65"
@@ -234,8 +234,8 @@ export default function Sidebar({
                         <SidebarMenuAction
                           title={`${NEW_PROJECT_SESSION_LABEL} in ${project.name}`}
                           onClick={() => {
-                            expandProjectSessions(project.path)
-                            onNewSessionForProject(project.path)
+                            expandProjectSessions(project.path);
+                            onNewSessionForProject(project.path);
                           }}
                         >
                           <IconPlus />
@@ -263,7 +263,7 @@ export default function Sidebar({
                                 </SidebarMenuSubItem>
                               ) : (
                                 visibleSessions.map((session) => {
-                                  const isActive = session.id === selectedSessionId
+                                  const isActive = session.id === selectedSessionId;
 
                                   return (
                                     <SidebarMenuSubItem key={session.path || session.id}>
@@ -276,9 +276,9 @@ export default function Sidebar({
                                           type="button"
                                           onClick={() => {
                                             if (session.path) {
-                                              onResumeSession(session)
+                                              onResumeSession(session);
                                             } else {
-                                              onSwitchSession(session.id)
+                                              onSwitchSession(session.id);
                                             }
                                           }}
                                         >
@@ -298,7 +298,7 @@ export default function Sidebar({
                                         </button>
                                       </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
-                                  )
+                                  );
                                 })
                               )}
                               {hiddenSessionCount > 0 && (
@@ -310,7 +310,7 @@ export default function Sidebar({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        toggleSessionList(project.path)
+                                        toggleSessionList(project.path);
                                       }}
                                     >
                                       <span>Show more</span>
@@ -328,7 +328,7 @@ export default function Sidebar({
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          toggleSessionList(project.path)
+                                          toggleSessionList(project.path);
                                         }}
                                       >
                                         <span>Show less</span>
@@ -340,7 +340,7 @@ export default function Sidebar({
                           </div>
                         </div>
                       </SidebarMenuItem>
-                    )
+                    );
                   })
                 )}
               </SidebarMenu>
@@ -349,5 +349,5 @@ export default function Sidebar({
         </SidebarContent>
       </ShadcnSidebar>
     </>
-  )
+  );
 }

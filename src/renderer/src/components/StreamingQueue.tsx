@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { IconStarFilled } from '@tabler/icons-react';
 import { cn } from '../lib/utils';
 import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants';
@@ -7,8 +6,7 @@ interface StreamingQueueProps {
   isStreaming: boolean;
   queuedSteering: string[];
   queuedFollowUp: string[];
-  onEditQueuedMessage: (type: 'steer' | 'followUp', index: number, newText: string) => void;
-  onDequeue: () => void;
+  onEditQueuedMessage: (type: 'steer' | 'followUp', index: number) => void;
 }
 
 /**
@@ -34,7 +32,7 @@ function QueueBar({
   );
 }
 
-/** An editable queued message bar. */
+/** A queued message bar with Edit button that moves message to ChatInput. */
 function QueuedMessageBar({
   label,
   labelClassName,
@@ -44,54 +42,19 @@ function QueuedMessageBar({
   label: string;
   labelClassName: string;
   message: string;
-  onEdit: (newText: string) => void;
+  onEdit: () => void;
 }): React.JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-
-  const startEdit = (): void => {
-    setEditing(true);
-    setEditValue(message);
-  };
-
-  const confirmEdit = (): void => {
-    if (editValue.trim()) {
-      onEdit(editValue.trim());
-    }
-    setEditing(false);
-  };
-
-  const cancelEdit = (): void => {
-    setEditing(false);
-  };
-
   return (
     <QueueBar>
       <span className={cn('shrink-0 font-medium', labelClassName)}>{label}</span>
-      {editing ? (
-        <input
-          type="text"
-          className="flex-1 rounded border bg-background px-2 py-0.5 text-xs outline-none focus:ring-1 focus:ring-ring"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') confirmEdit();
-            if (e.key === 'Escape') cancelEdit();
-          }}
-          autoFocus
-        />
-      ) : (
-        <>
-          <span className="flex-1 truncate">{message}</span>
-          <button
-            type="button"
-            className="ml-auto shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
-            onClick={startEdit}
-          >
-            Edit
-          </button>
-        </>
-      )}
+      <span className="flex-1 truncate">{message}</span>
+      <button
+        type="button"
+        className="ml-auto shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
+        onClick={onEdit}
+      >
+        Edit
+      </button>
     </QueueBar>
   );
 }
@@ -101,11 +64,8 @@ export default function StreamingQueue({
   queuedSteering,
   queuedFollowUp,
   onEditQueuedMessage,
-  onDequeue,
 }: StreamingQueueProps): React.JSX.Element | null {
   if (!isStreaming) return null;
-
-  const hasQueued = queuedSteering.length > 0 || queuedFollowUp.length > 0;
 
   // Build list of all bars with stable keys
   const bars: { key: string; node: React.ReactNode }[] = [];
@@ -118,7 +78,7 @@ export default function StreamingQueue({
           label="Steer"
           labelClassName="text-yellow-600"
           message={msg}
-          onEdit={(newText) => onEditQueuedMessage('steer', i, newText)}
+          onEdit={() => onEditQueuedMessage('steer', i)}
         />
       ),
     });
@@ -132,7 +92,7 @@ export default function StreamingQueue({
           label="Follow-up"
           labelClassName="text-blue-500"
           message={msg}
-          onEdit={(newText) => onEditQueuedMessage('followUp', i, newText)}
+          onEdit={() => onEditQueuedMessage('followUp', i)}
         />
       ),
     });
@@ -147,15 +107,6 @@ export default function StreamingQueue({
         }
       >
         <span>Working...</span>
-        {hasQueued && (
-          <button
-            type="button"
-            className="ml-auto text-muted-foreground/60 hover:text-foreground transition-colors"
-            onClick={onDequeue}
-          >
-            Edit all
-          </button>
-        )}
       </QueueBar>
     ),
   });

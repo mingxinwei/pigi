@@ -341,6 +341,15 @@ export class TranscriptController {
   // ===========================================================================
   private _optimisticUserMessages = new Map<string, number>();
 
+  /**
+   * Optimistically clear local queue state before a programmatic clearQueue RPC.
+   * When the subsequent queue_update arrives with empty arrays, the diff against
+   * the already-empty local state produces no "delivered" messages.
+   */
+  clearLocalQueue(): void {
+    this.setState({ queuedSteering: [], queuedFollowUp: [] });
+  }
+
   // Optimistic user message (shown immediately before SDK echo)
   // ===========================================================================
 
@@ -437,16 +446,15 @@ export class TranscriptController {
         break;
 
       case 'queue_update': {
-        // Runtime guard for expected shape (#10)
+        // Runtime guard for expected shape
         if (typeof event !== 'object' || event === null) break;
         const qe = event as Record<string, unknown>;
         const newSteering: string[] = Array.isArray(qe.steering) ? qe.steering : [];
         const newFollowUp: string[] = Array.isArray(qe.followUp) ? qe.followUp : [];
 
-        // Detect delivered messages by comparing old vs new arrays index-by-index.
-        // A message is "delivered" if it was in the old array but not at the same
-        // position in the new array. We diff from the front: items removed from
-        // the front have been delivered (SDK processes queue FIFO).
+        // Detect delivered messages: items removed from the front (FIFO).
+        // If clearLocalQueue() was called beforehand, prev arrays are already empty
+        // so no delivery is detected — this avoids the false-delivery bug.
         const prevSteering = this._state.queuedSteering;
         const prevFollowUp = this._state.queuedFollowUp;
         const deliveredSteering = prevSteering.slice(0, prevSteering.length - newSteering.length);

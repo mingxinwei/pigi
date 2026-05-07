@@ -71,7 +71,7 @@ function App(): React.JSX.Element {
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null;
-  const { state: transcript } = useTranscript(activeSessionId);
+  const { state: transcript, controller: transcriptControllerRef } = useTranscript(activeSessionId);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
   const [restoreText, setRestoreText] = useState<string | null>(null);
@@ -260,6 +260,8 @@ function App(): React.JSX.Element {
     if (!activeSessionId) {
       return;
     }
+    // Clear local queue state to prevent false delivery detection
+    transcriptControllerRef.current?.clearLocalQueue();
     // Clear queued messages and restore them to input
     const result = await clearQueue(activeSessionId);
     let queued = [...(result.steering ?? []), ...(result.followUp ?? [])];
@@ -272,34 +274,32 @@ function App(): React.JSX.Element {
     if (queued.length > 0) {
       setRestoreText(queued.join('\n\n'));
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, transcriptControllerRef]);
 
   const handleEditQueuedMessage = useCallback(
-    async (type: 'steer' | 'followUp', index: number, newText: string) => {
+    async (type: 'steer' | 'followUp', index: number) => {
       if (!activeSessionId) return;
-      // Clear all, modify, re-queue
-      const result = await clearQueue(activeSessionId);
-      const steeringMsgs = [...(result.steering ?? [])];
-      const followUpMsgs = [...(result.followUp ?? [])];
-      if (type === 'steer') steeringMsgs[index] = newText;
-      else followUpMsgs[index] = newText;
-      // Re-queue all
-      for (const msg of steeringMsgs) await steer(activeSessionId, msg);
-      for (const msg of followUpMsgs) await followUp(activeSessionId, msg);
+      // Clear local queue state to prevent false delivery detection
+      transcriptControllerRef.current?.clearLocalQueue();
+      try {
+        const result = await clearQueue(activeSessionId);
+        const steeringMsgs = [...(result.steering ?? [])];
+        const followUpMsgs = [...(result.followUp ?? [])];
+        const editedMsg =
+          type === 'steer' ? steeringMsgs.splice(index, 1)[0] : followUpMsgs.splice(index, 1)[0];
+        // Re-queue remaining
+        for (const msg of steeringMsgs) await steer(activeSessionId, msg);
+        for (const msg of followUpMsgs) await followUp(activeSessionId, msg);
+        // Restore edited message to input
+        if (editedMsg) setRestoreText(editedMsg);
+      } catch (err) {
+        console.error('Failed to edit queued message:', err);
+      }
     },
-    [activeSessionId],
+    [activeSessionId, transcriptControllerRef],
   );
 
   const handleRestoredText = useCallback(() => setRestoreText(null), []);
-
-  const handleDequeue = useCallback(async () => {
-    if (!activeSessionId) return;
-    const result = await clearQueue(activeSessionId);
-    const queued = [...(result.steering ?? []), ...(result.followUp ?? [])];
-    if (queued.length > 0) {
-      setRestoreText(queued.join('\n\n'));
-    }
-  }, [activeSessionId]);
 
   // Global Escape key to abort streaming
   useEffect(() => {
@@ -536,7 +536,6 @@ function App(): React.JSX.Element {
           queuedSteering={transcript.queuedSteering}
           queuedFollowUp={transcript.queuedFollowUp}
           onEditQueuedMessage={handleEditQueuedMessage}
-          onDequeue={handleDequeue}
         />
         <ChatInput
           onSend={handleSend}

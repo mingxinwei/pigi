@@ -174,10 +174,9 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         <button
           type="button"
           onClick={handleScrollToBottom}
-          className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm transition-opacity hover:bg-muted"
+          className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 shadow-md backdrop-blur-sm transition-opacity hover:bg-muted size-9"
         >
-          <IconArrowDown className="size-3.5" />
-          Scroll to bottom
+          <IconArrowDown className="size-5 text-muted-foreground" />
         </button>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { IconArrowDown } from '@tabler/icons-react'
+import { IconArrowDown, IconCopy, IconCheck } from '@tabler/icons-react'
 import type {
   TranscriptNode,
   AssistantNode,
@@ -23,8 +23,8 @@ const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24
-const USER_MESSAGE_LEADING_PADDING = 40
-const USER_MESSAGE_TRAILING_PADDING = 16
+const USER_MESSAGE_LEADING_PADDING = 24
+const USER_MESSAGE_TRAILING_PADDING = 8
 const LONG_USER_MESSAGE_LINE_LIMIT = 100
 const LONG_USER_MESSAGE_HEAD_LINES = 24
 const LONG_USER_MESSAGE_TAIL_LINES = 12
@@ -279,7 +279,12 @@ function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
     case 'assistant':
       return <AssistantBubble node={node} />
     case 'tool':
-      return <ToolBlock node={node} />
+      return (
+        <div className="group">
+          <ToolBlock node={node} />
+          <MessageToolbar text={node.output} />
+        </div>
+      )
     case 'system':
       return <SystemBubble text={node.text} isLoading={node.isLoading} />
   }
@@ -292,7 +297,7 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
   const displayText = expanded || !preview.isLong ? text : preview.text
 
   return (
-    <div className="flex justify-end pb-4 pt-10" data-testid="user-message">
+    <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
       <div className="group flex max-w-[85%] flex-col items-end">
         <div
           className={cn(
@@ -316,8 +321,9 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
             </div>
           )}
         </div>
-        <div className="h-6 w-full pt-1 text-right text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-          {formatUserMessageTime(node.sentAt)}
+        <div className="flex h-6 w-full items-center justify-end gap-2 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <MessageToolbar text={node.text} />
+          <span className="text-xs text-muted-foreground">{formatUserMessageTime(node.sentAt)}</span>
         </div>
       </div>
     </div>
@@ -389,7 +395,7 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
   const showText = node.text.length > 0
 
   return (
-    <div className="flex justify-start" data-testid="assistant-message">
+    <div className="group flex justify-start" data-testid="assistant-message">
       <div
         className="w-full min-w-0 text-[15px] leading-6 text-foreground"
         style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
@@ -403,6 +409,8 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
             {node.errorMessage}
           </div>
         )}
+
+        <MessageToolbar text={node.text || node.thinking} />
       </div>
     </div>
   )
@@ -437,6 +445,29 @@ function SystemBubble({ text, isLoading }: { text: string; isLoading?: boolean }
         )}
       </span>
       <div className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+function MessageToolbar({ text }: { text: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }, [text])
+
+  return (
+    <div className="flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <button
+        type="button"
+        className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"
+        onClick={handleCopy}
+        title="Copy message"
+      >
+        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+      </button>
     </div>
   )
 }

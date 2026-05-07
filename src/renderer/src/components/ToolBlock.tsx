@@ -203,7 +203,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
 
       {editEntries && editEntries.length > 0 && <DiffView edits={editEntries} />}
 
-      {hasOutput && node.name !== 'edit' && (
+      {hasOutput && (node.name !== 'edit' || node.status === 'error') && (
         <>
           <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground">
             {!expanded && hiddenLineCount > 0 && (

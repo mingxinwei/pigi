@@ -35,12 +35,12 @@ const processPool = new PiAgentProcessPool((sessionId, code) => {
   sendToRenderer(PiChannel.ProcessExit, { sessionId, code });
 });
 
-async function startSessionIndexProcess(): Promise<void> {
+function startSessionIndexProcess(): void {
   if (sessionIndexProcess) {
     return;
   }
 
-  const proc = await createSessionIndexProcess();
+  const proc = createSessionIndexProcess();
   sessionIndexProcess = proc;
 
   proc.on('message', (msg: SessionIndexResponse) => {
@@ -88,8 +88,8 @@ function listProjectSessions(cwds: string[]): SessionListResult {
 async function spawnSessionProcess(
   cmd: UtilityCommand,
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-  const proc = await processPool.claimSessionProcess();
   return new Promise((resolve) => {
+    const proc = processPool.claimSessionProcess();
     let resolved = false;
 
     const timeout = setTimeout(() => {

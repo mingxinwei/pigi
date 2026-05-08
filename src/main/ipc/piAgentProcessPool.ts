@@ -22,9 +22,8 @@ export class PiAgentProcessPool {
   ensureWarmSessionProcesses(cwds = this.warmSessionCwds): void {
     this.warmSessionCwds = [...new Set(cwds)];
 
-    const needed = WARM_SESSION_PROCESS_COUNT - this.warmSessionProcesses.length;
-    for (let i = 0; i < needed; i++) {
-      void this.createWarmSessionProcess();
+    while (this.warmSessionProcesses.length < WARM_SESSION_PROCESS_COUNT) {
+      this.createWarmSessionProcess();
     }
 
     for (const proc of this.warmSessionProcesses) {
@@ -32,7 +31,7 @@ export class PiAgentProcessPool {
     }
   }
 
-  async claimSessionProcess(): Promise<Electron.UtilityProcess> {
+  claimSessionProcess(): Electron.UtilityProcess {
     const proc = this.warmSessionProcesses.shift();
     if (!proc) {
       return createPiAgentProcess();
@@ -135,8 +134,8 @@ export class PiAgentProcessPool {
     proc.postMessage(cmd);
   }
 
-  private async createWarmSessionProcess(): Promise<Electron.UtilityProcess> {
-    const proc = await createPiAgentProcess();
+  private createWarmSessionProcess(): Electron.UtilityProcess {
+    const proc = createPiAgentProcess();
     this.warmSessionProcesses.push(proc);
     proc.on('exit', () => {
       this.removeWarmSessionProcess(proc);

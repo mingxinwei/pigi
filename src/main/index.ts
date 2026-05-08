@@ -28,7 +28,7 @@ app.whenReady().then(() => {
   );
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
 
-  initializeShellEnv();
+  void initializeShellEnv();
   registerIpcHandlers();
   registerProjectHandlers();
 

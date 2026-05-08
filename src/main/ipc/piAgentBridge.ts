@@ -35,12 +35,12 @@ const processPool = new PiAgentProcessPool((sessionId, code) => {
   sendToRenderer(PiChannel.ProcessExit, { sessionId, code });
 });
 
-function startSessionIndexProcess(): void {
+async function startSessionIndexProcess(): Promise<void> {
   if (sessionIndexProcess) {
     return;
   }
 
-  const proc = createSessionIndexProcess();
+  const proc = await createSessionIndexProcess();
   sessionIndexProcess = proc;
 
   proc.on('message', (msg: SessionIndexResponse) => {
@@ -85,11 +85,11 @@ function listProjectSessions(cwds: string[]): SessionListResult {
  * Spawn a utility process, send lifecycle command, wait for real sessionId,
  * then establish dedicated control/data MessagePorts between renderer and utility.
  */
-function spawnSessionProcess(
+async function spawnSessionProcess(
   cmd: UtilityCommand,
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+  const proc = await processPool.claimSessionProcess();
   return new Promise((resolve) => {
-    const proc = processPool.claimSessionProcess();
     let resolved = false;
 
     const timeout = setTimeout(() => {

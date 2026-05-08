@@ -22,7 +22,8 @@ export class PiAgentProcessPool {
   ensureWarmSessionProcesses(cwds = this.warmSessionCwds): void {
     this.warmSessionCwds = [...new Set(cwds)];
 
-    while (this.warmSessionProcesses.length < WARM_SESSION_PROCESS_COUNT) {
+    const needed = WARM_SESSION_PROCESS_COUNT - this.warmSessionProcesses.length;
+    for (let i = 0; i < needed; i++) {
       void this.createWarmSessionProcess();
     }
 

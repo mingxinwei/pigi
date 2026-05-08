@@ -1,11 +1,11 @@
 {
   "name": "pigi",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
-  "description": "An Electron application with React and TypeScript",
+  "description": "A high performance pi GUI",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "whycatdothis",
+  "homepage": "",
   "scripts": {
     "check": "pnpm run typecheck && pnpm run lint:fix && pnpm run format",
     "format": "prettier --write .",

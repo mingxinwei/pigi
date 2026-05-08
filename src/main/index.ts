@@ -12,7 +12,7 @@ import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
 import { registerProjectHandlers } from './ipc/projectHandlers';
 import { PiChannel } from '../shared/ipcContract';
 import { configureDebugPanel } from './debugConfig';
-import { initializeNpmCommandDetection } from './processes/npmCommandDetector';
+import { initializeShellEnv } from './processes/shellEnvResolver';
 
 configureDebugPanel();
 
@@ -28,7 +28,7 @@ app.whenReady().then(() => {
   );
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
 
-  initializeNpmCommandDetection();
+  initializeShellEnv();
   registerIpcHandlers();
   registerProjectHandlers();
 

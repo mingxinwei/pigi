@@ -32,7 +32,6 @@ import type {
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
-import { PIGI_NPM_COMMAND_ENV, parseNpmCommand } from '../../shared/npmCommand';
 
 function toModelInfo(model: {
   name: string;
@@ -144,11 +143,6 @@ function createServicesForCwd(cwd: string): Promise<AgentSessionServices> {
     try {
       const agentDir = getAgentDir();
       const settingsManager = SettingsManager.create(cwd, agentDir);
-      const detectedNpmCommand = parseNpmCommand(process.env[PIGI_NPM_COMMAND_ENV]);
-
-      if (detectedNpmCommand && !settingsManager.getNpmCommand()) {
-        settingsManager.applyOverrides({ npmCommand: detectedNpmCommand });
-      }
 
       // Some Pi extensions read process.cwd() while they register tools. Match the
       // Pi SDK cwd option during service construction so extension-local tools bind

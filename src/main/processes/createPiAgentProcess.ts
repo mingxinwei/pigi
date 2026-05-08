@@ -3,18 +3,17 @@
  */
 import { utilityProcess } from 'electron';
 import { join } from 'path';
-import { getResolvedShellEnv } from './shellEnvResolver';
 
-export async function createPiAgentProcess(): Promise<Electron.UtilityProcess> {
+export function createPiAgentProcess(): Electron.UtilityProcess {
   const modulePath = join(__dirname, 'processes/utility/piAgent.js');
   return utilityProcess.fork(modulePath, [], {
-    env: await getResolvedShellEnv(),
+    env: { ...process.env },
   });
 }
 
-export async function createSessionIndexProcess(): Promise<Electron.UtilityProcess> {
+export function createSessionIndexProcess(): Electron.UtilityProcess {
   const modulePath = join(__dirname, 'processes/utility/sessionIndex.js');
   return utilityProcess.fork(modulePath, [], {
-    env: await getResolvedShellEnv(),
+    env: { ...process.env },
   });
 }

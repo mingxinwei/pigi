@@ -35,7 +35,15 @@ const CODE_LANGUAGE_LABELS: Record<string, string> = {
 
 const markdownComponents: Components = {
   a: ({ href, children }) => (
-    <a href={href} className="underline underline-offset-2" rel="noreferrer">
+    <a
+      href={href}
+      className="underline underline-offset-2 cursor-pointer"
+      rel="noreferrer"
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) window.piApi.openExternal(href);
+      }}
+    >
       {children}
     </a>
   ),

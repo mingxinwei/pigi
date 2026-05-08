@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import ElectronStore from 'electron-store';
 import { PIGI_NPM_COMMAND_ENV, type NpmCommand } from '../../shared/npmCommand';
 
@@ -14,7 +15,6 @@ const NPM_COMMAND_DETECTION_ATTEMPTED_KEY = 'npmCommandDetectionAttempted';
 const NPM_COMMAND_DETECTION_ATTEMPTED_AT_KEY = 'npmCommandDetectionAttemptedAt';
 const NPM_COMMAND_KEY = 'npmCommand';
 const NPM_COMMAND_DETECTION_RETRY_DELAY_MS = 300000;
-const POSIX_SHELL = '/bin/sh';
 const LOOKUP_NPM_COMMAND = 'command -v npm';
 const SHELL_LOGIN_FLAG = '-l';
 const SHELL_COMMAND_FLAG = '-c';
@@ -33,10 +33,34 @@ const store = new ElectronStore<NpmCommandStoreSchema>({
 let cachedNpmCommand: NpmCommand | null | undefined;
 let cachedNpmCommandDetectedAt: number | null = null;
 
+function getUserShellFromDirectoryService(): string | null {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
+  try {
+    const output = execFileSync(
+      'dscl',
+      ['.', '-read', `/Users/${process.env['USER']}`, 'UserShell'],
+      {
+        encoding: 'utf8',
+        timeout: DETECTION_TIMEOUT_MS,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    ).trim();
+    // Output format: "UserShell: /bin/zsh"
+    const match = output.match(/UserShell:\s*(.+)/);
+    return match?.[1]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function getShellCandidates(): string[] {
   const shell = process.env['SHELL'];
-  return [...new Set([shell, POSIX_SHELL])].filter((candidate): candidate is string =>
-    Boolean(candidate && existsSync(candidate)),
+  const dsclShell = getUserShellFromDirectoryService();
+  const commonShells = ['/bin/zsh', '/bin/bash', '/bin/sh'];
+  return [...new Set([shell, dsclShell, ...commonShells])].filter(
+    (candidate): candidate is string => Boolean(candidate && existsSync(candidate)),
   );
 }
 
@@ -55,16 +79,15 @@ function lookupNpmPathWithShell(shell: string, args: string[]): string | null {
 }
 
 function lookupNpmPath(): string | null {
-  for (const shell of getShellCandidates()) {
-    if (shell !== POSIX_SHELL) {
-      const loginResult = lookupNpmPathWithShell(shell, [
-        SHELL_LOGIN_FLAG,
-        SHELL_COMMAND_FLAG,
-        LOOKUP_NPM_COMMAND,
-      ]);
-      if (loginResult) {
-        return loginResult;
-      }
+  const candidates = getShellCandidates();
+  for (const shell of candidates) {
+    const loginResult = lookupNpmPathWithShell(shell, [
+      SHELL_LOGIN_FLAG,
+      SHELL_COMMAND_FLAG,
+      LOOKUP_NPM_COMMAND,
+    ]);
+    if (loginResult) {
+      return loginResult;
     }
 
     const nonLoginResult = lookupNpmPathWithShell(shell, [SHELL_COMMAND_FLAG, LOOKUP_NPM_COMMAND]);
@@ -123,8 +146,13 @@ export function getNpmCommandUtilityEnv(): NodeJS.ProcessEnv {
     return { ...process.env };
   }
 
+  const npmDir = cachedNpmCommand[0] ? path.dirname(cachedNpmCommand[0]) : null;
+  const currentPath = process.env['PATH'] || '';
+  const pathNeedsAugment = npmDir && !currentPath.split(path.delimiter).includes(npmDir);
+
   return {
     ...process.env,
     [PIGI_NPM_COMMAND_ENV]: JSON.stringify(cachedNpmCommand),
+    ...(pathNeedsAugment ? { PATH: `${npmDir}${path.delimiter}${currentPath}` } : {}),
   };
 }

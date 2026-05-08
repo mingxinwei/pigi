@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-const SHELL_INTERACTIVE_FLAG = '-i';
+const SHELL_LOGIN_INTERACTIVE_FLAGS = ['-i', '-l'];
 const SHELL_COMMAND_FLAG = '-c';
 const DETECTION_TIMEOUT_MS = 5000;
 const WINDOWS_PLATFORM = 'win32';
@@ -45,11 +45,12 @@ function getShellCandidates(): string[] {
 }
 
 /**
- * Resolve the user's full PATH by spawning interactive shells.
+ * Resolve the user's full PATH by spawning interactive login shells.
  * On macOS, apps launched from /Applications inherit a minimal PATH
  * (just /usr/bin:/bin:/usr/sbin:/sbin), so we source the user's
- * shell config (.zshrc/.bashrc) to pick up tools like bk, brew, npm, etc.
+ * shell config (.zprofile + .zshrc) to pick up tools like bk, brew, npm, etc.
  *
+ * Uses both -i (interactive) and -l (login) flags to load all config files.
  * Tries all available shells and merges their PATH entries.
  */
 function resolveShellPath(): string | null {
@@ -67,7 +68,7 @@ function resolveShellPath(): string | null {
       const cmd = isFish ? 'string join : $PATH' : 'echo $PATH';
       const args = isFish
         ? [SHELL_COMMAND_FLAG, cmd]
-        : [SHELL_INTERACTIVE_FLAG, SHELL_COMMAND_FLAG, cmd];
+        : [...SHELL_LOGIN_INTERACTIVE_FLAGS, SHELL_COMMAND_FLAG, cmd];
       const output = execFileSync(shell, args, {
         encoding: 'utf8',
         timeout: DETECTION_TIMEOUT_MS,
@@ -92,7 +93,7 @@ function resolveShellPath(): string | null {
 }
 
 /**
- * Initialize shell environment by resolving PATH from the user's interactive shell.
+ * Initialize shell environment by resolving PATH from the user's interactive login shell.
  * Should be called once early in the main process lifecycle.
  */
 export function initializeShellEnv(): void {

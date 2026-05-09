@@ -272,7 +272,7 @@ function estimateToolCommandLineCount(node: ToolNode): number {
         ? `${node.name} ${String(args?.path ?? '')}`
         : String(JSON.stringify(args ?? {}) ?? '');
 
-  return Math.max(1, Math.ceil(command.length / 80));
+  return Math.min(2, Math.max(1, Math.ceil(command.length / 80)));
 }
 
 function isRenderableNode(node: TranscriptNode): boolean {

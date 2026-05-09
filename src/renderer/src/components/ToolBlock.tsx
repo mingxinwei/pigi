@@ -203,8 +203,11 @@ function getReadImagePath(node: ToolNode): string | null {
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const [commandExpanded, setCommandExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const commandRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
+  const [isCommandTruncated, setIsCommandTruncated] = useState(false);
   const { className: statusClassName } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
@@ -222,8 +225,12 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   useEffect(() => {
-    if (!contentRef.current) return;
-    setIsOverflowing(contentRef.current.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
+    if (contentRef.current) {
+      setIsOverflowing(contentRef.current.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
+    }
+    if (commandRef.current) {
+      setIsCommandTruncated(commandRef.current.scrollHeight > commandRef.current.clientHeight);
+    }
   }, [node]);
 
   return (
@@ -239,9 +246,24 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         {command ? (
           <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
-            <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            <span
+              ref={commandRef}
+              className={cn(
+                'min-w-0 break-words [overflow-wrap:anywhere]',
+                !commandExpanded && 'line-clamp-2',
+              )}
+            >
               {command.body}
             </span>
+            {isCommandTruncated && (
+              <button
+                type="button"
+                onClick={() => setCommandExpanded((v) => !v)}
+                className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
+              >
+                {commandExpanded ? 'less' : 'more'}
+              </button>
+            )}
             {timeout !== undefined && (
               <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
                 timeout {timeout}s

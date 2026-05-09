@@ -588,7 +588,7 @@ function ContextUsageTooltip({
         <TooltipTrigger asChild>
           <span
             tabIndex={0}
-            className="shrink-0 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
+            className="shrink-0 text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
           >
             {label}
           </span>

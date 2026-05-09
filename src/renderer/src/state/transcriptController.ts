@@ -83,13 +83,18 @@ interface SdkMessageStart {
 }
 interface SdkMessageUpdate {
   type: 'message_update';
-  message: { id?: string; role?: string; timestamp?: number | string };
+  message: {
+    id?: string;
+    role?: string;
+    timestamp?: number | string;
+    content?: Array<{ type: string; id?: string; name?: string; arguments?: unknown }>;
+  };
   assistantMessageEvent: {
     type: string;
     delta?: string;
     contentIndex?: number;
     content?: string;
-    toolCall?: { id?: string; name?: string };
+    toolCall?: { id?: string; name?: string; arguments?: unknown };
     partial?: unknown;
     reason?: string;
     message?: unknown;
@@ -515,11 +520,11 @@ export class TranscriptController {
 
     if (batch.toolOutput) {
       for (const [toolCallId, output] of Object.entries(batch.toolOutput)) {
-        const tool = this._state.nodes.find(
+        const idx = this._state.nodes.findIndex(
           (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
-        ) as ToolNode | undefined;
-        if (tool) {
-          tool.output = output;
+        );
+        if (idx !== -1) {
+          this._state.nodes[idx] = { ...(this._state.nodes[idx] as ToolNode), output };
           changed = true;
         }
       }
@@ -565,13 +570,64 @@ export class TranscriptController {
     return this.getActiveAssistant();
   }
 
+  private createToolNode(toolCallId: string, name: string, args?: unknown): ToolNode {
+    return {
+      id: nextNodeId(),
+      role: 'tool',
+      toolCallId,
+      name,
+      args,
+      status: 'running',
+      output: '',
+      isError: false,
+      startedAt: Date.now(),
+    };
+  }
+
   private handleMessageUpdate(event: SdkMessageUpdate): void {
     const ame = event.assistantMessageEvent;
     if (!ame) return;
 
-    // Non-streaming events that we handle structurally (toolcall_end creates tool association)
+    // Create tool node at toolcall_start for early visual feedback (header appears while args stream)
+    if (ame.type === 'toolcall_start') {
+      const contentIndex = ame.contentIndex;
+      if (contentIndex == null) return;
+      const content = event.message.content?.[contentIndex];
+      if (content?.type === 'toolCall' && content.id && content.name) {
+        const existing = this._state.nodes.find(
+          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === content.id,
+        );
+        if (!existing) {
+          const node = this.createToolNode(content.id, content.name);
+          this.setState({
+            nodes: [...this._state.nodes, node],
+            activeToolCallId: content.id,
+            status: 'tool_running',
+          });
+        }
+      }
+      return;
+    }
+
+    // Update tool args at toolcall_end with the finalized arguments
     if (ame.type === 'toolcall_end' && ame.toolCall) {
-      // Tool call finalized — tool_execution_start will follow
+      const tc = ame.toolCall as { id: string; name: string; arguments: unknown };
+      const existing = this._state.nodes.find(
+        (n) => n.role === 'tool' && (n as ToolNode).toolCallId === tc.id,
+      ) as ToolNode | undefined;
+      if (existing) {
+        const idx = this._state.nodes.indexOf(existing);
+        this._state.nodes[idx] = { ...existing, args: tc.arguments };
+        this.setState({ nodes: [...this._state.nodes] });
+      } else {
+        // Fallback: create node if toolcall_start was missed
+        const node = this.createToolNode(tc.id, tc.name, tc.arguments);
+        this.setState({
+          nodes: [...this._state.nodes, node],
+          activeToolCallId: tc.id,
+          status: 'tool_running',
+        });
+      }
       return;
     }
 
@@ -624,17 +680,26 @@ export class TranscriptController {
   }
 
   private handleToolStart(event: SdkToolExecStart): void {
-    const node: ToolNode = {
-      id: nextNodeId(),
-      role: 'tool',
-      toolCallId: event.toolCallId,
-      name: event.toolName,
-      args: event.args,
-      status: 'running',
-      output: '',
-      isError: false,
-      startedAt: Date.now(),
-    };
+    // Check if already created at toolcall_end time
+    const existing = this._state.nodes.find(
+      (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
+    ) as ToolNode | undefined;
+    if (existing) {
+      const idx = this._state.nodes.indexOf(existing);
+      this._state.nodes[idx] = {
+        ...existing,
+        args: event.args,
+        status: 'running',
+        startedAt: Date.now(),
+      };
+      this.setState({
+        nodes: [...this._state.nodes],
+        activeToolCallId: event.toolCallId,
+        status: 'tool_running',
+      });
+      return;
+    }
+    const node = this.createToolNode(event.toolCallId, event.toolName, event.args);
     this.setState({
       nodes: [...this._state.nodes, node],
       activeToolCallId: event.toolCallId,

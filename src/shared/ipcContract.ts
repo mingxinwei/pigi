@@ -154,6 +154,7 @@ export type PiPush =
   | { type: 'session_error'; error: string }
   | { type: 'event'; event: unknown }
   | { type: 'error'; error: string }
+  | { type: 'status_sync'; isStreaming: boolean }
   | { type: 'login_open_url'; url: string }
   | { type: 'login_progress'; message: string }
   | { type: 'login_complete'; providerId: string }

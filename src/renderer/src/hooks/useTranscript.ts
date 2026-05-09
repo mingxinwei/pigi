@@ -106,6 +106,11 @@ function ensureSessionSubscription(sessionId: string, controller: TranscriptCont
         useAppStore.getState().updateSession(sessionId, { error: msg.error, status: 'error' });
         break;
 
+      case 'status_sync':
+        controller.setStatus(msg.isStreaming ? 'streaming' : 'idle');
+        useAppStore.getState().updateSession(sessionId, { status: controller.state.status });
+        break;
+
       case 'event':
         controller.processEvent(msg.event);
         useAppStore.getState().updateSession(sessionId, { status: controller.state.status });

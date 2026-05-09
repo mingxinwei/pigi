@@ -183,7 +183,17 @@ export class TranscriptController {
     if (this._state.status === status) {
       return;
     }
-    this.setState({ status });
+    // When transitioning to idle, finalize any lingering streaming state
+    if (status === 'idle') {
+      this.finalizeCurrent();
+      this.setState({
+        status,
+        activeAssistantId: null,
+        activeToolCallId: null,
+      });
+    } else {
+      this.setState({ status });
+    }
   }
 
   private findNode<T extends TranscriptNode>(id: string): T | undefined {

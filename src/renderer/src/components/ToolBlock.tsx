@@ -258,7 +258,17 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         <div
           ref={contentRef}
           className="overflow-hidden"
-          style={{ maxHeight: expanded ? undefined : `${TOOL_BLOCK_MAX_HEIGHT}px` }}
+          style={{
+            maxHeight: expanded ? undefined : `${TOOL_BLOCK_MAX_HEIGHT}px`,
+            maskImage:
+              !expanded && isOverflowing
+                ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
+                : undefined,
+            WebkitMaskImage:
+              !expanded && isOverflowing
+                ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
+                : undefined,
+          }}
         >
           {node.status !== 'running' &&
             diffEntries &&

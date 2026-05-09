@@ -213,6 +213,8 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     const eventType =
       'event' in msg && msg.event != null ? (msg.event as { type?: string }).type : undefined;
     if (eventType && THROTTLED_PUSH_EVENTS.has(eventType)) {
+      // Stamp receive time before RAF delay so timing calculations stay accurate
+      ((msg as { event?: unknown }).event as { _receivedAt?: number })._receivedAt = Date.now();
       pushQueue.push(msg);
       schedulePushDrain();
     } else {

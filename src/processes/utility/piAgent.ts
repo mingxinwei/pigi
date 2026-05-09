@@ -209,6 +209,13 @@ function setSessionBusy(isBusy: boolean): void {
 
   isSessionBusy = isBusy;
   sendToMain({ type: 'session_busy_changed', isBusy });
+
+  // Push status_sync to renderer so the UI can reconcile in case an
+  // agent_end event was missed or arrived out of order.
+  if (dataPort) {
+    const msg: PiPush = { type: 'status_sync', isStreaming: isBusy };
+    dataPort.postMessage(msg);
+  }
 }
 
 function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {

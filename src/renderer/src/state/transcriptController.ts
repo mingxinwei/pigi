@@ -131,6 +131,7 @@ interface SdkToolExecEnd {
   toolName: string;
   result: unknown;
   isError: boolean;
+  _receivedAt?: number;
 }
 
 // =============================================================================
@@ -588,12 +589,17 @@ export class TranscriptController {
     const ame = event.assistantMessageEvent;
     if (!ame) return;
 
-    // Create tool node at toolcall_start for early visual feedback (header appears while args stream)
+    // Create tool node at toolcall_start for write/edit (early visual feedback while args stream)
     if (ame.type === 'toolcall_start') {
       const contentIndex = ame.contentIndex;
       if (contentIndex == null) return;
       const content = event.message.content?.[contentIndex];
-      if (content?.type === 'toolCall' && content.id && content.name) {
+      if (
+        content?.type === 'toolCall' &&
+        content.id &&
+        content.name &&
+        (content.name === 'write' || content.name === 'edit')
+      ) {
         const existing = this._state.nodes.find(
           (n) => n.role === 'tool' && (n as ToolNode).toolCallId === content.id,
         );
@@ -690,7 +696,7 @@ export class TranscriptController {
         ...existing,
         args: event.args,
         status: 'running',
-        startedAt: Date.now(),
+        startedAt: existing.startedAt ?? Date.now(),
       };
       this.setState({
         nodes: [...this._state.nodes],
@@ -700,6 +706,7 @@ export class TranscriptController {
       return;
     }
     const node = this.createToolNode(event.toolCallId, event.toolName, event.args);
+    node.startedAt = Date.now();
     this.setState({
       nodes: [...this._state.nodes, node],
       activeToolCallId: event.toolCallId,
@@ -721,7 +728,7 @@ export class TranscriptController {
   }
 
   private handleToolEnd(event: SdkToolExecEnd): void {
-    const endedAt = Date.now();
+    const endedAt = event._receivedAt ?? Date.now();
     const nodes = this._state.nodes.map((n) => {
       if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
       const tool = n as ToolNode;

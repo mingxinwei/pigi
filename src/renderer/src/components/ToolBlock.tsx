@@ -54,6 +54,12 @@ function ElapsedTimer(): React.JSX.Element {
 export const TOOL_OUTPUT_LINE_LIMIT = 10;
 const TOOL_OUTPUT_BYTE_LIMIT = 2000;
 
+/** Min height for running tool blocks to reserve space and reduce layout shift */
+const TOOL_BLOCK_RUNNING_MIN_HEIGHT = '80px';
+
+/** Tools that stream output while running (shown immediately, not gated on completion) */
+const STREAMING_OUTPUT_TOOLS = new Set(['bash', 'read']);
+
 const READ_MORE_LINES_RE = /^\[\d+ more lines in file\. Use offset=\d+ to continue\.\]$/;
 const READ_IMAGE_RE = /^Read image file \[(.+)\]$/;
 
@@ -227,10 +233,13 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
     <>
       <div
         className="overflow-hidden rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
-        style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
+        style={{
+          maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
+          minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,
+        }}
         data-testid={`tool-block-${node.toolCallId}`}
       >
-        {command && (
+        {command ? (
           <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
@@ -242,13 +251,20 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
               </span>
             )}
           </div>
+        ) : (
+          <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
+            <span className="shrink-0">{node.name}</span>
+            <span className="min-w-0 text-muted-foreground">…</span>
+          </div>
         )}
 
-        {diffEntries && diffEntries.length > 0 && node.status !== 'error' && (
-          <DiffView edits={diffEntries} />
-        )}
+        {node.status !== 'running' &&
+          diffEntries &&
+          diffEntries.length > 0 &&
+          node.status !== 'error' && <DiffView edits={diffEntries} />}
 
-        {hasOutput &&
+        {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
+          hasOutput &&
           ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
             <>
               <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">

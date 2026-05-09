@@ -185,6 +185,41 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
   let pendingStreamBatches: StreamBatch[] = [];
   let streamRafScheduled = false;
 
+  // Push event queue: rate-limit tool_execution_end to the next animation frame so the
+  // browser paints the 'running' state before completion. All other events are immediate.
+  const THROTTLED_PUSH_EVENTS = new Set(['tool_execution_end']);
+  const pushQueue: PiPush[] = [];
+  let pushRafScheduled = false;
+
+  function deliverPush(msg: PiPush): void {
+    for (const handler of sp.pushHandlers) {
+      handler(msg);
+    }
+  }
+
+  function schedulePushDrain(): void {
+    if (pushRafScheduled || pushQueue.length === 0) return;
+    pushRafScheduled = true;
+    requestAnimationFrame(() => {
+      pushRafScheduled = false;
+      if (pushQueue.length === 0) return;
+      const msg = pushQueue.shift()!;
+      deliverPush(msg);
+      schedulePushDrain();
+    });
+  }
+
+  function enqueuePush(msg: PiPush): void {
+    const eventType =
+      'event' in msg && msg.event != null ? (msg.event as { type?: string }).type : undefined;
+    if (eventType && THROTTLED_PUSH_EVENTS.has(eventType)) {
+      pushQueue.push(msg);
+      schedulePushDrain();
+    } else {
+      deliverPush(msg);
+    }
+  }
+
   dataPort.onmessage = (event) => {
     const data = event.data as DataPortMessage;
 
@@ -206,9 +241,7 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     }
 
     if ('type' in data) {
-      for (const handler of sp.pushHandlers) {
-        handler(data as PiPush);
-      }
+      enqueuePush(data as PiPush);
     }
   };
 

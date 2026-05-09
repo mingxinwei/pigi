@@ -225,26 +225,13 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   useEffect(() => {
+    if (contentRef.current) {
+      setIsOverflowing(contentRef.current.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
+    }
     if (commandRef.current) {
       setIsCommandTruncated(commandRef.current.scrollHeight > commandRef.current.clientHeight);
     }
   }, [node]);
-
-  // Use ResizeObserver to detect overflow — handles progressive rendering where
-  // content height grows incrementally after the initial mount.
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver(() => {
-      setIsOverflowing(el.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
-    });
-    ro.observe(el);
-    // Check immediately for the current state
-    setIsOverflowing(el.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
-
-    return () => ro.disconnect();
-  }, []);
 
   return (
     <>

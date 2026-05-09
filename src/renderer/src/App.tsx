@@ -13,8 +13,6 @@ import {
   steer,
   abort,
   compact,
-  cycleModel,
-  cycleThinkingLevel,
   getProjects,
   getGitBranch,
   getState,
@@ -437,27 +435,13 @@ function App(): React.JSX.Element {
             await compact(activeSessionId);
             break;
           }
-          case 'model': {
-            if (!activeSessionId) return;
-            await cycleModel(activeSessionId);
-            await refreshSessionState(activeSessionId);
-            await refreshSessionOptions(activeSessionId);
-            break;
-          }
-          case 'thinking': {
-            if (!activeSessionId) return;
-            await cycleThinkingLevel(activeSessionId);
-            await refreshSessionState(activeSessionId);
-            await refreshSessionOptions(activeSessionId);
-            break;
-          }
+
           case 'name': {
             if (!activeSessionId || !arg) return;
             useAppStore.getState().updateSession(activeSessionId, { title: arg });
             break;
           }
-          case 'new':
-          case 'clear': {
+          case 'new': {
             await handleNewSession();
             break;
           }

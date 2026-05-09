@@ -30,6 +30,8 @@
 ## Workflow
 
 - Do NOT commit automatically after changes; wait for explicit commit instruction
+- Commit messages must use conventional commits format (e.g. `fix:`, `feat:`, `refactor:`, `chore:`)
+- If the change is non-trivial, include bullet points in the commit body describing what was done in detail
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
 - Run `pnpm check` after any significant code change to catch type errors, lint issues, and formatting problems before committing

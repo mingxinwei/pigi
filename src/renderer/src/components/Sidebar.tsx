@@ -242,6 +242,50 @@ export default function Sidebar({
                           <span className="sr-only">{NEW_PROJECT_SESSION_LABEL}</span>
                         </SidebarMenuAction>
 
+                        {/* Show running sessions even when project is collapsed */}
+                        {!isExpanded &&
+                          (() => {
+                            const runningSessions = sessionsForProject.filter((s) =>
+                              isSessionRunning(s.id),
+                            );
+                            if (runningSessions.length === 0) return null;
+                            return (
+                              <SidebarMenuSub className="mx-0 border-l-0 px-0">
+                                {runningSessions.map((session) => {
+                                  const isActive = session.id === selectedSessionId;
+                                  return (
+                                    <SidebarMenuSubItem key={session.path || session.id}>
+                                      <SidebarMenuSubButton
+                                        asChild
+                                        isActive={isActive}
+                                        className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (session.path) {
+                                              onResumeSession(session);
+                                            } else {
+                                              onSwitchSession(session.id);
+                                            }
+                                          }}
+                                        >
+                                          <span
+                                            className="min-w-0 flex-1 truncate text-left"
+                                            title={getSessionTitle(session)}
+                                          >
+                                            {getSessionTitle(session)}
+                                          </span>
+                                          <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-spin text-green-500" />
+                                        </button>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  );
+                                })}
+                              </SidebarMenuSub>
+                            );
+                          })()}
+
                         <div
                           aria-hidden={!isExpanded}
                           className={

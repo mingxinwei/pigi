@@ -112,6 +112,8 @@ export default function ChatInput({
     // Restore current session's draft
     if (currentId !== prevId) {
       el.value = draftsRef.current.get(currentId ?? '') ?? '';
+      // Auto-focus the input when switching to a new/different session
+      el.focus();
     }
 
     prevSessionIdRef.current = currentId;
@@ -150,17 +152,22 @@ export default function ChatInput({
       return;
     }
 
-    // Check for slash command
+    // Check for slash command (only if it matches a known command)
     if (msg.startsWith('/')) {
       const spaceIdx = msg.indexOf(' ');
       const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx);
       const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim();
+      const matches = matchSlashCommands(`/${name}`);
+      const exactMatch = matches.find((c) => c.name === name);
 
-      el.value = '';
-      el.style.height = 'auto';
-      setSlashMatches([]);
-      onSlashCommand(name, arg);
-      return;
+      if (exactMatch) {
+        el.value = '';
+        el.style.height = 'auto';
+        setSlashMatches([]);
+        onSlashCommand(name, arg);
+        return;
+      }
+      // Not a known command — fall through and send as regular message
     }
 
     el.value = '';
@@ -200,18 +207,10 @@ export default function ChatInput({
           e.preventDefault();
           const cmd = slashMatches[selectedSlashIndex];
           if (cmd && textareaRef.current) {
-            const currentInput = textareaRef.current.value.trim();
-            const isExactMatch = currentInput === `/${cmd.name}`;
-            if (cmd.hasArg && (e.key === 'Tab' || !isExactMatch)) {
-              // hasArg: Tab always completes to "/{name} "; Enter on partial also completes
+            if (cmd.hasArg) {
+              // hasArg: always complete to "/{name} " for both Tab and Enter
               textareaRef.current.value = `/${cmd.name} `;
               setSlashMatches([]);
-            } else if (cmd.hasArg && isExactMatch && e.key === 'Enter') {
-              // hasArg + exact match + Enter — execute with empty arg
-              textareaRef.current.value = '';
-              textareaRef.current.style.height = 'auto';
-              setSlashMatches([]);
-              onSlashCommand(cmd.name, '');
             } else {
               // No argument needed — execute immediately
               textareaRef.current.value = '';

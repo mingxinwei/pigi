@@ -8,7 +8,7 @@ import type {
   UserNode,
 } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants';
-import ToolBlock, { TOOL_OUTPUT_LINE_LIMIT } from './ToolBlock';
+import ToolBlock from './ToolBlock';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 
@@ -238,19 +238,19 @@ function estimateAssistantHeight(node: AssistantNode): number {
   return Math.max(80, Math.max(Math.ceil(textLength / 84), lineCount) * 24 + 56);
 }
 
+/** Max height used by ToolBlock for content truncation */
+const TOOL_BLOCK_CONTENT_MAX_HEIGHT = 300;
+
 function estimateToolHeight(node: ToolNode): number {
   const outputLineCount = node.output ? node.output.split('\n').length : 0;
-  const visibleOutputLineCount = Math.min(outputLineCount, TOOL_OUTPUT_LINE_LIMIT);
-  const hiddenOutputLineCount = Math.max(0, outputLineCount - TOOL_OUTPUT_LINE_LIMIT);
-  const hiddenHintLineCount = hiddenOutputLineCount > 0 ? 1 : 0;
-  const showAllButtonHeight = hiddenOutputLineCount > 0 ? 36 : 0;
   const commandLineCount = estimateToolCommandLineCount(node);
+  const contentHeight = outputLineCount * 20;
+  const cappedContentHeight = Math.min(contentHeight, TOOL_BLOCK_CONTENT_MAX_HEIGHT);
 
   return Math.max(
     96,
     commandLineCount * 24 +
-      (visibleOutputLineCount + hiddenHintLineCount) * 20 +
-      showAllButtonHeight +
+      cappedContentHeight +
       TOOL_STATUS_LINE_ESTIMATE_HEIGHT +
       TOOL_BLOCK_ESTIMATE_BUFFER,
   );

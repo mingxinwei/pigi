@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { ToolNode } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
@@ -51,11 +50,11 @@ function ElapsedTimer(): React.JSX.Element {
   return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>;
 }
 
-export const TOOL_OUTPUT_LINE_LIMIT = 10;
-const TOOL_OUTPUT_BYTE_LIMIT = 2000;
-
 /** Min height for running tool blocks to reserve space and reduce layout shift */
 const TOOL_BLOCK_RUNNING_MIN_HEIGHT = '80px';
+
+/** Max height for tool block content before showing expand button */
+const TOOL_BLOCK_MAX_HEIGHT = 300;
 
 /** Tools that stream output while running (shown immediately, not gated on completion) */
 const STREAMING_OUTPUT_TOOLS = new Set(['bash', 'read']);
@@ -204,6 +203,8 @@ function getReadImagePath(node: ToolNode): string | null {
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
   const { className: statusClassName } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
@@ -215,19 +216,15 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const imagePath = useMemo(() => getReadImagePath(node), [node]);
 
   const hasOutput = cleanedOutput.length > 0;
-  const outputLines = cleanedOutput.split('\n');
-  const isTruncatedByLines = outputLines.length > TOOL_OUTPUT_LINE_LIMIT;
-  const isTruncatedByBytes = cleanedOutput.length > TOOL_OUTPUT_BYTE_LIMIT;
-  const isTruncated = !expanded && (isTruncatedByLines || isTruncatedByBytes);
-  const visibleOutput = expanded
-    ? cleanedOutput
-    : isTruncatedByBytes && !isTruncatedByLines
-      ? cleanedOutput.slice(-TOOL_OUTPUT_BYTE_LIMIT)
-      : outputLines.slice(-TOOL_OUTPUT_LINE_LIMIT).join('\n');
   const outputLanguage = getToolOutputLanguage(node);
   const durationLabel = formatDuration(node.durationMs);
   const args = node.args as Record<string, unknown> | undefined;
   const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    setIsOverflowing(contentRef.current.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
+  }, [node]);
 
   return (
     <>
@@ -258,37 +255,34 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           </div>
         )}
 
-        {node.status !== 'running' &&
-          diffEntries &&
-          diffEntries.length > 0 &&
-          node.status !== 'error' && <DiffView edits={diffEntries} />}
+        <div
+          ref={contentRef}
+          className="overflow-hidden"
+          style={{ maxHeight: expanded ? undefined : `${TOOL_BLOCK_MAX_HEIGHT}px` }}
+        >
+          {node.status !== 'running' &&
+            diffEntries &&
+            diffEntries.length > 0 &&
+            node.status !== 'error' && <DiffView edits={diffEntries} />}
 
-        {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
-          hasOutput &&
-          ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
-            <>
+          {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
+            hasOutput &&
+            ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
               <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-                {!expanded && isTruncated && (
-                  <code className="mb-1 block bg-transparent p-0 font-mono text-[14px]">
-                    {'... (truncated)'}
-                  </code>
-                )}
-                <SyntaxHighlightedCode code={visibleOutput} language={outputLanguage} />
+                <SyntaxHighlightedCode code={cleanedOutput} language={outputLanguage} />
               </pre>
-              {isTruncated && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-2 mt-1 h-7 px-2 text-xs text-muted-foreground hover:bg-muted/70"
-                  onClick={() => {
-                    setExpanded((current) => !current);
-                  }}
-                >
-                  {expanded ? 'Show less' : 'Show all'}
-                </Button>
-              )}
-            </>
-          )}
+            )}
+        </div>
+
+        {isOverflowing && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-1 text-left text-xs text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
 
         <div
           className={cn(

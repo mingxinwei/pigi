@@ -38,25 +38,33 @@ node scripts/cdp.mjs ax-snapshot /tmp/ax.json    # accessibility tree
 
 ```js
 // Check DOM element heights
-document.querySelectorAll("[data-testid^=tool-block]").length
-
-// Scroll state
-(() => {
-  const el = document.querySelector('[data-testid="transcript-viewport"]');
-  if (!el) return null;
-  return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
-})()
-
-// Find elements by text content
-(() => {
-  const results = [];
-  for (const el of document.querySelectorAll("*")) {
-    if (el.children.length === 0 && el.textContent?.includes("SEARCH")) {
-      results.push({ tag: el.tagName, class: el.className.substring(0, 80), text: el.textContent.trim().substring(0, 60) });
+document.querySelectorAll('[data-testid^=tool-block]').length(
+  // Scroll state
+  () => {
+    const el = document.querySelector('[data-testid="transcript-viewport"]');
+    if (!el) return null;
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+  },
+)()(
+  // Find elements by text content
+  () => {
+    const results = [];
+    for (const el of document.querySelectorAll('*')) {
+      if (el.children.length === 0 && el.textContent?.includes('SEARCH')) {
+        results.push({
+          tag: el.tagName,
+          class: el.className.substring(0, 80),
+          text: el.textContent.trim().substring(0, 60),
+        });
+      }
     }
-  }
-  return JSON.stringify(results.slice(0, 10), null, 2);
-})()
+    return JSON.stringify(results.slice(0, 10), null, 2);
+  },
+)();
 ```
 
 ## HMR Limitations

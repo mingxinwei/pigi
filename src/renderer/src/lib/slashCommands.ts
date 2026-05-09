@@ -7,8 +7,6 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'compact', description: 'Compact session context' },
-  { name: 'model', description: 'Cycle to next model' },
-  { name: 'thinking', description: 'Cycle thinking level' },
   { name: 'login', description: 'Configure provider authentication' },
   {
     name: 'logout',
@@ -18,7 +16,6 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   { name: 'name', description: 'Rename session', hasArg: true, argPlaceholder: 'new name' },
   { name: 'new', description: 'Start a new chat' },
-  { name: 'clear', description: 'Start a new chat' },
 ];
 
 /**

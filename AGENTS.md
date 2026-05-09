@@ -1,5 +1,9 @@
 # Development Rules
 
+## Development Environment
+
+- pi SDK source: `/Users/mwei2/PersonalCode/pi-mono`
+
 ## Conversational Style
 
 - Keep answers short and concise

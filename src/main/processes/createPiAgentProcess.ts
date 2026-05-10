@@ -11,8 +11,8 @@ export function createPiAgentProcess(): Electron.UtilityProcess {
   });
 }
 
-export function createSessionIndexProcess(): Electron.UtilityProcess {
-  const modulePath = join(__dirname, 'processes/utility/sessionIndex.js');
+export function createSessionWorkerProcess(): Electron.UtilityProcess {
+  const modulePath = join(__dirname, 'processes/utility/sessionWorker.js');
   return utilityProcess.fork(modulePath, [], {
     env: { ...process.env },
   });

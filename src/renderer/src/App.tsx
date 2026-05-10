@@ -432,15 +432,22 @@ function App(): React.JSX.Element {
           console.error('Failed to rename session:', err);
         }
       } else {
-        // Session is not running; need to resume, rename, then refresh
-        // For now, just update the local display (will persist when session is resumed)
-        console.warn('Cannot rename non-running session without resuming it first');
+        // Session is not running; rename directly via persisted session file
+        const sessionInfo = Object.values(projectSessions)
+          .flat()
+          .find((s) => s.id === sessionId);
+        if (sessionInfo) {
+          const result = await window.piApi.renamePersistedSession(sessionInfo.path, name);
+          if (!result.success) {
+            console.error('Failed to rename persisted session:', result.error);
+          }
+        }
       }
       // Refresh session list to reflect new name
       const activeCwdNow = activeProject?.path ?? window.piApi.getCwd();
       void listProjectSessions([activeCwdNow]);
     },
-    [sessions, activeProject],
+    [sessions, activeProject, projectSessions],
   );
 
   const handleSelectModel = useCallback(
@@ -555,7 +562,7 @@ function App(): React.JSX.Element {
         />
       </div>
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-2xl border-l border-border/60 bg-background">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-xl border-l border-foreground/20 bg-background">
         <div
           aria-label="Resize sidebar"
           role="separator"

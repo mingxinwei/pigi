@@ -25,6 +25,10 @@ interface PiApi {
   openProjectDirectory: () => Promise<ProjectStateResult>;
   removeProject: (path: string) => Promise<ProjectStateResult>;
   reorderProjects: (paths: string[]) => Promise<ProjectStateResult>;
+  renamePersistedSession: (
+    sessionPath: string,
+    name: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   listProjectSessions: (cwds: string[]) => Promise<SessionListResult>;
   onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void) => () => void;
 

@@ -168,8 +168,8 @@ export type PiPush =
 /** Batched streaming data, flushed every 16ms */
 export interface StreamBatch {
   type: 'stream_batch';
-  text?: Record<string, string>;
-  thinking?: Record<string, string>;
+  text?: string;
+  thinking?: string;
   toolOutput?: Record<string, string>;
   toolArgs?: Record<string, { name: string; args: unknown }>;
 }

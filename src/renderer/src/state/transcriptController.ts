@@ -503,30 +503,26 @@ export class TranscriptController {
    * each batch can update React state and let the virtualizer measure real heights.
    */
   applyStreamBatch(batch: {
-    text?: Record<string, string>;
-    thinking?: Record<string, string>;
+    text?: string;
+    thinking?: string;
     toolOutput?: Record<string, string>;
     toolArgs?: Record<string, { name: string; args: unknown }>;
   }): void {
     let changed = false;
 
     if (batch.text) {
-      for (const [messageId, delta] of Object.entries(batch.text)) {
-        const assistant = this.getOrCreateAssistantForStream(messageId);
-        if (assistant && delta) {
-          assistant.text += delta;
-          changed = true;
-        }
+      const assistant = this.getActiveAssistant();
+      if (assistant && assistant.isStreaming) {
+        assistant.text += batch.text;
+        changed = true;
       }
     }
 
     if (batch.thinking) {
-      for (const [messageId, delta] of Object.entries(batch.thinking)) {
-        const assistant = this.getOrCreateAssistantForStream(messageId);
-        if (assistant && delta) {
-          assistant.thinking += delta;
-          changed = true;
-        }
+      const assistant = this.getActiveAssistant();
+      if (assistant && assistant.isStreaming) {
+        assistant.thinking += batch.thinking;
+        changed = true;
       }
     }
 

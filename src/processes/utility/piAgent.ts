@@ -89,15 +89,13 @@ class StreamBatcher {
     this.flush();
   }
 
-  appendText(id: string, delta: string): void {
-    if (!this.batch.text) this.batch.text = {};
-    this.batch.text[id] = (this.batch.text[id] || '') + delta;
+  appendText(delta: string): void {
+    this.batch.text = (this.batch.text || '') + delta;
     this.markDirty();
   }
 
-  appendThinking(id: string, delta: string): void {
-    if (!this.batch.thinking) this.batch.thinking = {};
-    this.batch.thinking[id] = (this.batch.thinking[id] || '') + delta;
+  appendThinking(delta: string): void {
+    this.batch.thinking = (this.batch.thinking || '') + delta;
     this.markDirty();
   }
 
@@ -111,6 +109,11 @@ class StreamBatcher {
     if (!this.batch.toolArgs) this.batch.toolArgs = {};
     this.batch.toolArgs[toolCallId] = { name, args };
     this.markDirty();
+  }
+
+  /** Force an immediate flush, ensuring all buffered deltas are sent before subsequent push events. */
+  flushNow(): void {
+    this.flush();
   }
 
   private markDirty(): void {
@@ -244,7 +247,6 @@ function setSessionBusy(isBusy: boolean): void {
 
 function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {
   const session = rt.session;
-  let currentAssistantId: string | null = null;
 
   function push(msg: PiPush): void {
     port.postMessage(msg);
@@ -266,70 +268,42 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
 
     switch (event.type) {
       case 'message_start': {
-        const msg = (event as { message?: { role?: string; id?: string } }).message;
-        if (msg?.role === 'assistant') {
-          currentAssistantId = msg.id || null;
-        }
         push({ type: 'event', event });
         break;
       }
 
       case 'message_update': {
-        const ame = (
-          event as {
-            assistantMessageEvent?: { type: string; delta?: string; contentIndex?: number };
+        const { assistantMessageEvent, message } = event;
+        // toolcall_delta — batch by toolCallId directly
+        if (assistantMessageEvent.type === 'toolcall_delta' && message.role === 'assistant') {
+          const content = message.content[assistantMessageEvent.contentIndex];
+          if (content.type === 'toolCall' && content.id && content.name) {
+            batch.setToolArgs(content.id, content.name, content.arguments);
+            return;
           }
-        ).assistantMessageEvent;
-        if (ame) {
-          // toolcall_delta/end don't need currentAssistantId — batch by toolCallId directly
-          if (ame.type === 'toolcall_delta' && ame.contentIndex != null) {
-            const msg = (
-              event as {
-                message?: {
-                  content?: Array<{
-                    type?: string;
-                    id?: string;
-                    name?: string;
-                    arguments?: unknown;
-                  }>;
-                };
-              }
-            ).message;
-            const content = msg?.content?.[ame.contentIndex];
-            if (content?.type === 'toolCall' && content.id && content.name) {
-              batch.setToolArgs(content.id, content.name, content.arguments);
-              return;
-            }
-          }
-          // text/thinking deltas need currentAssistantId
-          if (currentAssistantId) {
-            if (ame.type === 'text_delta' && ame.delta) {
-              batch.appendText(currentAssistantId, ame.delta);
-              return;
-            }
-            if (ame.type === 'thinking_delta' && ame.delta) {
-              batch.appendThinking(currentAssistantId, ame.delta);
-              return;
-            }
-          }
+        }
+        if (assistantMessageEvent.type === 'text_delta') {
+          batch.appendText(assistantMessageEvent.delta);
+          return;
+        }
+        if (assistantMessageEvent.type === 'thinking_delta') {
+          batch.appendThinking(assistantMessageEvent.delta);
+          return;
         }
         push({ type: 'event', event });
         break;
       }
 
       case 'message_end':
-        currentAssistantId = null;
+        batch.flushNow();
         push({ type: 'event', event });
         break;
 
       case 'tool_execution_update': {
-        const toolEvent = event as {
-          toolCallId?: string;
-          partialResult?: { content?: Array<{ text?: string }> };
-        };
-        const text = toolEvent.partialResult?.content?.[0]?.text;
-        if (text && toolEvent.toolCallId) {
-          batch.setToolOutput(toolEvent.toolCallId, text);
+        const { toolCallId, partialResult } = event;
+        const text = partialResult?.content?.[0]?.text;
+        if (typeof text === 'string' && text && toolCallId) {
+          batch.setToolOutput(toolCallId, text);
           return;
         }
         push({ type: 'event', event });

@@ -92,7 +92,7 @@ function ProjectItem({
                 onToggleExpand();
               }}
               title={project.path}
-              className="font-medium text-sidebar-foreground/65"
+              className="text-sidebar-foreground/65"
             >
               {isExpanded ? (
                 <IconFolderOpen data-icon="inline-start" />

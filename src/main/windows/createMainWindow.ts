@@ -24,7 +24,7 @@ export function createMainWindow(): BrowserWindow {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 15 },
     ...(process.platform === 'darwin'
-      ? { transparent: true, vibrancy: 'sidebar', visualEffectState: 'active' }
+      ? { transparent: true, vibrancy: 'header', visualEffectState: 'active' }
       : { backgroundColor: '#ffffff' }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {

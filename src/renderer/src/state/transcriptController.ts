@@ -131,7 +131,6 @@ interface SdkToolExecEnd {
   toolName: string;
   result: unknown;
   isError: boolean;
-  _receivedAt?: number;
 }
 
 // =============================================================================
@@ -539,7 +538,7 @@ export class TranscriptController {
     }
 
     if (batch.toolArgs) {
-      for (const [toolCallId, { name, args }] of Object.entries(batch.toolArgs)) {
+      for (const [toolCallId, { args }] of Object.entries(batch.toolArgs)) {
         const idx = this._state.nodes.findIndex(
           (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
         );
@@ -548,13 +547,6 @@ export class TranscriptController {
           // Skip if tool already completed — final args came via toolcall_end push
           if (existing.status !== 'running') continue;
           this._state.nodes[idx] = { ...existing, args };
-          changed = true;
-        } else {
-          // Tool node not yet created (toolcall_start event may not have arrived yet)
-          const node = this.createToolNode(toolCallId, name, args);
-          this._state.nodes.push(node);
-          this._state.activeToolCallId = toolCallId;
-          this._state.status = 'tool_running';
           changed = true;
         }
       }
@@ -782,7 +774,7 @@ export class TranscriptController {
   }
 
   private handleToolEnd(event: SdkToolExecEnd): void {
-    const endedAt = event._receivedAt ?? Date.now();
+    const endedAt = Date.now();
     const nodes = this._state.nodes.map((n) => {
       if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
       const tool = n as ToolNode;

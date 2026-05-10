@@ -506,6 +506,7 @@ export class TranscriptController {
     text?: Record<string, string>;
     thinking?: Record<string, string>;
     toolOutput?: Record<string, string>;
+    toolArgs?: Record<string, { name: string; args: unknown }>;
   }): void {
     let changed = false;
 
@@ -536,6 +537,28 @@ export class TranscriptController {
         );
         if (idx !== -1) {
           this._state.nodes[idx] = { ...(this._state.nodes[idx] as ToolNode), output };
+          changed = true;
+        }
+      }
+    }
+
+    if (batch.toolArgs) {
+      for (const [toolCallId, { name, args }] of Object.entries(batch.toolArgs)) {
+        const idx = this._state.nodes.findIndex(
+          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
+        );
+        if (idx !== -1) {
+          const existing = this._state.nodes[idx] as ToolNode;
+          // Skip if tool already completed — final args came via toolcall_end push
+          if (existing.status !== 'running') continue;
+          this._state.nodes[idx] = { ...existing, args };
+          changed = true;
+        } else {
+          // Tool node not yet created (toolcall_start event may not have arrived yet)
+          const node = this.createToolNode(toolCallId, name, args);
+          this._state.nodes.push(node);
+          this._state.activeToolCallId = toolCallId;
+          this._state.status = 'tool_running';
           changed = true;
         }
       }

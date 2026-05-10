@@ -149,6 +149,12 @@ function mergeStreamBatches(batches: StreamBatch[]): StreamBatch {
         merged.toolOutput[id] = output;
       }
     }
+    if (batch.toolArgs) {
+      if (!merged.toolArgs) merged.toolArgs = {};
+      for (const [id, entry] of Object.entries(batch.toolArgs)) {
+        merged.toolArgs[id] = entry;
+      }
+    }
   }
   return merged;
 }

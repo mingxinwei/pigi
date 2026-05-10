@@ -138,47 +138,34 @@ const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   zsh: 'zsh',
 };
 
-function formatToolArgs(args: unknown): string {
-  if (!args || typeof args !== 'object') {
-    return '';
-  }
-
-  const record = args as Record<string, unknown>;
-  if (Object.keys(record).length === 0) {
-    return '';
-  }
-
-  return JSON.stringify(record, null, 2);
-}
-
-function getToolCommandParts(node: ToolNode): ToolCommandParts | null {
+function getToolCommandParts(node: ToolNode): ToolCommandParts {
   const args = node.args as Record<string, unknown> | undefined;
-  if (!args) {
-    return null;
-  }
 
   switch (node.name) {
-    case 'bash': {
-      return { prefix: '$', body: String(args.command ?? '') };
-    }
+    case 'bash':
+      return { prefix: '$', body: String(args?.command ?? '') };
     case 'read': {
-      const path = String(args.path ?? '');
-      return path
-        ? { prefix: node.name, body: path }
-        : { prefix: node.name, body: formatToolArgs(args) };
+      const path = String(args?.path ?? '');
+      const offset = typeof args?.offset === 'number' ? args.offset : undefined;
+      const limit = typeof args?.limit === 'number' ? args.limit : undefined;
+      let body = path;
+      if (offset != null || limit != null) {
+        const from = offset ?? 1;
+        const to = limit != null ? from + limit - 1 : undefined;
+        body += to != null ? `:${from}-${to}` : `:${from}`;
+      }
+      return { prefix: node.name, body };
     }
-    case 'write': {
-      const path = String(args.path ?? '');
-      return path ? { prefix: node.name, body: path } : null;
+    case 'write':
+      return { prefix: node.name, body: String(args?.path ?? '') };
+    case 'edit':
+      return { prefix: node.name, body: String(args?.path ?? '') };
+    default: {
+      if (!args) return { prefix: node.name, body: '' };
+      // Show the first string argument value as context
+      const firstValue = Object.values(args).find((v) => typeof v === 'string');
+      return { prefix: node.name, body: typeof firstValue === 'string' ? firstValue : '' };
     }
-    case 'edit': {
-      const path = String(args.path ?? '');
-      return path
-        ? { prefix: node.name, body: path }
-        : { prefix: node.name, body: formatToolArgs(args) };
-    }
-    default:
-      return { prefix: node.name, body: formatToolArgs(args) };
   }
 }
 
@@ -242,7 +229,9 @@ function getReadImagePath(node: ToolNode): string | null {
   return typeof args?.path === 'string' ? args.path : null;
 }
 
-export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
+export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element | null {
+  // Read tool returns fast — skip rendering the running state to avoid flicker
+  if (node.name === 'read' && node.status === 'running') return null;
   const [expanded, setExpanded] = useState(false);
   const [commandExpanded, setCommandExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -283,7 +272,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
         }}
         data-testid={`tool-block-${node.toolCallId}`}
       >
-        {command ? (
+        {command.body ? (
           <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span
@@ -312,7 +301,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           </div>
         ) : (
           <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-semibold leading-5 text-foreground">
-            <span className="shrink-0">{node.name}</span>
+            <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>
         )}

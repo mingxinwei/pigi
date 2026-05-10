@@ -24,7 +24,10 @@ import {
 
 let sessionWorkerProcess: Electron.UtilityProcess | null = null;
 let sessionWorkerRequestId = 0;
-const pendingRenameCallbacks = new Map<string, (result: { success: boolean; error?: string }) => void>();
+const pendingRenameCallbacks = new Map<
+  string,
+  (result: { success: boolean; error?: string }) => void
+>();
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
   const win = getMainWindow();
@@ -242,7 +245,12 @@ export function registerIpcHandlers(): void {
           clearTimeout(timeout);
           resolve(result);
         });
-        const renameCmd: RenameSessionCommand = { type: 'rename_session', requestId, sessionPath, name };
+        const renameCmd: RenameSessionCommand = {
+          type: 'rename_session',
+          requestId,
+          sessionPath,
+          name,
+        };
         proc.postMessage(renameCmd);
       });
     },

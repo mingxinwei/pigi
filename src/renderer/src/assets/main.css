@@ -137,7 +137,8 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: transparent;
     height: 100%;
     overflow: hidden;
     font-size: 14px;

@@ -61,17 +61,23 @@ export function SessionItem({
   if (isEditing) {
     return (
       <SidebarMenuSubItem>
-        <div className="pl-6 pr-2 py-0.5">
-          <input
-            type="text"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleFinishRename}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            className="w-full rounded-lg border border-border bg-background px-1.5 py-0.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
+        <SidebarMenuSubButton
+          asChild
+          isActive={isActive}
+          className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
+        >
+          <div>
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleFinishRename}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none caret-foreground"
+            />
+          </div>
+        </SidebarMenuSubButton>
       </SidebarMenuSubItem>
     );
   }

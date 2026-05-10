@@ -1,11 +1,11 @@
 import { type SessionInfo, SessionManager } from '@mariozechner/pi-coding-agent';
 import type {
   PiSessionInfo,
-  SessionIndexCommand,
-  SessionIndexResponse,
+  SessionWorkerCommand,
+  SessionWorkerResponse,
 } from '../../shared/ipcContract';
 
-function sendToMain(msg: SessionIndexResponse): void {
+function sendToMain(msg: SessionWorkerResponse): void {
   process.parentPort?.postMessage(msg);
 }
 
@@ -46,12 +46,36 @@ async function listProjectSessions(requestId: string, cwd: string): Promise<void
 }
 
 process.parentPort?.on('message', async (messageEvent) => {
-  const cmd = messageEvent.data as SessionIndexCommand;
+  const cmd = messageEvent.data as SessionWorkerCommand;
 
   switch (cmd.type) {
     case 'list_project_sessions': {
-      const uniqueCwds = [...new Set(cmd.cwds)];
-      await Promise.all(uniqueCwds.map((cwd) => listProjectSessions(cmd.requestId, cwd)));
+      await Promise.all(cmd.cwds.map((cwd) => listProjectSessions(cmd.requestId, cwd)));
+      break;
+    }
+    case 'rename_session': {
+      const trimmedName = cmd.name?.trim();
+      if (!trimmedName) {
+        sendToMain({
+          type: 'rename_session_result',
+          requestId: cmd.requestId,
+          success: false,
+          error: 'name must be a non-empty string',
+        });
+        break;
+      }
+      try {
+        const sm = SessionManager.open(cmd.sessionPath);
+        sm.appendSessionInfo(trimmedName);
+        sendToMain({ type: 'rename_session_result', requestId: cmd.requestId, success: true });
+      } catch (err) {
+        sendToMain({
+          type: 'rename_session_result',
+          requestId: cmd.requestId,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       break;
     }
   }

@@ -10,19 +10,21 @@
  */
 import { ipcMain, MessageChannelMain } from 'electron';
 import { getMainWindow } from '../windows/createMainWindow';
-import { createSessionIndexProcess } from '../processes/createPiAgentProcess';
+import { createSessionWorkerProcess } from '../processes/createPiAgentProcess';
 import { PiAgentProcessPool } from './piAgentProcessPool';
 import {
   PiChannel,
-  type SessionIndexCommand,
-  type SessionIndexResponse,
+  type ListProjectSessionsCommand,
+  type RenameSessionCommand,
+  type SessionWorkerResponse,
   type SessionListResult,
   type UtilityCommand,
   type UtilityResponse,
 } from '../../shared/ipcContract';
 
-let sessionIndexProcess: Electron.UtilityProcess | null = null;
-let sessionIndexRequestId = 0;
+let sessionWorkerProcess: Electron.UtilityProcess | null = null;
+let sessionWorkerRequestId = 0;
+const pendingRenameCallbacks = new Map<string, (result: { success: boolean; error?: string }) => void>();
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
   const win = getMainWindow();
@@ -35,15 +37,15 @@ const processPool = new PiAgentProcessPool((sessionId, code) => {
   sendToRenderer(PiChannel.ProcessExit, { sessionId, code });
 });
 
-function startSessionIndexProcess(): void {
-  if (sessionIndexProcess) {
+function startSessionWorker(): void {
+  if (sessionWorkerProcess) {
     return;
   }
 
-  const proc = createSessionIndexProcess();
-  sessionIndexProcess = proc;
+  const proc = createSessionWorkerProcess();
+  sessionWorkerProcess = proc;
 
-  proc.on('message', (msg: SessionIndexResponse) => {
+  proc.on('message', (msg: SessionWorkerResponse) => {
     switch (msg.type) {
       case 'project_sessions_chunk':
         sendToRenderer(PiChannel.ProjectSessionsChunk, {
@@ -54,29 +56,42 @@ function startSessionIndexProcess(): void {
           error: msg.error,
         });
         break;
+      case 'rename_session_result': {
+        const cb = pendingRenameCallbacks.get(msg.requestId);
+        if (cb) {
+          pendingRenameCallbacks.delete(msg.requestId);
+          cb({ success: msg.success, error: msg.error });
+        }
+        break;
+      }
     }
   });
 
   proc.on('exit', () => {
-    if (sessionIndexProcess === proc) {
-      sessionIndexProcess = null;
+    if (sessionWorkerProcess === proc) {
+      sessionWorkerProcess = null;
+      // Drain pending rename callbacks on crash
+      for (const [id, cb] of pendingRenameCallbacks) {
+        cb({ success: false, error: 'session worker process exited' });
+        pendingRenameCallbacks.delete(id);
+      }
     }
   });
 }
 
 function listProjectSessions(cwds: string[]): SessionListResult {
-  startSessionIndexProcess();
-  if (!sessionIndexProcess) {
-    return { success: false, error: 'session index process not available' };
+  startSessionWorker();
+  if (!sessionWorkerProcess) {
+    return { success: false, error: 'session worker process not available' };
   }
 
-  const requestId = `session-list-${++sessionIndexRequestId}`;
-  const cmd: SessionIndexCommand = {
+  const requestId = `session-list-${++sessionWorkerRequestId}`;
+  const cmd: ListProjectSessionsCommand = {
     type: 'list_project_sessions',
     requestId,
     cwds: [...new Set(cwds)],
   };
-  sessionIndexProcess.postMessage(cmd);
+  sessionWorkerProcess.postMessage(cmd);
   processPool.ensureWarmSessionProcesses(cwds);
   return { success: true, requestId };
 }
@@ -160,12 +175,12 @@ async function spawnSessionProcess(
 
 export function stopAllProcesses(): void {
   processPool.stopAllProcesses();
-  sessionIndexProcess?.kill();
-  sessionIndexProcess = null;
+  sessionWorkerProcess?.kill();
+  sessionWorkerProcess = null;
 }
 
 export function registerIpcHandlers(): void {
-  startSessionIndexProcess();
+  startSessionWorker();
   processPool.ensureWarmSessionProcesses();
 
   ipcMain.handle(PiChannel.CreateSession, async (_e, cwd: string) => {
@@ -202,4 +217,34 @@ export function registerIpcHandlers(): void {
     }
     return listProjectSessions(cwds);
   });
+
+  ipcMain.handle(
+    PiChannel.RenamePersistedSession,
+    async (_e, sessionPath: string, name: string) => {
+      if (!sessionPath || typeof sessionPath !== 'string') {
+        return { success: false, error: 'sessionPath must be a non-empty string' };
+      }
+      if (!name || typeof name !== 'string') {
+        return { success: false, error: 'name must be a non-empty string' };
+      }
+      startSessionWorker();
+      if (!sessionWorkerProcess) {
+        return { success: false, error: 'session worker process not available' };
+      }
+      const requestId = `rename-${++sessionWorkerRequestId}`;
+      const proc = sessionWorkerProcess;
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingRenameCallbacks.delete(requestId);
+          resolve({ success: false, error: 'rename timed out' });
+        }, 10000);
+        pendingRenameCallbacks.set(requestId, (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        });
+        const renameCmd: RenameSessionCommand = { type: 'rename_session', requestId, sessionPath, name };
+        proc.postMessage(renameCmd);
+      });
+    },
+  );
 }

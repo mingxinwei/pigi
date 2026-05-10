@@ -339,6 +339,13 @@ const piApi = {
   reorderProjects: (paths: string[]): Promise<ProjectStateResult> =>
     ipcRenderer.invoke(PiChannel.ReorderProjects, paths),
 
+  /** Rename a persisted (non-running) session by appending a session_info entry. */
+  renamePersistedSession: (
+    sessionPath: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(PiChannel.RenamePersistedSession, sessionPath, name),
+
   /** List persisted pi sessions for project directories. */
   listProjectSessions: (cwds: string[]): Promise<SessionListResult> =>
     ipcRenderer.invoke(PiChannel.ListProjectSessions, cwds),

@@ -219,17 +219,30 @@ export enum PiChannel {
   RemoveProject = 'pi:remove_project',
   /** renderer → main: reorder recent projects */
   ReorderProjects = 'pi:reorder_projects',
+  /** renderer → main: rename a persisted (non-running) session */
+  RenamePersistedSession = 'pi:rename_persisted_session',
   /** renderer → main: open a URL in the system browser */
   OpenExternal = 'pi:open_external',
 }
 
-export interface SessionIndexCommand {
+export interface ListProjectSessionsCommand {
   type: 'list_project_sessions';
   requestId: string;
   cwds: string[];
 }
 
-export type SessionIndexResponse = { type: 'project_sessions_chunk' } & ProjectSessionsChunk;
+export interface RenameSessionCommand {
+  type: 'rename_session';
+  requestId: string;
+  sessionPath: string;
+  name: string;
+}
+
+export type SessionWorkerCommand = ListProjectSessionsCommand | RenameSessionCommand;
+
+export type SessionWorkerResponse =
+  | ({ type: 'project_sessions_chunk' } & ProjectSessionsChunk)
+  | { type: 'rename_session_result'; requestId: string; success: boolean; error?: string };
 
 // =============================================================================
 // Internal: Main → Utility (parentPort, lifecycle only)

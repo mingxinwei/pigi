@@ -155,6 +155,10 @@ export class TranscriptController {
   };
 
   private listeners = new Set<Listener>();
+  private renderScheduled = false;
+  private renderTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastRenderAt = 0;
+  private static readonly MIN_RENDER_INTERVAL_MS = 16;
 
   get state(): TranscriptState {
     return this._state;
@@ -173,9 +177,22 @@ export class TranscriptController {
     }
   }
 
+  private scheduleRender(): void {
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    const elapsed = performance.now() - this.lastRenderAt;
+    const delay = Math.max(0, TranscriptController.MIN_RENDER_INTERVAL_MS - elapsed);
+    this.renderTimer = setTimeout(() => {
+      this.renderTimer = null;
+      this.renderScheduled = false;
+      this.lastRenderAt = performance.now();
+      this.notify();
+    }, delay);
+  }
+
   private setState(partial: Partial<TranscriptState>): void {
     this._state = { ...this._state, ...partial };
-    this.notify();
+    this.scheduleRender();
   }
 
   setStatus(status: AgentStatus): void {
@@ -342,6 +359,11 @@ export class TranscriptController {
 
   reset(): void {
     this._optimisticUserMessages.clear();
+    if (this.renderTimer) {
+      clearTimeout(this.renderTimer);
+      this.renderTimer = null;
+      this.renderScheduled = false;
+    }
     this._state = {
       nodes: [],
       status: 'idle',

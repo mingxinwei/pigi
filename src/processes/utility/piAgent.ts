@@ -69,7 +69,7 @@ interface Port {
 // =============================================================================
 
 class StreamBatcher {
-  private static readonly MIN_INTERVAL_MS = 16;
+  private static readonly MIN_INTERVAL_MS = 8;
   private batch: StreamBatch = { type: 'stream_batch' };
   private dirty = false;
   private scheduled = false;

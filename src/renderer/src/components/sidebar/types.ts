@@ -1,0 +1,18 @@
+import type { PiSessionInfo, ProjectDirectory } from '../../../../shared/ipcContract';
+import type { SessionEntry } from '../../state/appStore';
+
+export interface SidebarProps {
+  sessions: Map<string, SessionEntry>;
+  selectedSessionId: string | null;
+  recentProjects: ProjectDirectory[];
+  projectSessions: Record<string, PiSessionInfo[]>;
+  onNewSession: () => void;
+  onNewSessionForProject: (path: string) => void;
+  onSwitchSession: (sessionId: string) => void;
+  onResumeSession: (session: PiSessionInfo) => void;
+  onOpenProject: () => void;
+  onSelectProject: (path: string) => void;
+  onRemoveProject: (path: string) => void;
+  onReorderProjects: (paths: string[]) => void;
+  onRenameSession: (sessionId: string, name: string) => void;
+}

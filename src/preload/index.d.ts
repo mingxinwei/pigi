@@ -23,6 +23,8 @@ interface PiApi {
   getGitBranch: (cwd: string) => Promise<GitBranchResult>;
   setActiveProject: (path: string) => Promise<ProjectStateResult>;
   openProjectDirectory: () => Promise<ProjectStateResult>;
+  removeProject: (path: string) => Promise<ProjectStateResult>;
+  reorderProjects: (paths: string[]) => Promise<ProjectStateResult>;
   listProjectSessions: (cwds: string[]) => Promise<SessionListResult>;
   onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void) => () => void;
 

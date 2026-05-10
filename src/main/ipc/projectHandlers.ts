@@ -1,7 +1,13 @@
 import { dialog, ipcMain } from 'electron';
 import { PiChannel, type ProjectStateResult } from '../../shared/ipcContract';
 import { getMainWindow } from '../windows/createMainWindow';
-import { addRecentProject, getProjectState, setActiveProject } from '../projects/projectStore';
+import {
+  addRecentProject,
+  getProjectState,
+  removeRecentProject,
+  reorderRecentProjects,
+  setActiveProject,
+} from '../projects/projectStore';
 import { getGitBranch } from '../projects/gitStatus';
 
 function projectStateResult(): ProjectStateResult {
@@ -42,6 +48,22 @@ export function registerProjectHandlers(): void {
     }
 
     addRecentProject(result.filePaths[0]);
+    return projectStateResult();
+  });
+
+  ipcMain.handle(PiChannel.RemoveProject, async (_event, path: string) => {
+    if (!path || typeof path !== 'string' || path.trim().length === 0) {
+      return { success: false, error: 'path must be a non-empty string' };
+    }
+    removeRecentProject(path);
+    return projectStateResult();
+  });
+
+  ipcMain.handle(PiChannel.ReorderProjects, async (_event, paths: string[]) => {
+    if (!Array.isArray(paths)) {
+      return { success: false, error: 'paths must be an array' };
+    }
+    reorderRecentProjects(paths);
     return projectStateResult();
   });
 }

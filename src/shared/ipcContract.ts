@@ -121,6 +121,7 @@ export type PiCommand =
   | { type: 'cycle_thinking_level' }
   | { type: 'set_model'; provider: string; modelId: string }
   | { type: 'set_thinking_level'; level: ThinkingLevel }
+  | { type: 'rename_session'; name: string }
   | { type: 'get_auth_providers' }
   | { type: 'login_oauth'; providerId: string }
   | { type: 'login_api_key'; providerId: string; apiKey: string }
@@ -214,6 +215,10 @@ export enum PiChannel {
   ProjectSessionsChunk = 'pi:project_sessions_chunk',
   /** renderer → main: get current git branch for a cwd */
   GetGitBranch = 'pi:get_git_branch',
+  /** renderer → main: remove a project from recent projects list */
+  RemoveProject = 'pi:remove_project',
+  /** renderer → main: reorder recent projects */
+  ReorderProjects = 'pi:reorder_projects',
   /** renderer → main: open a URL in the system browser */
   OpenExternal = 'pi:open_external',
 }

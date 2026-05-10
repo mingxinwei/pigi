@@ -23,7 +23,9 @@ export function createMainWindow(): BrowserWindow {
     autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 15 },
-    backgroundColor: '#ffffff',
+    ...(process.platform === 'darwin'
+      ? { transparent: true, vibrancy: 'sidebar', visualEffectState: 'active' }
+      : { backgroundColor: '#ffffff' }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),

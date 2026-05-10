@@ -70,6 +70,14 @@ export async function openProjectDirectory(): Promise<ProjectStateResult> {
   return window.piApi.openProjectDirectory();
 }
 
+export async function removeProject(path: string): Promise<ProjectStateResult> {
+  return window.piApi.removeProject(path);
+}
+
+export async function reorderProjects(paths: string[]): Promise<ProjectStateResult> {
+  return window.piApi.reorderProjects(paths);
+}
+
 export async function listProjectSessions(cwds: string[]): Promise<SessionListResult> {
   return window.piApi.listProjectSessions(cwds);
 }
@@ -166,6 +174,13 @@ export async function setThinkingLevel(sessionId: string, level: ThinkingLevel):
   const result = await send<CommandResult>(sessionId, { type: 'set_thinking_level', level });
   if (!result.success) {
     throw new Error(result.error || 'set_thinking_level failed');
+  }
+}
+
+export async function renameSession(sessionId: string, name: string): Promise<void> {
+  const result = await send<CommandResult>(sessionId, { type: 'rename_session', name });
+  if (!result.success) {
+    throw new Error(result.error || 'rename_session failed');
   }
 }
 

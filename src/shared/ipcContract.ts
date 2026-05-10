@@ -171,6 +171,7 @@ export interface StreamBatch {
   text?: Record<string, string>;
   thinking?: Record<string, string>;
   toolOutput?: Record<string, string>;
+  toolArgs?: Record<string, { name: string; args: unknown }>;
 }
 
 // =============================================================================

@@ -69,20 +69,22 @@ interface Port {
 // =============================================================================
 
 class StreamBatcher {
+  private static readonly MIN_INTERVAL_MS = 16;
   private batch: StreamBatch = { type: 'stream_batch' };
   private dirty = false;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private scheduled = false;
+  private lastFlushAt = 0;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private port: Port | null = null;
 
   start(port: Port): void {
     this.port = port;
-    this.timer = setInterval(() => this.flush(), 16);
   }
 
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
     this.flush();
   }
@@ -90,23 +92,45 @@ class StreamBatcher {
   appendText(id: string, delta: string): void {
     if (!this.batch.text) this.batch.text = {};
     this.batch.text[id] = (this.batch.text[id] || '') + delta;
-    this.dirty = true;
+    this.markDirty();
   }
 
   appendThinking(id: string, delta: string): void {
     if (!this.batch.thinking) this.batch.thinking = {};
     this.batch.thinking[id] = (this.batch.thinking[id] || '') + delta;
-    this.dirty = true;
+    this.markDirty();
   }
 
   setToolOutput(id: string, output: string): void {
     if (!this.batch.toolOutput) this.batch.toolOutput = {};
     this.batch.toolOutput[id] = output;
+    this.markDirty();
+  }
+
+  setToolArgs(toolCallId: string, name: string, args: unknown): void {
+    if (!this.batch.toolArgs) this.batch.toolArgs = {};
+    this.batch.toolArgs[toolCallId] = { name, args };
+    this.markDirty();
+  }
+
+  private markDirty(): void {
     this.dirty = true;
+    if (this.scheduled) return;
+    this.scheduled = true;
+
+    const elapsed = performance.now() - this.lastFlushAt;
+    const delay = Math.max(1, StreamBatcher.MIN_INTERVAL_MS - elapsed);
+    this.flushTimer = setTimeout(() => this.flush(), delay);
   }
 
   private flush(): void {
+    this.scheduled = false;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
     if (!this.dirty || !this.port) return;
+    this.lastFlushAt = performance.now();
     this.port.postMessage(this.batch);
     this.batch = { type: 'stream_batch' };
     this.dirty = false;
@@ -251,16 +275,42 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       }
 
       case 'message_update': {
-        const ame = (event as { assistantMessageEvent?: { type: string; delta?: string } })
-          .assistantMessageEvent;
-        if (ame && currentAssistantId) {
-          if (ame.type === 'text_delta' && ame.delta) {
-            batch.appendText(currentAssistantId, ame.delta);
-            return;
+        const ame = (
+          event as {
+            assistantMessageEvent?: { type: string; delta?: string; contentIndex?: number };
           }
-          if (ame.type === 'thinking_delta' && ame.delta) {
-            batch.appendThinking(currentAssistantId, ame.delta);
-            return;
+        ).assistantMessageEvent;
+        if (ame) {
+          // toolcall_delta/end don't need currentAssistantId — batch by toolCallId directly
+          if (ame.type === 'toolcall_delta' && ame.contentIndex != null) {
+            const msg = (
+              event as {
+                message?: {
+                  content?: Array<{
+                    type?: string;
+                    id?: string;
+                    name?: string;
+                    arguments?: unknown;
+                  }>;
+                };
+              }
+            ).message;
+            const content = msg?.content?.[ame.contentIndex];
+            if (content?.type === 'toolCall' && content.id && content.name) {
+              batch.setToolArgs(content.id, content.name, content.arguments);
+              return;
+            }
+          }
+          // text/thinking deltas need currentAssistantId
+          if (currentAssistantId) {
+            if (ame.type === 'text_delta' && ame.delta) {
+              batch.appendText(currentAssistantId, ame.delta);
+              return;
+            }
+            if (ame.type === 'thinking_delta' && ame.delta) {
+              batch.appendThinking(currentAssistantId, ame.delta);
+              return;
+            }
           }
         }
         push({ type: 'event', event });

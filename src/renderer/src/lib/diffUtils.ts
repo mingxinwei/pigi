@@ -1,4 +1,4 @@
-import { diffLines } from 'diff';
+import { diffLines, diffWords } from 'diff';
 
 export interface EditEntry {
   oldText: string;
@@ -10,6 +10,13 @@ export interface DiffLine {
   content: string;
   lineNumber: number | null; // null for removed lines (they don't exist in new file)
   oldLineNumber: number | null; // null for added lines
+  /** Word-level diff segments for intra-line highlighting */
+  segments?: IntraLineSegment[];
+}
+
+export interface IntraLineSegment {
+  text: string;
+  highlight: boolean;
 }
 
 const CONTEXT_LINES = 3;
@@ -29,7 +36,8 @@ function computeSingleDiffLines(oldText: string, newText: string): DiffLine[] {
   let oldLineNum = 1;
   let newLineNum = 1;
 
-  for (const change of changes) {
+  for (let ci = 0; ci < changes.length; ci++) {
+    const change = changes[ci];
     const lines = change.value.split('\n');
     // diffLines includes trailing newline in the value, remove empty last element
     if (lines[lines.length - 1] === '') {
@@ -43,7 +51,12 @@ function computeSingleDiffLines(oldText: string, newText: string): DiffLine[] {
       }
     } else if (change.removed) {
       for (const line of lines) {
-        result.push({ type: 'remove', content: line, lineNumber: null, oldLineNumber: oldLineNum });
+        result.push({
+          type: 'remove',
+          content: line,
+          lineNumber: null,
+          oldLineNumber: oldLineNum,
+        });
         oldLineNum++;
       }
     } else {
@@ -60,7 +73,92 @@ function computeSingleDiffLines(oldText: string, newText: string): DiffLine[] {
     }
   }
 
+  // Post-process: add intra-line diff for 1:1 remove/add pairs
+  addIntraLineDiffs(result);
+
   return result;
+}
+
+/**
+ * For consecutive remove/add line pairs (1:1), compute word-level diff segments.
+ */
+function addIntraLineDiffs(lines: DiffLine[]): void {
+  let i = 0;
+  while (i < lines.length) {
+    // Find consecutive removed lines
+    const removeStart = i;
+    while (i < lines.length && lines[i].type === 'remove') i++;
+    const removeEnd = i;
+
+    // Find consecutive added lines
+    const addStart = i;
+    while (i < lines.length && lines[i].type === 'add') i++;
+    const addEnd = i;
+
+    const removeCount = removeEnd - removeStart;
+    const addCount = addEnd - addStart;
+
+    // Only do intra-line for 1:1 pairs (like pi-mono)
+    if (removeCount === 1 && addCount === 1) {
+      const removedLine = lines[removeStart];
+      const addedLine = lines[addStart];
+      const { removedSegments, addedSegments } = computeIntraLineDiff(
+        removedLine.content,
+        addedLine.content,
+      );
+      removedLine.segments = removedSegments;
+      addedLine.segments = addedSegments;
+    }
+
+    // Skip context lines
+    if (i === removeStart) i++;
+  }
+}
+
+/**
+ * Compute word-level diff between two lines, returning segments with highlight flags.
+ * Leading whitespace is never highlighted (matches pi-mono behavior).
+ */
+function computeIntraLineDiff(
+  oldContent: string,
+  newContent: string,
+): { removedSegments: IntraLineSegment[]; addedSegments: IntraLineSegment[] } {
+  const parts = diffWords(oldContent, newContent);
+  const removedSegments: IntraLineSegment[] = [];
+  const addedSegments: IntraLineSegment[] = [];
+  let isFirstRemoved = true;
+  let isFirstAdded = true;
+
+  for (const part of parts) {
+    if (part.removed) {
+      let value = part.value;
+      if (isFirstRemoved) {
+        const leadingWs = value.match(/^(\s*)/)?.[1] ?? '';
+        if (leadingWs) {
+          removedSegments.push({ text: leadingWs, highlight: false });
+          value = value.slice(leadingWs.length);
+        }
+        isFirstRemoved = false;
+      }
+      if (value) removedSegments.push({ text: value, highlight: true });
+    } else if (part.added) {
+      let value = part.value;
+      if (isFirstAdded) {
+        const leadingWs = value.match(/^(\s*)/)?.[1] ?? '';
+        if (leadingWs) {
+          addedSegments.push({ text: leadingWs, highlight: false });
+          value = value.slice(leadingWs.length);
+        }
+        isFirstAdded = false;
+      }
+      if (value) addedSegments.push({ text: value, highlight: true });
+    } else {
+      removedSegments.push({ text: part.value, highlight: false });
+      addedSegments.push({ text: part.value, highlight: false });
+    }
+  }
+
+  return { removedSegments, addedSegments };
 }
 
 /**

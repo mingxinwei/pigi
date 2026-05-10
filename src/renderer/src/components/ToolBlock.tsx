@@ -7,6 +7,44 @@ import DiffView from './DiffView';
 import type { EditEntry } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
 
+/** Max lines shown in collapsed write preview */
+const WRITE_PREVIEW_MAX_LINES = 10;
+
+function WritePreview({
+  content,
+  language,
+  isStreaming,
+}: {
+  content: string;
+  language: string;
+  isStreaming: boolean;
+}): React.JSX.Element {
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+  const [expanded, setExpanded] = useState(false);
+  const displayLines = expanded ? lines : lines.slice(0, WRITE_PREVIEW_MAX_LINES);
+  const hiddenCount = totalLines - displayLines.length;
+  const displayContent = displayLines.join('\n');
+
+  return (
+    <div className="overflow-hidden rounded border border-border/40 font-mono text-[13px] leading-5">
+      <pre className="overflow-hidden whitespace-pre-wrap break-words px-3 py-2 text-muted-foreground [overflow-wrap:anywhere]">
+        <SyntaxHighlightedCode code={displayContent} language={language} />
+        {isStreaming && <span className="animate-pulse text-muted-foreground/50">▋</span>}
+      </pre>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-border/30 bg-muted/30 px-3 py-0.5 text-left text-xs text-muted-foreground hover:text-foreground"
+        >
+          {hiddenCount} more lines ({totalLines} total)
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ToolBlockProps {
   node: ToolNode;
 }
@@ -123,12 +161,15 @@ function getToolCommandParts(node: ToolNode): ToolCommandParts | null {
     case 'bash': {
       return { prefix: '$', body: String(args.command ?? '') };
     }
-    case 'read':
-    case 'write': {
+    case 'read': {
       const path = String(args.path ?? '');
       return path
         ? { prefix: node.name, body: path }
         : { prefix: node.name, body: formatToolArgs(args) };
+    }
+    case 'write': {
+      const path = String(args.path ?? '');
+      return path ? { prefix: node.name, body: path } : null;
     }
     case 'edit': {
       const path = String(args.path ?? '');
@@ -212,7 +253,6 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
   const writeEntries = getWriteEntries(node);
-  const diffEntries = editEntries ?? writeEntries;
 
   // For read tool: filter hint lines and detect images
   const cleanedOutput = useMemo(() => cleanReadOutput(node), [node]);
@@ -231,7 +271,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
     if (commandRef.current) {
       setIsCommandTruncated(commandRef.current.scrollHeight > commandRef.current.clientHeight);
     }
-  }, [node]);
+  }, [node, expanded]);
 
   return (
     <>
@@ -293,9 +333,18 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element {
           }}
         >
           {node.status !== 'running' &&
-            diffEntries &&
-            diffEntries.length > 0 &&
-            node.status !== 'error' && <DiffView edits={diffEntries} />}
+            editEntries &&
+            editEntries.length > 0 &&
+            node.status !== 'error' && <DiffView edits={editEntries} />}
+
+          {/* Write preview shown during running (streaming) unlike edit which waits for completion */}
+          {writeEntries && writeEntries.length > 0 && node.status !== 'error' && (
+            <WritePreview
+              content={writeEntries[0].newText}
+              language={outputLanguage}
+              isStreaming={node.status === 'running'}
+            />
+          )}
 
           {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
             hasOutput &&

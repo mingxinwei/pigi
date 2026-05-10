@@ -625,6 +625,31 @@ export class TranscriptController {
       return;
     }
 
+    // Stream partial tool args for write/edit (shows content as it arrives)
+    if (ame.type === 'toolcall_delta') {
+      const contentIndex = ame.contentIndex;
+      if (contentIndex == null) return;
+      const content = event.message.content?.[contentIndex];
+      if (
+        content?.type === 'toolCall' &&
+        content.id &&
+        (content.name === 'write' || content.name === 'edit')
+      ) {
+        const existing = this._state.nodes.find(
+          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === content.id,
+        ) as ToolNode | undefined;
+        if (existing) {
+          const idx = this._state.nodes.indexOf(existing);
+          this._state.nodes[idx] = {
+            ...existing,
+            args: content.arguments,
+          };
+          this.setState({ nodes: [...this._state.nodes] });
+        }
+      }
+      return;
+    }
+
     // Update tool args at toolcall_end with the finalized arguments
     if (ame.type === 'toolcall_end' && ame.toolCall) {
       const tc = ame.toolCall as { id: string; name: string; arguments: unknown };

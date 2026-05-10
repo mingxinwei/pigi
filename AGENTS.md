@@ -19,7 +19,7 @@
 - NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
 - Always ask before removing functionality or code that appears to be intentional
 - Do not preserve backward compatibility unless the user explicitly asks for it
-- use context7 when you need the doc of third-party libraries, like react, electron, etc.
+- Always look up official documentation (via context7) before using any third-party library API and knowledge. Do not rely on training data for API signatures, options, or behavior.
 
 ## Naming Conventions
 

@@ -75,8 +75,7 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
                 </div>
               );
             }
-            const lineNum =
-              item.type === 'remove' ? item.oldLineNumber : item.lineNumber;
+            const lineNum = item.type === 'remove' ? item.oldLineNumber : item.lineNumber;
             return (
               <div key={lineIdx} className={cn('flex', LINE_STYLES[item.type])}>
                 <span className="w-4 shrink-0 select-none text-center opacity-50">

@@ -402,6 +402,14 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       runtime.session.setThinkingLevel(cmd.level);
       return { success: true };
 
+    case 'rename_session': {
+      if (!cmd.name || cmd.name.trim().length === 0) {
+        return { success: false, error: 'name must be a non-empty string' };
+      }
+      runtime.session.sessionManager.appendSessionInfo(cmd.name.trim());
+      return { success: true };
+    }
+
     case 'debug': {
       const session = runtime.session;
       const models = runtime.services.modelRegistry;

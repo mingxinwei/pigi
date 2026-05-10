@@ -63,6 +63,36 @@ export function addRecentProject(path: string): ProjectDirectory {
   return project;
 }
 
+export function removeRecentProject(path: string): void {
+  const recentProjects = getRecentProjects().filter((item) => item.path !== path);
+  store.set(RECENT_PROJECTS_KEY, recentProjects);
+
+  const activeProjectPath = getActiveProjectPath();
+  if (activeProjectPath === path) {
+    const nextActive = recentProjects.length > 0 ? recentProjects[0].path : null;
+    store.set(ACTIVE_PROJECT_PATH_KEY, nextActive);
+  }
+}
+
+export function reorderRecentProjects(paths: string[]): void {
+  const existing = getRecentProjects();
+  const byPath = new Map(existing.map((p) => [p.path, p]));
+  const reordered: ProjectDirectory[] = [];
+  for (const path of paths) {
+    const project = byPath.get(path);
+    if (project) {
+      reordered.push(project);
+    }
+  }
+  // Append any projects not in the new order (shouldn't happen, but safety)
+  for (const project of existing) {
+    if (!reordered.some((p) => p.path === project.path)) {
+      reordered.push(project);
+    }
+  }
+  store.set(RECENT_PROJECTS_KEY, reordered);
+}
+
 export function getProjectState(): {
   recentProjects: ProjectDirectory[];
   activeProject: ProjectDirectory | null;

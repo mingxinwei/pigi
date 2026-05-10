@@ -331,6 +331,14 @@ const piApi = {
   openProjectDirectory: (): Promise<ProjectStateResult> =>
     ipcRenderer.invoke(PiChannel.OpenProjectDirectory),
 
+  /** Remove a project from recent projects. */
+  removeProject: (path: string): Promise<ProjectStateResult> =>
+    ipcRenderer.invoke(PiChannel.RemoveProject, path),
+
+  /** Reorder recent projects. */
+  reorderProjects: (paths: string[]): Promise<ProjectStateResult> =>
+    ipcRenderer.invoke(PiChannel.ReorderProjects, paths),
+
   /** List persisted pi sessions for project directories. */
   listProjectSessions: (cwds: string[]): Promise<SessionListResult> =>
     ipcRenderer.invoke(PiChannel.ListProjectSessions, cwds),

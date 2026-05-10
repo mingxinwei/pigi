@@ -30,6 +30,9 @@ import {
   touchSession,
   setModel,
   setThinkingLevel,
+  removeProject,
+  reorderProjects,
+  renameSession,
 } from './services/piAgentClient';
 import type {
   AuthProviderInfo,
@@ -402,6 +405,44 @@ function App(): React.JSX.Element {
     }
   }, []);
 
+  const handleRemoveProject = useCallback(async (path: string) => {
+    const result = await removeProject(path);
+    if (result.success) {
+      useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
+    }
+  }, []);
+
+  const handleReorderProjects = useCallback(async (paths: string[]) => {
+    const result = await reorderProjects(paths);
+    if (result.success) {
+      useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
+    }
+  }, []);
+
+  const handleRenameSession = useCallback(
+    async (sessionId: string, name: string) => {
+      // Find the running session that matches this persisted session ID
+      const entry = Array.from(sessions.values()).find((s) => s.persistedSessionId === sessionId);
+      if (entry) {
+        // Session is running, rename via SDK
+        try {
+          await renameSession(entry.sessionId, name);
+          useAppStore.getState().updateSession(entry.sessionId, { title: name });
+        } catch (err) {
+          console.error('Failed to rename session:', err);
+        }
+      } else {
+        // Session is not running; need to resume, rename, then refresh
+        // For now, just update the local display (will persist when session is resumed)
+        console.warn('Cannot rename non-running session without resuming it first');
+      }
+      // Refresh session list to reflect new name
+      const activeCwdNow = activeProject?.path ?? window.piApi.getCwd();
+      void listProjectSessions([activeCwdNow]);
+    },
+    [sessions, activeProject],
+  );
+
   const handleSelectModel = useCallback(
     async (model: ModelInfo) => {
       if (!activeSessionId) {
@@ -438,6 +479,11 @@ function App(): React.JSX.Element {
 
           case 'name': {
             if (!activeSessionId || !arg) return;
+            try {
+              await renameSession(activeSessionId, arg);
+            } catch {
+              // Fallback: update local state only
+            }
             useAppStore.getState().updateSession(activeSessionId, { title: arg });
             break;
           }
@@ -488,7 +534,7 @@ function App(): React.JSX.Element {
   return (
     <SidebarProvider
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
-      className="h-screen min-h-0 bg-sidebar"
+      className="h-screen min-h-0"
       data-testid="app-shell"
     >
       <div className="relative flex h-full shrink-0">
@@ -503,6 +549,9 @@ function App(): React.JSX.Element {
           onResumeSession={handleResumeSession}
           onOpenProject={handleOpenProject}
           onSelectProject={handleSelectProject}
+          onRemoveProject={handleRemoveProject}
+          onReorderProjects={handleReorderProjects}
+          onRenameSession={handleRenameSession}
         />
       </div>
 

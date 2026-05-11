@@ -18,7 +18,5 @@ jobs:
       - run: npm ci
 
       - run: npm run build:mac
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.dmg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

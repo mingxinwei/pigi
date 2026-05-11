@@ -537,7 +537,7 @@ function App(): React.JSX.Element {
         console.error(`[slash command /${command}] failed:`, err);
       }
     },
-    [activeSessionId, handleNewSession, refreshSessionOptions, refreshSessionState],
+    [activeSessionId, handleNewSession, refreshSessionOptions],
   );
 
   return (

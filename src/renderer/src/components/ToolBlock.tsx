@@ -233,28 +233,16 @@ function getReadImagePath(node: ToolNode): string | null {
 }
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element | null {
-  // Read tool returns fast — skip rendering the running state to avoid flicker
-  if (node.name === 'read' && node.status === 'running') return null;
   const [expanded, setExpanded] = useState(false);
   const [commandExpanded, setCommandExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const commandRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [isCommandTruncated, setIsCommandTruncated] = useState(false);
-  const { className: statusClassName } = STATUS_CONFIG[node.status];
-  const command = getToolCommandParts(node);
-  const editEntries = getEditEntries(node);
-  const writeEntries = getWriteEntries(node);
 
   // For read tool: filter hint lines and detect images
   const cleanedOutput = useMemo(() => cleanReadOutput(node), [node]);
   const imagePath = useMemo(() => getReadImagePath(node), [node]);
-
-  const hasOutput = cleanedOutput.length > 0;
-  const outputLanguage = getToolOutputLanguage(node);
-  const durationLabel = formatDuration(node.durationMs);
-  const args = getToolArgs(node);
-  const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   useEffect(() => {
     if (contentRef.current) {
@@ -264,6 +252,19 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
       setIsCommandTruncated(commandRef.current.scrollHeight > commandRef.current.clientHeight);
     }
   }, [node, expanded]);
+
+  // Read tool returns fast — skip rendering the running state to avoid flicker
+  if (node.name === 'read' && node.status === 'running') return null;
+
+  const { className: statusClassName } = STATUS_CONFIG[node.status];
+  const command = getToolCommandParts(node);
+  const editEntries = getEditEntries(node);
+  const writeEntries = getWriteEntries(node);
+  const hasOutput = cleanedOutput.length > 0;
+  const outputLanguage = getToolOutputLanguage(node);
+  const durationLabel = formatDuration(node.durationMs);
+  const args = getToolArgs(node);
+  const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   return (
     <>

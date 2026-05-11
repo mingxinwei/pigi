@@ -5,7 +5,7 @@
   "description": "A high performance pi GUI",
   "main": "./out/main/index.js",
   "author": "whycatdothis",
-  "homepage": "",
+  "homepage": "https://github.com/whycatdothis/pigi",
   "scripts": {
     "check": "npm run typecheck && npm run lint:fix && npm run format",
     "format": "prettier --write .",

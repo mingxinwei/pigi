@@ -21,6 +21,7 @@ import {
   SessionManager,
   SettingsManager,
   type WriteToolInput,
+  type EditToolInput,
 } from '@mariozechner/pi-coding-agent';
 import type {
   ModelInfo,
@@ -282,14 +283,13 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
           if (content.type === 'toolCall' && content.id && content.name) {
             if (content.name === 'write') {
               // Write: stream full args (shows content preview during streaming)
-              const args = content.arguments as Partial<WriteToolInput> | undefined;
-              batch.setToolArgs(content.id, { name: 'write', args: args ?? {} });
+              const args = content.arguments as Partial<WriteToolInput>;
+              batch.setToolArgs(content.id, { name: 'write', args });
             } else if (content.name === 'edit') {
               // Edit: stream only path (edits array is large and not shown during streaming)
-              const args = content.arguments as Record<string, unknown> | undefined;
-              const path = args?.path;
-              if (typeof path === 'string') {
-                batch.setToolArgs(content.id, { name: 'edit', args: { path } });
+              const args = content.arguments as Partial<EditToolInput>;
+              if (args.path) {
+                batch.setToolArgs(content.id, { name: 'edit', args: { path: args.path } });
               }
             }
             return;

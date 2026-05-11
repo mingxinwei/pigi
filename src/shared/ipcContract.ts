@@ -1,3 +1,5 @@
+import type { EditToolInput, WriteToolInput } from '@mariozechner/pi-coding-agent';
+
 /**
  * IPC Contract - single source of truth for all inter-process communication.
  *
@@ -165,13 +167,17 @@ export type PiPush =
 // Stream batches: Utility → Renderer (via data MessagePort, high-frequency)
 // =============================================================================
 
+export type StreamBatchToolArgs =
+  | { name: 'write'; args: Partial<WriteToolInput> }
+  | { name: 'edit'; args: Pick<EditToolInput, 'path'> };
+
 /** Batched streaming data, flushed every 16ms */
 export interface StreamBatch {
   type: 'stream_batch';
   text?: string;
   thinking?: string;
   toolOutput?: Record<string, string>;
-  toolArgs?: Record<string, { name: string; args: unknown }>;
+  toolArgs?: Record<string, StreamBatchToolArgs>;
 }
 
 // =============================================================================

@@ -1,34 +1,37 @@
 # pigi
 
-An Electron application with React and TypeScript
+*A sleek, high-performance GUI for pi.*
 
-## Recommended IDE Setup
+pigi is a desktop GUI for [pi](https://github.com/earendil-works/pi), the autonomous coding agent.
 
-- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+- Clean, elegant UI that stays out of your way.
+- Faithful to the original pi experience.
+- High-performance rendering, no compromises.
 
-## Project Setup
+![alt text](./resources/hello-pigi.png)
+---
 
-### Install
+## Installation
 
-```bash
-$ npm install
-```
+Download the latest build from [Releases](https://github.com/whycatdothis/pigi/releases).
 
-### Development
+---
 
-```bash
-$ npm run dev
-```
-
-### Build
+## Quick Start
 
 ```bash
-# For windows
-$ npm run build:win
-
-# For macOS
-$ npm run build:mac
-
-# For Linux
-$ npm run build:linux
+npm install
+npm run dev
 ```
+
+Build for distribution:
+
+```bash
+npm run build:mac
+```
+
+---
+
+## License
+
+[MIT](./LICENSE)

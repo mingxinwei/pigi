@@ -12,7 +12,7 @@ Kill existing processes and start fresh:
 ```bash
 pkill -f "PersonalCode/pigi/node_modules.*Electron"
 pkill -f "electron-vite dev"
-sleep 2 && nohup pnpm dev > /tmp/pigi-dev.log 2>&1 &
+sleep 2 && nohup npm run dev > /tmp/pigi-dev.log 2>&1 &
 ```
 
 Wait ~12s for the app to load, then verify:

@@ -392,7 +392,7 @@ Put the pi SDK behind a small Agent Host so Electron main stays thin.
 - Add input validation for IPC handlers:
   - non-empty prompt string
   - valid session path from known sessions
-- Fix package scripts to use `pnpm run`, not `npm run`.
+- Fix package scripts to use `npm run`.
 - Add shadcn/ui setup compatible with Tailwind CSS v4.
 - Add Zustand for app-shell/UI state.
 - Remove stale RPC labels from UI/docs.
@@ -405,7 +405,7 @@ Put the pi SDK behind a small Agent Host so Electron main stays thin.
 - App starts and clearly shows ready/error state.
 - Prompt works after runtime ready.
 - Abort works without leaving UI stuck.
-- `pnpm run build` passes.
+- `npm run build` passes.
 
 ---
 
@@ -789,7 +789,7 @@ Keep tests focused on stability-critical code.
 
 ## Immediate Next Steps
 
-1. Fix `package.json` scripts to use `pnpm run` internally.
+1. Fix `package.json` scripts to use `npm run` internally.
 2. Set up shadcn/ui for Tailwind CSS v4 and add initial primitives: Button, Textarea, Dialog, Tooltip, Badge, Collapsible.
 3. Add Zustand and create `src/renderer/src/state/app-store.ts` for app-shell/UI state.
 4. Create Agent Host skeleton and move pi SDK runtime behind it.

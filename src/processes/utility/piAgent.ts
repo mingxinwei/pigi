@@ -240,16 +240,16 @@ function setSessionBusy(isBusy: boolean): void {
   // Push status_sync to renderer so the UI can reconcile in case an
   // agent_end event was missed or arrived out of order.
   if (dataPort) {
-    const msg: PiPush = { type: 'status_sync', isStreaming: isBusy };
-    dataPort.postMessage(msg);
+    const statusMessage: PiPush = { type: 'status_sync', isStreaming: isBusy };
+    dataPort.postMessage(statusMessage);
   }
 }
 
 function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {
   const session = rt.session;
 
-  function push(msg: PiPush): void {
-    port.postMessage(msg);
+  function push(message: PiPush): void {
+    port.postMessage(message);
   }
 
   return session.subscribe((event: AgentSessionEvent) => {
@@ -321,39 +321,39 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
 // Command handling (via control MessagePort from renderer)
 // =============================================================================
 
-async function handleCommand(cmd: PiCommand): Promise<unknown> {
+async function handleCommand(command: PiCommand): Promise<unknown> {
   if (!runtime) return { success: false, error: 'session not initialized' };
 
-  switch (cmd.type) {
+  switch (command.type) {
     case 'prompt': {
-      if (!cmd.message || cmd.message.trim().length === 0) {
+      if (!command.message || command.message.trim().length === 0) {
         return { success: false, error: 'prompt must be a non-empty string' };
       }
-      runtime.session.prompt(cmd.message).catch((err) => {
+      runtime.session.prompt(command.message).catch((err) => {
         if (dataPort) {
-          const msg: PiPush = {
+          const errorMessage: PiPush = {
             type: 'error',
             error: err instanceof Error ? err.message : String(err),
           };
-          dataPort.postMessage(msg);
+          dataPort.postMessage(errorMessage);
         }
       });
       return { success: true };
     }
 
     case 'steer': {
-      if (!cmd.message || cmd.message.trim().length === 0) {
+      if (!command.message || command.message.trim().length === 0) {
         return { success: false, error: 'steer message must be a non-empty string' };
       }
-      await runtime.session.steer(cmd.message);
+      await runtime.session.steer(command.message);
       return { success: true };
     }
 
     case 'follow_up': {
-      if (!cmd.message || cmd.message.trim().length === 0) {
+      if (!command.message || command.message.trim().length === 0) {
         return { success: false, error: 'follow_up message must be a non-empty string' };
       }
-      await runtime.session.followUp(cmd.message);
+      await runtime.session.followUp(command.message);
       return { success: true };
     }
 
@@ -404,7 +404,7 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
     }
 
     case 'list_sessions': {
-      return cmd.cwd ? await SessionManager.list(cmd.cwd) : await SessionManager.listAll();
+      return command.cwd ? await SessionManager.list(command.cwd) : await SessionManager.listAll();
     }
 
     case 'cycle_model':
@@ -414,23 +414,23 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       return runtime.session.cycleThinkingLevel();
 
     case 'set_model': {
-      const model = runtime.session.modelRegistry.find(cmd.provider, cmd.modelId);
+      const model = runtime.session.modelRegistry.find(command.provider, command.modelId);
       if (!model) {
-        return { success: false, error: `model not found: ${cmd.provider}/${cmd.modelId}` };
+        return { success: false, error: `model not found: ${command.provider}/${command.modelId}` };
       }
       await runtime.session.setModel(model);
       return { success: true };
     }
 
     case 'set_thinking_level':
-      runtime.session.setThinkingLevel(cmd.level);
+      runtime.session.setThinkingLevel(command.level);
       return { success: true };
 
     case 'rename_session': {
-      if (!cmd.name || cmd.name.trim().length === 0) {
+      if (!command.name || command.name.trim().length === 0) {
         return { success: false, error: 'name must be a non-empty string' };
       }
-      runtime.session.sessionManager.appendSessionInfo(cmd.name.trim());
+      runtime.session.sessionManager.appendSessionInfo(command.name.trim());
       return { success: true };
     }
 
@@ -478,7 +478,7 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       if (!authStorage) {
         return { success: false, error: 'Auth storage not initialized' };
       }
-      const providerId = cmd.providerId;
+      const providerId = command.providerId;
       // Check if this is a registered OAuth provider
       const oauthProviders = authStorage.getOAuthProviders();
       const isOAuthProvider = oauthProviders.some((p) => p.id === providerId);
@@ -521,17 +521,17 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
     }
 
     case 'login_api_key': {
-      if (!cmd.providerId?.trim() || !cmd.apiKey?.trim()) {
+      if (!command.providerId?.trim() || !command.apiKey?.trim()) {
         return { success: false, error: 'Provider and API key must not be empty' };
       }
       const authStorage = runtime.services.modelRegistry?.authStorage;
       if (!authStorage) {
         return { success: false, error: 'Auth storage not initialized' };
       }
-      authStorage.set(cmd.providerId, { type: 'api_key', key: cmd.apiKey });
+      authStorage.set(command.providerId, { type: 'api_key', key: command.apiKey });
       runtime.services.modelRegistry.refresh();
       if (dataPort) {
-        dataPort.postMessage({ type: 'login_complete', providerId: cmd.providerId });
+        dataPort.postMessage({ type: 'login_complete', providerId: command.providerId });
       }
       return { success: true };
     }
@@ -541,13 +541,13 @@ async function handleCommand(cmd: PiCommand): Promise<unknown> {
       if (!authStorage) {
         return { success: false, error: 'Auth storage not initialized' };
       }
-      authStorage.logout(cmd.providerId);
+      authStorage.logout(command.providerId);
       runtime.services.modelRegistry.refresh();
       return { success: true };
     }
 
     default:
-      return { success: false, error: `Unknown command: ${(cmd as { type: string }).type}` };
+      return { success: false, error: `Unknown command: ${(command as { type: string }).type}` };
   }
 }
 
@@ -581,8 +581,8 @@ function setupControlPortListener(port: Port): void {
 // Session creation
 // =============================================================================
 
-function sendToMain(msg: UtilityResponse): void {
-  process.parentPort?.postMessage(msg);
+function sendToMain(response: UtilityResponse): void {
+  process.parentPort?.postMessage(response);
 }
 
 function prewarmSessionServices(cwds: string[]): void {
@@ -691,17 +691,18 @@ process.on('SIGTERM', () => {
 
 process.parentPort?.on('message', async (messageEvent) => {
   const { data, ports } = messageEvent;
-  const cmd = data as UtilityCommand;
+  // parentPort only receives UtilityCommand from main — safe narrowing
+  const utilityCommand = data as UtilityCommand;
 
-  switch (cmd.type) {
+  switch (utilityCommand.type) {
     case 'create_session':
-      await createSession(cmd.cwd);
+      await createSession(utilityCommand.cwd);
       break;
     case 'resume_session':
-      await resumeSession(cmd.sessionPath);
+      await resumeSession(utilityCommand.sessionPath);
       break;
     case 'prewarm_session_services':
-      prewarmSessionServices(cmd.cwds);
+      prewarmSessionServices(utilityCommand.cwds);
       break;
     case 'attach_ports':
       if (ports.length > 1) {

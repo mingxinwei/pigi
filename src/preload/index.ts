@@ -8,13 +8,15 @@ import { electronAPI } from '@electron-toolkit/preload';
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   PiChannel,
+  isPiPush,
+  isPiResult,
+  isStreamBatch,
   type ControlPortMessage,
   type DataPortMessage,
   type GitBranchResult,
   type PiCommand,
   type PiPush,
   type PiRequest,
-  type PiResult,
   type ProjectSessionsChunk,
   type ProjectStateResult,
   type SessionListResult,
@@ -26,14 +28,14 @@ import {
 // =============================================================================
 
 interface PendingCommand {
-  resolve: (v: unknown) => void;
-  reject: (e: Error) => void;
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
 interface PendingPortWaiter {
   resolve: () => void;
-  reject: (e: Error) => void;
+  reject: (error: Error) => void;
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
@@ -41,7 +43,7 @@ interface SessionPort {
   controlPort: MessagePort;
   dataPort: MessagePort;
   pending: Map<string, PendingCommand>;
-  pushHandlers: Set<(msg: PiPush) => void>;
+  pushHandlers: Set<(message: PiPush) => void>;
   streamHandlers: Set<(batch: StreamBatch) => void>;
   requestId: number;
 }
@@ -51,7 +53,7 @@ const SESSION_PORT_CLOSED_ERROR = 'session process exited';
 const PORT_READY_TIMEOUT_MS = 5000;
 
 /** Handlers registered before port arrives */
-const pendingPushHandlers = new Map<string, Set<(msg: PiPush) => void>>();
+const pendingPushHandlers = new Map<string, Set<(message: PiPush) => void>>();
 const pendingStreamHandlers = new Map<string, Set<(batch: StreamBatch) => void>>();
 const pendingPortWaiters = new Map<string, Set<PendingPortWaiter>>();
 
@@ -106,17 +108,17 @@ function resolvePendingPortWaiters(sessionId: string): void {
 }
 
 function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): void {
-  const sp = sessionPorts.get(sessionId);
-  if (sp) {
-    for (const pending of sp.pending.values()) {
-      clearTimeout(pending.timeoutId);
-      pending.reject(new Error(SESSION_PORT_CLOSED_ERROR));
+  const session = sessionPorts.get(sessionId);
+  if (session) {
+    for (const pendingCommand of session.pending.values()) {
+      clearTimeout(pendingCommand.timeoutId);
+      pendingCommand.reject(new Error(SESSION_PORT_CLOSED_ERROR));
     }
-    sp.pending.clear();
-    sp.pushHandlers.clear();
-    sp.streamHandlers.clear();
-    sp.controlPort.close();
-    sp.dataPort.close();
+    session.pending.clear();
+    session.pushHandlers.clear();
+    session.streamHandlers.clear();
+    session.controlPort.close();
+    session.dataPort.close();
     sessionPorts.delete(sessionId);
   }
 
@@ -130,7 +132,7 @@ function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): voi
 function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
   cleanupSessionPort(sessionId, false);
 
-  const sp: SessionPort = {
+  const session: SessionPort = {
     controlPort,
     dataPort,
     pending: new Map(),
@@ -140,52 +142,51 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
   };
 
   controlPort.onmessage = (event) => {
-    const data = event.data as ControlPortMessage;
+    const data: ControlPortMessage = event.data;
 
-    if ('id' in data && 'result' in data) {
-      const res = data as PiResult;
-      const pending = sp.pending.get(res.id);
-      if (pending) {
-        clearTimeout(pending.timeoutId);
-        sp.pending.delete(res.id);
-        pending.resolve(res.result);
+    if (isPiResult(data)) {
+      const pendingCommand = session.pending.get(data.id);
+      if (pendingCommand) {
+        clearTimeout(pendingCommand.timeoutId);
+        session.pending.delete(data.id);
+        pendingCommand.resolve(data.result);
       }
     }
   };
 
   // Push event queue: all push events are delivered immediately.
-  function deliverPush(msg: PiPush): void {
-    for (const handler of sp.pushHandlers) {
-      handler(msg);
+  function deliverPush(message: PiPush): void {
+    for (const handler of session.pushHandlers) {
+      handler(message);
     }
   }
 
   dataPort.onmessage = (event) => {
-    const data = event.data as DataPortMessage;
+    const data: DataPortMessage = event.data;
 
-    if ('type' in data && data.type === 'stream_batch') {
-      for (const handler of sp.streamHandlers) {
-        handler(data as StreamBatch);
+    if (isStreamBatch(data)) {
+      for (const handler of session.streamHandlers) {
+        handler(data);
       }
       return;
     }
 
-    if ('type' in data) {
-      deliverPush(data as PiPush);
+    if (isPiPush(data)) {
+      deliverPush(data);
     }
   };
 
-  sessionPorts.set(sessionId, sp);
+  sessionPorts.set(sessionId, session);
 
   // Drain pending handlers registered before port arrived before starting delivery.
-  const pendingPush = pendingPushHandlers.get(sessionId);
-  if (pendingPush) {
-    for (const cb of pendingPush) sp.pushHandlers.add(cb);
+  const queuedPushHandlers = pendingPushHandlers.get(sessionId);
+  if (queuedPushHandlers) {
+    for (const callback of queuedPushHandlers) session.pushHandlers.add(callback);
     pendingPushHandlers.delete(sessionId);
   }
-  const pendingStream = pendingStreamHandlers.get(sessionId);
-  if (pendingStream) {
-    for (const cb of pendingStream) sp.streamHandlers.add(cb);
+  const queuedStreamHandlers = pendingStreamHandlers.get(sessionId);
+  if (queuedStreamHandlers) {
+    for (const callback of queuedStreamHandlers) session.streamHandlers.add(callback);
     pendingStreamHandlers.delete(sessionId);
   }
 
@@ -210,11 +211,8 @@ const piApi = {
   createSession: async (
     cwd: string,
   ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-    const result = (await ipcRenderer.invoke(PiChannel.CreateSession, cwd)) as {
-      success: boolean;
-      sessionId?: string;
-      error?: string;
-    };
+    const result: { success: boolean; sessionId?: string; error?: string } =
+      await ipcRenderer.invoke(PiChannel.CreateSession, cwd);
     if (result.success && result.sessionId) {
       await waitForPort(result.sessionId);
     }
@@ -225,11 +223,8 @@ const piApi = {
   resumeSession: async (
     sessionPath: string,
   ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-    const result = (await ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath)) as {
-      success: boolean;
-      sessionId?: string;
-      error?: string;
-    };
+    const result: { success: boolean; sessionId?: string; error?: string } =
+      await ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath);
     if (result.success && result.sessionId) {
       await waitForPort(result.sessionId);
     }
@@ -288,31 +283,31 @@ const piApi = {
   },
 
   /** Send a command to a session (via control MessagePort). Returns result. */
-  send: (sessionId: string, cmd: PiCommand): Promise<unknown> => {
-    const sp = sessionPorts.get(sessionId);
-    if (!sp)
+  send: (sessionId: string, command: PiCommand): Promise<unknown> => {
+    const session = sessionPorts.get(sessionId);
+    if (!session)
       return Promise.reject(
         new Error(`no port for session ${sessionId} (port may not have arrived yet)`),
       );
-    const id = `req-${++sp.requestId}`;
+    const requestId = `req-${++session.requestId}`;
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        if (sp.pending.has(id)) {
-          sp.pending.delete(id);
+        if (session.pending.has(requestId)) {
+          session.pending.delete(requestId);
           reject(new Error('command timed out'));
         }
       }, 60000);
-      sp.pending.set(id, { resolve, reject, timeoutId });
-      const req: PiRequest = { id, cmd };
-      sp.controlPort.postMessage(req);
+      session.pending.set(requestId, { resolve, reject, timeoutId });
+      const request: PiRequest = { id: requestId, cmd: command };
+      session.controlPort.postMessage(request);
     });
   },
 
   /** Subscribe to push events for a session (session_ready, event, error). */
-  onPush: (sessionId: string, callback: (msg: PiPush) => void): (() => void) => {
-    const sp = sessionPorts.get(sessionId);
-    if (sp) {
-      sp.pushHandlers.add(callback);
+  onPush: (sessionId: string, callback: (message: PiPush) => void): (() => void) => {
+    const session = sessionPorts.get(sessionId);
+    if (session) {
+      session.pushHandlers.add(callback);
     } else {
       // Port not yet arrived -- queue
       if (!pendingPushHandlers.has(sessionId)) {
@@ -321,17 +316,17 @@ const piApi = {
       pendingPushHandlers.get(sessionId)!.add(callback);
     }
     return () => {
-      const s = sessionPorts.get(sessionId);
-      if (s) s.pushHandlers.delete(callback);
+      const current = sessionPorts.get(sessionId);
+      if (current) current.pushHandlers.delete(callback);
       pendingPushHandlers.get(sessionId)?.delete(callback);
     };
   },
 
   /** Subscribe to stream batches for a session. */
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void): (() => void) => {
-    const sp = sessionPorts.get(sessionId);
-    if (sp) {
-      sp.streamHandlers.add(callback);
+    const session = sessionPorts.get(sessionId);
+    if (session) {
+      session.streamHandlers.add(callback);
     } else {
       if (!pendingStreamHandlers.has(sessionId)) {
         pendingStreamHandlers.set(sessionId, new Set());
@@ -339,8 +334,8 @@ const piApi = {
       pendingStreamHandlers.get(sessionId)!.add(callback);
     }
     return () => {
-      const s = sessionPorts.get(sessionId);
-      if (s) s.streamHandlers.delete(callback);
+      const current = sessionPorts.get(sessionId);
+      if (current) current.streamHandlers.delete(callback);
       pendingStreamHandlers.get(sessionId)?.delete(callback);
     };
   },

@@ -188,6 +188,26 @@ export type DataPortMessage = PiPush | StreamBatch;
 export type PortMessage = ControlPortMessage | DataPortMessage;
 
 // =============================================================================
+// Type guards for discriminated union narrowing
+// =============================================================================
+
+export function isPiResult(message: ControlPortMessage): message is PiResult {
+  return 'id' in message && 'result' in message;
+}
+
+export function isPiRequest(message: ControlPortMessage): message is PiRequest {
+  return 'id' in message && 'cmd' in message;
+}
+
+export function isStreamBatch(message: DataPortMessage): message is StreamBatch {
+  return message.type === 'stream_batch';
+}
+
+export function isPiPush(message: DataPortMessage): message is PiPush {
+  return 'type' in message && message.type !== 'stream_batch';
+}
+
+// =============================================================================
 // IPC Channels (only used for lifecycle via main process)
 // =============================================================================
 

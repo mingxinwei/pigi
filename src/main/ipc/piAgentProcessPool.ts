@@ -127,11 +127,11 @@ export class PiAgentProcessPool {
       return;
     }
 
-    const cmd: UtilityCommand = {
+    const command: UtilityCommand = {
       type: 'prewarm_session_services',
       cwds: this.warmSessionCwds,
     };
-    proc.postMessage(cmd);
+    proc.postMessage(command);
   }
 
   private createWarmSessionProcess(): Electron.UtilityProcess {

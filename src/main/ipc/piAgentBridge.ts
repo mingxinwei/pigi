@@ -48,22 +48,22 @@ function startSessionWorker(): void {
   const proc = createSessionWorkerProcess();
   sessionWorkerProcess = proc;
 
-  proc.on('message', (msg: SessionWorkerResponse) => {
-    switch (msg.type) {
+  proc.on('message', (message: SessionWorkerResponse) => {
+    switch (message.type) {
       case 'project_sessions_chunk':
         sendToRenderer(PiChannel.ProjectSessionsChunk, {
-          requestId: msg.requestId,
-          cwd: msg.cwd,
-          success: msg.success,
-          sessions: msg.sessions,
-          error: msg.error,
+          requestId: message.requestId,
+          cwd: message.cwd,
+          success: message.success,
+          sessions: message.sessions,
+          error: message.error,
         });
         break;
       case 'rename_session_result': {
-        const cb = pendingRenameCallbacks.get(msg.requestId);
-        if (cb) {
-          pendingRenameCallbacks.delete(msg.requestId);
-          cb({ success: msg.success, error: msg.error });
+        const callback = pendingRenameCallbacks.get(message.requestId);
+        if (callback) {
+          pendingRenameCallbacks.delete(message.requestId);
+          callback({ success: message.success, error: message.error });
         }
         break;
       }
@@ -74,8 +74,8 @@ function startSessionWorker(): void {
     if (sessionWorkerProcess === proc) {
       sessionWorkerProcess = null;
       // Drain pending rename callbacks on crash
-      for (const [id, cb] of pendingRenameCallbacks) {
-        cb({ success: false, error: 'session worker process exited' });
+      for (const [id, callback] of pendingRenameCallbacks) {
+        callback({ success: false, error: 'session worker process exited' });
         pendingRenameCallbacks.delete(id);
       }
     }
@@ -89,12 +89,12 @@ function listProjectSessions(cwds: string[]): SessionListResult {
   }
 
   const requestId = `session-list-${++sessionWorkerRequestId}`;
-  const cmd: ListProjectSessionsCommand = {
+  const command: ListProjectSessionsCommand = {
     type: 'list_project_sessions',
     requestId,
     cwds: [...new Set(cwds)],
   };
-  sessionWorkerProcess.postMessage(cmd);
+  sessionWorkerProcess.postMessage(command);
   processPool.ensureWarmSessionProcesses(cwds);
   return { success: true, requestId };
 }
@@ -104,7 +104,7 @@ function listProjectSessions(cwds: string[]): SessionListResult {
  * then establish dedicated control/data MessagePorts between renderer and utility.
  */
 async function spawnSessionProcess(
-  cmd: UtilityCommand,
+  command: UtilityCommand,
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   return new Promise((resolve) => {
     const proc = processPool.claimSessionProcess();
@@ -118,27 +118,27 @@ async function spawnSessionProcess(
       }
     }, 30000);
 
-    proc.on('message', (msg: UtilityResponse) => {
-      if (msg.type === 'session_busy_changed') {
-        processPool.updateBusyState(proc, msg.isBusy);
+    proc.on('message', (message: UtilityResponse) => {
+      if (message.type === 'session_busy_changed') {
+        processPool.updateBusyState(proc, message.isBusy);
         return;
       }
 
       if (resolved) return;
 
-      switch (msg.type) {
+      switch (message.type) {
         case 'session_created': {
           resolved = true;
           clearTimeout(timeout);
 
-          const sessionId = msg.sessionId;
+          const sessionId = message.sessionId;
           processPool.registerSessionProcess(sessionId, proc);
 
           // Establish separate ports so high-volume stream output cannot delay controls.
           const controlChannel = new MessageChannelMain();
           const dataChannel = new MessageChannelMain();
-          const attachCmd: UtilityCommand = { type: 'attach_ports' };
-          proc.postMessage(attachCmd, [controlChannel.port1, dataChannel.port1]);
+          const attachCommand: UtilityCommand = { type: 'attach_ports' };
+          proc.postMessage(attachCommand, [controlChannel.port1, dataChannel.port1]);
 
           const win = getMainWindow();
           if (win && !win.isDestroyed()) {
@@ -157,7 +157,7 @@ async function spawnSessionProcess(
           clearTimeout(timeout);
           proc.kill();
           processPool.ensureWarmSessionProcesses();
-          resolve({ success: false, error: msg.error });
+          resolve({ success: false, error: message.error });
           break;
         }
       }
@@ -172,7 +172,7 @@ async function spawnSessionProcess(
     });
 
     // Send the lifecycle command to start session creation
-    proc.postMessage(cmd);
+    proc.postMessage(command);
   });
 }
 

@@ -23,8 +23,8 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pigi');
 
-  protocol.handle('local-file', (req) =>
-    net.fetch('file://' + decodeURIComponent(req.url.slice('local-file://'.length))),
+  protocol.handle('local-file', (request) =>
+    net.fetch('file://' + decodeURIComponent(request.url.slice('local-file://'.length))),
   );
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
 

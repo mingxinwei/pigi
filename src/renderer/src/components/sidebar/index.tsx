@@ -98,6 +98,7 @@ export default function Sidebar({
         className="[&_.tabler-icon]:stroke-[1.25] bg-transparent"
         data-testid="sidebar"
       >
+        {/* WebkitAppRegion is Electron-specific, not in React's CSSProperties */}
         <SidebarHeader style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <div className="h-10" />
           <SidebarMenu style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

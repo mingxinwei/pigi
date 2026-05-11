@@ -19,8 +19,9 @@ import type {
 
 type CommandResult<T = unknown> = { success: boolean; error?: string } & T;
 
-async function send<T = unknown>(sessionId: string, cmd: PiCommand): Promise<T> {
-  return window.piApi.send(sessionId, cmd) as Promise<T>;
+async function send<T = unknown>(sessionId: string, command: PiCommand): Promise<T> {
+  // piApi.send returns Promise<unknown>; the generic T is guaranteed by the IPC contract
+  return window.piApi.send(sessionId, command) as Promise<T>;
 }
 
 // =============================================================================
@@ -214,7 +215,7 @@ export async function logout(sessionId: string, providerId: string): Promise<Com
 // Subscriptions
 // =============================================================================
 
-export function onPush(sessionId: string, callback: (msg: PiPush) => void): () => void {
+export function onPush(sessionId: string, callback: (message: PiPush) => void): () => void {
   return window.piApi.onPush(sessionId, callback);
 }
 

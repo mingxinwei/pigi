@@ -65,11 +65,11 @@ function resolveShellPath(): string | null {
   for (const shell of candidates) {
     try {
       const isFish = shell.includes('fish');
-      const cmd = isFish ? 'string join : $PATH' : 'echo $PATH';
-      const args = isFish
-        ? [SHELL_COMMAND_FLAG, cmd]
-        : [...SHELL_LOGIN_INTERACTIVE_FLAGS, SHELL_COMMAND_FLAG, cmd];
-      const output = execFileSync(shell, args, {
+      const shellCommand = isFish ? 'string join : $PATH' : 'echo $PATH';
+      const shellArgs = isFish
+        ? [SHELL_COMMAND_FLAG, shellCommand]
+        : [...SHELL_LOGIN_INTERACTIVE_FLAGS, SHELL_COMMAND_FLAG, shellCommand];
+      const output = execFileSync(shell, shellArgs, {
         encoding: 'utf8',
         timeout: DETECTION_TIMEOUT_MS,
         stdio: ['ignore', 'pipe', 'ignore'],

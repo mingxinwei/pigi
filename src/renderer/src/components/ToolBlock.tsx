@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { cn } from '../lib/utils';
-import type { ToolNode } from '../state/transcriptController';
+import { type ToolNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
 import DiffView from './DiffView';
@@ -139,7 +139,7 @@ const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
 };
 
 function getToolCommandParts(node: ToolNode): ToolCommandParts {
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
 
   switch (node.name) {
     case 'bash':
@@ -170,7 +170,7 @@ function getToolCommandParts(node: ToolNode): ToolCommandParts {
 }
 
 function getToolOutputLanguage(node: ToolNode): string {
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   const path = typeof args?.path === 'string' ? args.path : '';
   return getLanguageFromPath(path) ?? TOOL_OUTPUT_LANGUAGE_BY_NAME[node.name] ?? 'bash';
 }
@@ -187,10 +187,13 @@ function getLanguageFromPath(path: string): string | null {
 
 function getEditEntries(node: ToolNode): EditEntry[] | null {
   if (node.name !== 'edit') return null;
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   if (!args) return null;
-  const edits = args.edits as Array<{ oldText?: string; newText?: string }> | undefined;
-  if (!Array.isArray(edits) || edits.length === 0) return null;
+  // Array.isArray confirms shape; elements are validated below via filter
+  const edits = Array.isArray(args.edits)
+    ? (args.edits as Array<{ oldText?: string; newText?: string }>)
+    : undefined;
+  if (!edits || edits.length === 0) return null;
   return edits
     .filter((e) => typeof e.oldText === 'string' && typeof e.newText === 'string')
     .map((e) => ({ oldText: e.oldText!, newText: e.newText! }));
@@ -198,7 +201,7 @@ function getEditEntries(node: ToolNode): EditEntry[] | null {
 
 function getWriteEntries(node: ToolNode): EditEntry[] | null {
   if (node.name !== 'write') return null;
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   const content = typeof args?.content === 'string' ? args.content : null;
   if (!content) return null;
   return [{ oldText: '', newText: content }];
@@ -225,7 +228,7 @@ function getReadImagePath(node: ToolNode): string | null {
   if (node.name !== 'read') return null;
   const lines = node.output.split('\n');
   if (!lines[0]?.match(READ_IMAGE_RE)) return null;
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   return typeof args?.path === 'string' ? args.path : null;
 }
 
@@ -250,7 +253,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   const hasOutput = cleanedOutput.length > 0;
   const outputLanguage = getToolOutputLanguage(node);
   const durationLabel = formatDuration(node.durationMs);
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   const timeout = typeof args?.timeout === 'number' ? args.timeout : undefined;
 
   useEffect(() => {

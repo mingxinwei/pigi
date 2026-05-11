@@ -105,14 +105,15 @@ export default function LoginDialog({
       container.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
     );
     if (buttons.length === 0) return;
-    const idx = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    let next: number;
+    // activeElement is Element|null; indexOf returns -1 if not found which is handled below
+    const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number;
     if (e.key === 'ArrowDown') {
-      next = idx < buttons.length - 1 ? idx + 1 : 0;
+      nextIndex = currentIndex < buttons.length - 1 ? currentIndex + 1 : 0;
     } else {
-      next = idx > 0 ? idx - 1 : buttons.length - 1;
+      nextIndex = currentIndex > 0 ? currentIndex - 1 : buttons.length - 1;
     }
-    buttons[next].focus();
+    buttons[nextIndex].focus();
   }, []);
 
   return (

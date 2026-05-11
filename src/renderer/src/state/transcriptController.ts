@@ -1,3 +1,5 @@
+import type { StreamBatch } from '../../../shared/ipcContract';
+
 /**
  * TranscriptController - manages transcript state for a single session.
  *
@@ -554,12 +556,9 @@ export class TranscriptController {
    * Apply a stream batch. The utility process flushes at animation-frame cadence, so
    * each batch can update React state and let the virtualizer measure real heights.
    */
-  applyStreamBatch(batch: {
-    text?: string;
-    thinking?: string;
-    toolOutput?: Record<string, string>;
-    toolArgs?: Record<string, { name: string; args: unknown }>;
-  }): void {
+  applyStreamBatch(
+    batch: Pick<StreamBatch, 'text' | 'thinking' | 'toolOutput' | 'toolArgs'>,
+  ): void {
     let changed = false;
 
     if (batch.text) {
@@ -589,13 +588,27 @@ export class TranscriptController {
     }
 
     if (batch.toolArgs) {
-      for (const [toolCallId, { args }] of Object.entries(batch.toolArgs)) {
+      for (const [toolCallId, toolArgsEntry] of Object.entries(batch.toolArgs)) {
         const found = findToolNodeByCallId(this._state.nodes, toolCallId);
         if (found) {
           // Skip if tool already completed — final args came via toolcall_end push
           if (found.node.status !== 'running') continue;
-          this._state.nodes[found.index] = { ...found.node, args };
-          changed = true;
+          if (toolArgsEntry.name === 'edit') {
+            // Edit: only merge path from streaming args, preserve existing args.
+            // Utility sends { path } only (not full edits array) to reduce batch size.
+            // TS can't narrow discriminated union from Object.entries result
+            const { path } = toolArgsEntry.args;
+            const existing = (found.node.args ?? {}) as Record<string, unknown>;
+            this._state.nodes[found.index] = {
+              ...found.node,
+              args: { ...existing, path },
+            };
+            changed = true;
+          } else {
+            // Write and others: replace full args
+            this._state.nodes[found.index] = { ...found.node, args: toolArgsEntry.args };
+            changed = true;
+          }
         }
       }
     }

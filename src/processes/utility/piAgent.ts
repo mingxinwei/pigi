@@ -20,6 +20,7 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
+  type WriteToolInput,
 } from '@mariozechner/pi-coding-agent';
 import type {
   ModelInfo,
@@ -29,6 +30,7 @@ import type {
   PiResult,
   ControlPortMessage,
   StreamBatch,
+  StreamBatchToolArgs,
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
@@ -105,9 +107,9 @@ class StreamBatcher {
     this.markDirty();
   }
 
-  setToolArgs(toolCallId: string, name: string, args: unknown): void {
+  setToolArgs(toolCallId: string, entry: StreamBatchToolArgs): void {
     if (!this.batch.toolArgs) this.batch.toolArgs = {};
-    this.batch.toolArgs[toolCallId] = { name, args };
+    this.batch.toolArgs[toolCallId] = entry;
     this.markDirty();
   }
 
@@ -278,7 +280,18 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
         if (assistantMessageEvent.type === 'toolcall_delta' && message.role === 'assistant') {
           const content = message.content[assistantMessageEvent.contentIndex];
           if (content.type === 'toolCall' && content.id && content.name) {
-            batch.setToolArgs(content.id, content.name, content.arguments);
+            if (content.name === 'write') {
+              // Write: stream full args (shows content preview during streaming)
+              const args = content.arguments as Partial<WriteToolInput> | undefined;
+              batch.setToolArgs(content.id, { name: 'write', args: args ?? {} });
+            } else if (content.name === 'edit') {
+              // Edit: stream only path (edits array is large and not shown during streaming)
+              const args = content.arguments as Record<string, unknown> | undefined;
+              const path = args?.path;
+              if (typeof path === 'string') {
+                batch.setToolArgs(content.id, { name: 'edit', args: { path } });
+              }
+            }
             return;
           }
         }

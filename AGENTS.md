@@ -36,4 +36,4 @@
 - If the change is non-trivial, include bullet points in the commit body describing what was done in detail
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
-- Run `pnpm check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.
+- Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.

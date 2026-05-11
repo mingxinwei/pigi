@@ -2,7 +2,7 @@
 
 *A sleek, high-performance GUI for pi.*
 
-pigi is a desktop GUI for [pi](https://github.com/earendil-works/pi), the autonomous coding agent.
+pigi is a desktop GUI for [pi](https://github.com/earendil-works/pi).
 
 - Clean, elegant UI that stays out of your way.
 - Faithful to the original pi experience.

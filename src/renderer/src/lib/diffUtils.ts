@@ -178,11 +178,11 @@ export function collapseContext(lines: DiffLine[]): (DiffLine | 'separator')[] {
 
   // Mark context lines that are within CONTEXT_LINES of a change
   const visibleIndices = new Set<number>();
-  for (const idx of changeIndices) {
-    visibleIndices.add(idx);
+  for (const changeIndex of changeIndices) {
+    visibleIndices.add(changeIndex);
     for (let offset = 1; offset <= CONTEXT_LINES; offset++) {
-      if (idx - offset >= 0) visibleIndices.add(idx - offset);
-      if (idx + offset < lines.length) visibleIndices.add(idx + offset);
+      if (changeIndex - offset >= 0) visibleIndices.add(changeIndex - offset);
+      if (changeIndex + offset < lines.length) visibleIndices.add(changeIndex + offset);
     }
   }
 

@@ -14,6 +14,7 @@
 ## Code Quality
 
 - No `any` types unless absolutely necessary
+- No `as` type assertions unless absolutely necessary (use type guards, typed variables, or discriminated unions). When `as` is unavoidable (e.g. untyped SDK data, TS `Array.includes` limitation, `React.CSSProperties` for custom CSS vars), add a comment explaining why.
 - Check node_modules for external API type definitions instead of guessing
 - **NEVER use inline imports** - no `await import("./foo.js")`, no `import("pkg").Type` in type positions, no dynamic imports for types. Always use standard top-level imports.
 - NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
@@ -24,6 +25,7 @@
 ## Naming Conventions
 
 - All source file names use camelCase (e.g. `piAgent.ts`, `appStore.ts`, `ipcChannels.ts`)
+- No abbreviated variable/function names — use full descriptive names for readability (e.g. `message` not `msg`, `command` not `cmd`, `callback` not `cb`, `sessionPort` not `sp`, `index` not `idx`). Common terms like `id`, `url`, `api` are fine.
 - IPC channel names use snake_case with `pi:` prefix, defined in `src/shared/ipcChannels.ts` (no magic strings)
 - No magic strings anywhere in the codebase; use constants, enums, or registries. If a magic string seems unavoidable, ask the user first.
 

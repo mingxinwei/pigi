@@ -60,6 +60,31 @@ export type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode;
 export type AgentStatus = 'idle' | 'streaming' | 'tool_running' | 'error';
 
 // =============================================================================
+// Type guards for transcript node narrowing
+// =============================================================================
+
+function isToolNode(node: TranscriptNode): node is ToolNode {
+  return node.role === 'tool';
+}
+
+function findToolNodeByCallId(
+  nodes: TranscriptNode[],
+  toolCallId: string,
+): { node: ToolNode; index: number } | undefined {
+  const index = nodes.findIndex((n) => isToolNode(n) && n.toolCallId === toolCallId);
+  if (index === -1) return undefined;
+  return { node: nodes[index] as ToolNode, index };
+}
+
+/** Parse `node.args` (typed as `unknown`) into a Record for tool argument access. */
+export function getToolArgs(node: ToolNode): Record<string, unknown> | undefined {
+  if (node.args && typeof node.args === 'object' && !Array.isArray(node.args)) {
+    return node.args as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+// =============================================================================
 // State
 // =============================================================================
 
@@ -258,8 +283,9 @@ export class TranscriptController {
     const nodes: TranscriptNode[] = [];
     const toolCalls = new Map<string, { name: string; args: unknown; startedAt?: number }>();
 
-    for (const msg of messages) {
-      const m = msg as {
+    for (const rawMessage of messages) {
+      // SDK messages are untyped; runtime shape check
+      const parsed = rawMessage as {
         id?: string;
         role?: string;
         content?: unknown[];
@@ -268,16 +294,16 @@ export class TranscriptController {
         stopReason?: string;
         errorMessage?: string;
       };
-      if (!m.role) continue;
+      if (!parsed.role) continue;
 
-      switch (m.role) {
+      switch (parsed.role) {
         case 'user': {
-          const text = extractText(m.content);
+          const text = extractText(parsed.content);
           nodes.push({
-            id: m.id || nextNodeId(),
+            id: parsed.id || nextNodeId(),
             role: 'user',
             text,
-            sentAt: normalizeTimestamp(m.timestamp),
+            sentAt: normalizeTimestamp(parsed.timestamp),
           });
           break;
         }
@@ -287,9 +313,9 @@ export class TranscriptController {
             thinking,
             toolCalls: assistantToolCalls,
             errorMessage: contentError,
-          } = extractAssistantContent(m.content);
-          const assistantError = m.errorMessage || contentError;
-          const assistantTimestamp = tryNormalizeTimestamp(m.timestamp);
+          } = extractAssistantContent(parsed.content);
+          const assistantError = parsed.errorMessage || contentError;
+          const assistantTimestamp = tryNormalizeTimestamp(parsed.timestamp);
           for (const toolCall of assistantToolCalls) {
             toolCalls.set(toolCall.id, {
               name: toolCall.name,
@@ -299,13 +325,13 @@ export class TranscriptController {
           }
           if (text || thinking || assistantError) {
             nodes.push({
-              id: m.id || nextNodeId(),
+              id: parsed.id || nextNodeId(),
               role: 'assistant',
               text,
               thinking,
-              model: m.model?.name,
-              provider: m.model?.provider,
-              stopReason: m.stopReason,
+              model: parsed.model?.name,
+              provider: parsed.model?.provider,
+              stopReason: parsed.stopReason,
               errorMessage: assistantError,
               isStreaming: false,
             });
@@ -313,7 +339,8 @@ export class TranscriptController {
           break;
         }
         case 'toolResult': {
-          const toolMsg = msg as {
+          // SDK tool result messages have additional fields
+          const toolMessage = rawMessage as {
             id?: string;
             toolCallId?: string;
             toolName?: string;
@@ -321,18 +348,18 @@ export class TranscriptController {
             isError?: boolean;
             timestamp?: number | string;
           };
-          const call = toolMsg.toolCallId ? toolCalls.get(toolMsg.toolCallId) : undefined;
-          const completedAt = tryNormalizeTimestamp(toolMsg.timestamp);
-          const output = extractText(toolMsg.content);
+          const call = toolMessage.toolCallId ? toolCalls.get(toolMessage.toolCallId) : undefined;
+          const completedAt = tryNormalizeTimestamp(toolMessage.timestamp);
+          const output = extractText(toolMessage.content);
           nodes.push({
-            id: toolMsg.id || nextNodeId(),
+            id: toolMessage.id || nextNodeId(),
             role: 'tool',
-            toolCallId: toolMsg.toolCallId || '',
-            name: toolMsg.toolName || call?.name || 'unknown',
+            toolCallId: toolMessage.toolCallId || '',
+            name: toolMessage.toolName || call?.name || 'unknown',
             args: call?.args,
-            status: toolMsg.isError ? 'error' : 'success',
+            status: toolMessage.isError ? 'error' : 'success',
             output,
-            isError: toolMsg.isError || false,
+            isError: toolMessage.isError || false,
             startedAt: call?.startedAt,
             durationMs: getElapsedMs(call?.startedAt, completedAt),
           });
@@ -340,7 +367,7 @@ export class TranscriptController {
         }
         case 'compactionSummary': {
           nodes.push({
-            id: m.id || nextNodeId(),
+            id: parsed.id || nextNodeId(),
             role: 'system',
             text: 'Context compacted',
             isLoading: false,
@@ -414,8 +441,9 @@ export class TranscriptController {
   // ===========================================================================
 
   processEvent(raw: unknown): void {
+    if (!raw || typeof raw !== 'object') return;
     const event = raw as Record<string, unknown>;
-    const type = event.type as string;
+    const type = String(event.type ?? '');
     switch (type) {
       case 'agent_start':
         this.setState({ status: 'streaming' });
@@ -437,41 +465,45 @@ export class TranscriptController {
         break;
 
       case 'message_start': {
-        const msg = (raw as unknown as SdkMessageStart).message;
-        if (msg?.role === 'user') {
+        const startEvent = raw as SdkMessageStart;
+        const startMessage = startEvent.message;
+        if (startMessage?.role === 'user') {
           // Check if this user message was already added optimistically
+          const contentArr = startMessage.content as
+            | Array<{ type?: string; text?: string }>
+            | undefined;
           const text =
-            (msg.content as Array<{ type?: string; text?: string }> | undefined)
+            contentArr
               ?.filter((c) => c.type === 'text')
               .map((c) => c.text)
               .join('') ?? '';
           if (text && !this._hasOptimisticUserMessage(text)) {
             this.addUserMessage(text);
           }
-        } else if (msg?.role === 'assistant' && !this._state.activeAssistantId) {
-          this.createAssistantNode(msg.id);
+        } else if (startMessage?.role === 'assistant' && !this._state.activeAssistantId) {
+          this.createAssistantNode(startMessage.id);
         }
         break;
       }
 
       case 'message_update':
-        this.handleMessageUpdate(raw as unknown as SdkMessageUpdate);
+        this.handleMessageUpdate(raw as SdkMessageUpdate);
         break;
 
       case 'message_end':
-        this.handleMessageEnd(raw as unknown as SdkMessageEnd);
+        this.handleMessageEnd(raw as SdkMessageEnd);
         break;
 
       case 'tool_execution_start':
-        this.handleToolStart(raw as unknown as SdkToolExecStart);
+        this.handleToolStart(raw as SdkToolExecStart);
         break;
 
       case 'tool_execution_update':
-        this.handleToolUpdate(raw as unknown as SdkToolExecUpdate);
+        this.handleToolUpdate(raw as SdkToolExecUpdate);
         break;
 
       case 'tool_execution_end':
-        this.handleToolEnd(raw as unknown as SdkToolExecEnd);
+        this.handleToolEnd(raw as SdkToolExecEnd);
         break;
 
       case 'compaction_start':
@@ -485,9 +517,8 @@ export class TranscriptController {
       case 'queue_update': {
         // Runtime guard for expected shape
         if (typeof event !== 'object' || event === null) break;
-        const qe = event as Record<string, unknown>;
-        const newSteering: string[] = Array.isArray(qe.steering) ? qe.steering : [];
-        const newFollowUp: string[] = Array.isArray(qe.followUp) ? qe.followUp : [];
+        const newSteering: string[] = Array.isArray(event.steering) ? event.steering : [];
+        const newFollowUp: string[] = Array.isArray(event.followUp) ? event.followUp : [];
 
         // Detect delivered messages: items removed from the front (FIFO).
         // If clearLocalQueue() was called beforehand, prev arrays are already empty
@@ -496,11 +527,11 @@ export class TranscriptController {
         const prevFollowUp = this._state.queuedFollowUp;
         const deliveredSteering = prevSteering.slice(0, prevSteering.length - newSteering.length);
         const deliveredFollowUp = prevFollowUp.slice(0, prevFollowUp.length - newFollowUp.length);
-        for (const msg of deliveredSteering) {
-          this.addUserMessage(msg);
+        for (const delivered of deliveredSteering) {
+          this.addUserMessage(delivered);
         }
-        for (const msg of deliveredFollowUp) {
-          this.addUserMessage(msg);
+        for (const delivered of deliveredFollowUp) {
+          this.addUserMessage(delivered);
         }
 
         this.setState({
@@ -549,11 +580,9 @@ export class TranscriptController {
 
     if (batch.toolOutput) {
       for (const [toolCallId, output] of Object.entries(batch.toolOutput)) {
-        const idx = this._state.nodes.findIndex(
-          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
-        );
-        if (idx !== -1) {
-          this._state.nodes[idx] = { ...(this._state.nodes[idx] as ToolNode), output };
+        const found = findToolNodeByCallId(this._state.nodes, toolCallId);
+        if (found) {
+          this._state.nodes[found.index] = { ...found.node, output };
           changed = true;
         }
       }
@@ -561,14 +590,11 @@ export class TranscriptController {
 
     if (batch.toolArgs) {
       for (const [toolCallId, { args }] of Object.entries(batch.toolArgs)) {
-        const idx = this._state.nodes.findIndex(
-          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === toolCallId,
-        );
-        if (idx !== -1) {
-          const existing = this._state.nodes[idx] as ToolNode;
+        const found = findToolNodeByCallId(this._state.nodes, toolCallId);
+        if (found) {
           // Skip if tool already completed — final args came via toolcall_end push
-          if (existing.status !== 'running') continue;
-          this._state.nodes[idx] = { ...existing, args };
+          if (found.node.status !== 'running') continue;
+          this._state.nodes[found.index] = { ...found.node, args };
           changed = true;
         }
       }
@@ -643,9 +669,7 @@ export class TranscriptController {
         content.name &&
         (content.name === 'write' || content.name === 'edit')
       ) {
-        const existing = this._state.nodes.find(
-          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === content.id,
-        );
+        const existing = findToolNodeByCallId(this._state.nodes, content.id);
         if (!existing) {
           const node = this.createToolNode(content.id, content.name);
           this.setState({
@@ -668,13 +692,10 @@ export class TranscriptController {
         content.id &&
         (content.name === 'write' || content.name === 'edit')
       ) {
-        const existing = this._state.nodes.find(
-          (n) => n.role === 'tool' && (n as ToolNode).toolCallId === content.id,
-        ) as ToolNode | undefined;
-        if (existing) {
-          const idx = this._state.nodes.indexOf(existing);
-          this._state.nodes[idx] = {
-            ...existing,
+        const found = findToolNodeByCallId(this._state.nodes, content.id);
+        if (found) {
+          this._state.nodes[found.index] = {
+            ...found.node,
             args: content.arguments,
           };
           this.setState({ nodes: [...this._state.nodes] });
@@ -686,12 +707,9 @@ export class TranscriptController {
     // Update tool args at toolcall_end with the finalized arguments
     if (ame.type === 'toolcall_end' && ame.toolCall) {
       const tc = ame.toolCall as { id: string; name: string; arguments: unknown };
-      const existing = this._state.nodes.find(
-        (n) => n.role === 'tool' && (n as ToolNode).toolCallId === tc.id,
-      ) as ToolNode | undefined;
-      if (existing) {
-        const idx = this._state.nodes.indexOf(existing);
-        this._state.nodes[idx] = { ...existing, args: tc.arguments };
+      const found = findToolNodeByCallId(this._state.nodes, tc.id);
+      if (found) {
+        this._state.nodes[found.index] = { ...found.node, args: tc.arguments };
         this.setState({ nodes: [...this._state.nodes] });
       } else {
         // Fallback: create node if toolcall_start was missed
@@ -727,22 +745,22 @@ export class TranscriptController {
   }
 
   private handleMessageEnd(event: SdkMessageEnd): void {
-    const msg = event.message;
-    if (msg?.role !== 'assistant') return;
+    const endMessage = event.message;
+    if (endMessage?.role !== 'assistant') return;
 
     const assistant = this.getActiveAssistant();
     if (!assistant) return;
 
     // Finalize the assistant node
     assistant.isStreaming = false;
-    assistant.stopReason = msg.stopReason;
-    assistant.errorMessage = msg.errorMessage;
-    assistant.model = msg.model?.name;
-    assistant.provider = msg.model?.provider;
+    assistant.stopReason = endMessage.stopReason;
+    assistant.errorMessage = endMessage.errorMessage;
+    assistant.model = endMessage.model?.name;
+    assistant.provider = endMessage.model?.provider;
 
     // Extract final text from message content if available (more accurate than accumulated deltas)
-    if (msg.content) {
-      const { text, thinking } = extractAssistantContent(msg.content);
+    if (endMessage.content) {
+      const { text, thinking } = extractAssistantContent(endMessage.content);
       if (text) assistant.text = text;
       if (thinking) assistant.thinking = thinking;
     }
@@ -755,16 +773,13 @@ export class TranscriptController {
 
   private handleToolStart(event: SdkToolExecStart): void {
     // Check if already created at toolcall_end time
-    const existing = this._state.nodes.find(
-      (n) => n.role === 'tool' && (n as ToolNode).toolCallId === event.toolCallId,
-    ) as ToolNode | undefined;
-    if (existing) {
-      const idx = this._state.nodes.indexOf(existing);
-      this._state.nodes[idx] = {
-        ...existing,
+    const found = findToolNodeByCallId(this._state.nodes, event.toolCallId);
+    if (found) {
+      this._state.nodes[found.index] = {
+        ...found.node,
         args: event.args,
         status: 'running',
-        startedAt: existing.startedAt ?? Date.now(),
+        startedAt: found.node.startedAt ?? Date.now(),
       };
       this.setState({
         nodes: [...this._state.nodes],
@@ -789,8 +804,8 @@ export class TranscriptController {
     const text = extractToolResultText(event.partialResult);
     if (!text) return;
     const nodes = this._state.nodes.map((n) => {
-      if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
-      return { ...(n as ToolNode), output: text };
+      if (!isToolNode(n) || n.toolCallId !== event.toolCallId) return n;
+      return { ...n, output: text };
     });
     this.setState({ nodes });
   }
@@ -798,15 +813,15 @@ export class TranscriptController {
   private handleToolEnd(event: SdkToolExecEnd): void {
     const endedAt = Date.now();
     const nodes = this._state.nodes.map((n) => {
-      if (n.role !== 'tool' || (n as ToolNode).toolCallId !== event.toolCallId) return n;
-      const tool = n as ToolNode;
+      if (!isToolNode(n) || n.toolCallId !== event.toolCallId) return n;
       const text = extractToolResultText(event.result);
+      const status: ToolNode['status'] = event.isError ? 'error' : 'success';
       return {
-        ...tool,
-        status: event.isError ? 'error' : ('success' as ToolNode['status']),
+        ...n,
+        status,
         isError: event.isError,
-        output: text || tool.output,
-        durationMs: getElapsedMs(tool.startedAt, endedAt),
+        output: text || n.output,
+        durationMs: getElapsedMs(n.startedAt, endedAt),
       };
     });
 
@@ -849,6 +864,8 @@ export class TranscriptController {
 // Helpers
 // =============================================================================
 
+// After role equality is checked, TS can't narrow `right` via switch on `left.role`.
+// The casts below are safe because we returned early when roles differ.
 function areDuplicateNodes(left: TranscriptNode, right: TranscriptNode): boolean {
   if (left.id === right.id) {
     return true;
@@ -862,6 +879,7 @@ function areDuplicateNodes(left: TranscriptNode, right: TranscriptNode): boolean
     case 'user':
       return left.text === (right as UserNode).text;
     case 'assistant': {
+      // right is guaranteed to be AssistantNode here due to role equality check above
       const assistant = right as AssistantNode;
       return (
         Boolean(left.text || left.thinking) &&
@@ -880,6 +898,7 @@ function extractText(content: unknown[] | undefined): string {
   if (!content || !Array.isArray(content)) return '';
   const parts: string[] = [];
   for (const block of content) {
+    // SDK content blocks are untyped; runtime shape check
     const b = block as { type?: string; text?: string };
     if (b.type === 'text' && b.text) {
       parts.push(b.text);
@@ -901,6 +920,7 @@ function extractAssistantContent(content: unknown[] | undefined): {
   const toolCalls: Array<{ id: string; name: string; args: unknown }> = [];
   let errorMessage: string | undefined;
   for (const block of content) {
+    // SDK content blocks are untyped; runtime shape check
     const b = block as {
       type?: string;
       text?: string;
@@ -930,6 +950,7 @@ function extractAssistantContent(content: unknown[] | undefined): {
 
 function extractToolResultText(result: unknown): string {
   if (!result) return '';
+  // SDK tool results have { content: Array<{type, text}> } shape
   const r = result as { content?: Array<{ type?: string; text?: string }> };
   if (r.content && Array.isArray(r.content)) {
     return r.content

@@ -94,14 +94,14 @@ export default function ChatInput({
 
   // Save/restore draft per session
   useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
     const prevId = prevSessionIdRef.current;
     const currentId = session?.sessionId ?? null;
 
     // Save previous session's draft
     if (prevId && prevId !== currentId) {
-      const draft = el.value;
+      const draft = textarea.value;
       if (draft) {
         draftsRef.current.set(prevId, draft);
       } else {
@@ -111,9 +111,9 @@ export default function ChatInput({
 
     // Restore current session's draft
     if (currentId !== prevId) {
-      el.value = draftsRef.current.get(currentId ?? '') ?? '';
+      textarea.value = draftsRef.current.get(currentId ?? '') ?? '';
       // Auto-focus the input when switching to a new/different session
-      el.focus();
+      textarea.focus();
     }
 
     prevSessionIdRef.current = currentId;
@@ -122,15 +122,15 @@ export default function ChatInput({
   // Restore text from abort/dequeue
   useEffect(() => {
     if (restoreText === null) return;
-    const el = textareaRef.current;
-    if (!el) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
     // Join restored text with current input (current goes last)
-    const currentText = el.value.trim();
+    const currentText = textarea.value.trim();
     const combined = [restoreText, currentText].filter((t) => t).join('\n\n');
-    el.value = combined;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
-    el.focus();
+    textarea.value = combined;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
+    textarea.focus();
     onRestoredText();
   }, [restoreText, onRestoredText]);
   const contextUsage = session?.contextUsage ?? null;
@@ -143,26 +143,26 @@ export default function ChatInput({
   const thinkingLabel = rawThinkingLevel ?? THINKING_FALLBACK;
 
   const handleSend = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) {
+    const textarea = textareaRef.current;
+    if (!textarea) {
       return;
     }
-    const msg = el.value.trim();
-    if (!msg) {
+    const text = textarea.value.trim();
+    if (!text) {
       return;
     }
 
     // Check for slash command (only if it matches a known command)
-    if (msg.startsWith('/')) {
-      const spaceIdx = msg.indexOf(' ');
-      const name = spaceIdx === -1 ? msg.slice(1) : msg.slice(1, spaceIdx);
-      const arg = spaceIdx === -1 ? '' : msg.slice(spaceIdx + 1).trim();
+    if (text.startsWith('/')) {
+      const spaceIndex = text.indexOf(' ');
+      const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+      const arg = spaceIndex === -1 ? '' : text.slice(spaceIndex + 1).trim();
       const matches = matchSlashCommands(`/${name}`);
       const exactMatch = matches.find((c) => c.name === name);
 
       if (exactMatch) {
-        el.value = '';
-        el.style.height = 'auto';
+        textarea.value = '';
+        textarea.style.height = 'auto';
         setSlashMatches([]);
         onSlashCommand(name, arg);
         return;
@@ -170,19 +170,19 @@ export default function ChatInput({
       // Not a known command — fall through and send as regular message
     }
 
-    el.value = '';
-    el.style.height = 'auto';
-    onSend(msg);
+    textarea.value = '';
+    textarea.style.height = 'auto';
+    onSend(text);
   }, [onSend, onSlashCommand]);
 
   const handleFollowUpSend = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const msg = el.value.trim();
-    if (!msg) return;
-    el.value = '';
-    el.style.height = 'auto';
-    onFollowUp(msg);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const text = textarea.value.trim();
+    if (!text) return;
+    textarea.value = '';
+    textarea.style.height = 'auto';
+    onFollowUp(text);
   }, [onFollowUp]);
 
   const handleKeyDown = useCallback(
@@ -205,18 +205,18 @@ export default function ChatInput({
         }
         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
           e.preventDefault();
-          const cmd = slashMatches[selectedSlashIndex];
-          if (cmd && textareaRef.current) {
-            if (cmd.hasArg) {
+          const selectedCommand = slashMatches[selectedSlashIndex];
+          if (selectedCommand && textareaRef.current) {
+            if (selectedCommand.hasArg) {
               // hasArg: always complete to "/{name} " for both Tab and Enter
-              textareaRef.current.value = `/${cmd.name} `;
+              textareaRef.current.value = `/${selectedCommand.name} `;
               setSlashMatches([]);
             } else {
               // No argument needed — execute immediately
               textareaRef.current.value = '';
               textareaRef.current.style.height = 'auto';
               setSlashMatches([]);
-              onSlashCommand(cmd.name, '');
+              onSlashCommand(selectedCommand.name, '');
             }
           }
           return;
@@ -241,15 +241,15 @@ export default function ChatInput({
   );
 
   const handleInput = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) {
+    const textarea = textareaRef.current;
+    if (!textarea) {
       return;
     }
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
 
     // Update slash command matches
-    const value = el.value;
+    const value = textarea.value;
     const matches = matchSlashCommands(value);
     setSlashMatches(matches);
     setSelectedSlashIndex(0);
@@ -260,9 +260,9 @@ export default function ChatInput({
       <div className="relative mx-auto w-full" style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}>
         {slashMatches.length > 0 && (
           <div className="absolute inset-x-0 bottom-full mb-1 rounded-lg border border-border/60 bg-popover p-1 shadow-lg">
-            {slashMatches.map((cmd, i) => (
+            {slashMatches.map((slashCommand, i) => (
               <button
-                key={cmd.name}
+                key={slashCommand.name}
                 type="button"
                 className={cn(
                   'flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm',
@@ -270,24 +270,24 @@ export default function ChatInput({
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  const el = textareaRef.current;
-                  if (el) {
-                    if (cmd.hasArg) {
-                      el.value = `/${cmd.name} `;
+                  const textarea = textareaRef.current;
+                  if (textarea) {
+                    if (slashCommand.hasArg) {
+                      textarea.value = `/${slashCommand.name} `;
                       setSlashMatches([]);
                       handleInput();
-                      el.focus();
+                      textarea.focus();
                     } else {
-                      el.value = '';
-                      el.style.height = 'auto';
+                      textarea.value = '';
+                      textarea.style.height = 'auto';
                       setSlashMatches([]);
-                      onSlashCommand(cmd.name, '');
+                      onSlashCommand(slashCommand.name, '');
                     }
                   }
                 }}
               >
-                <span className="font-mono text-foreground">/{cmd.name}</span>
-                <span className="text-muted-foreground">{cmd.description}</span>
+                <span className="font-mono text-foreground">/{slashCommand.name}</span>
+                <span className="text-muted-foreground">{slashCommand.description}</span>
               </button>
             ))}
           </div>
@@ -617,6 +617,7 @@ function formatModelDetails(model: ModelInfo): string {
 }
 
 function isThinkingLevel(level: string): level is ThinkingLevel {
+  // Cast required: TS Array.includes() signature doesn't accept supertype
   return THINKING_LEVEL_VALUES.includes(level as ThinkingLevel);
 }
 

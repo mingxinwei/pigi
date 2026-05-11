@@ -284,15 +284,17 @@ function App(): React.JSX.Element {
       transcriptControllerRef.current?.clearLocalQueue();
       try {
         const result = await clearQueue(activeSessionId);
-        const steeringMsgs = [...(result.steering ?? [])];
-        const followUpMsgs = [...(result.followUp ?? [])];
-        const editedMsg =
-          type === 'steer' ? steeringMsgs.splice(index, 1)[0] : followUpMsgs.splice(index, 1)[0];
+        const steeringMessages = [...(result.steering ?? [])];
+        const followUpMessages = [...(result.followUp ?? [])];
+        const editedMessage =
+          type === 'steer'
+            ? steeringMessages.splice(index, 1)[0]
+            : followUpMessages.splice(index, 1)[0];
         // Re-queue remaining
-        for (const msg of steeringMsgs) await steer(activeSessionId, msg);
-        for (const msg of followUpMsgs) await followUp(activeSessionId, msg);
+        for (const message of steeringMessages) await steer(activeSessionId, message);
+        for (const message of followUpMessages) await followUp(activeSessionId, message);
         // Restore edited message to input
-        if (editedMsg) setRestoreText(editedMsg);
+        if (editedMessage) setRestoreText(editedMessage);
       } catch (err) {
         console.error('Failed to edit queued message:', err);
       }

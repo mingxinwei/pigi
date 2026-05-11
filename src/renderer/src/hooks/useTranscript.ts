@@ -89,39 +89,41 @@ function ensureSessionSubscription(sessionId: string, controller: TranscriptCont
     return;
   }
 
-  const unsubPush = onPush(sessionId, (msg: PiPush) => {
-    switch (msg.type) {
+  const unsubPush = onPush(sessionId, (pushMessage: PiPush) => {
+    switch (pushMessage.type) {
       case 'session_ready':
         // Update app store with metadata
         useAppStore.getState().updateSession(sessionId, {
-          model: msg.model,
-          thinkingLevel: msg.thinkingLevel,
-          contextUsage: msg.contextUsage,
-          autoCompactionEnabled: msg.autoCompactionEnabled,
+          model: pushMessage.model,
+          thinkingLevel: pushMessage.thinkingLevel,
+          contextUsage: pushMessage.contextUsage,
+          autoCompactionEnabled: pushMessage.autoCompactionEnabled,
           status: controller.state.status,
         });
         break;
 
       case 'session_error':
-        useAppStore.getState().updateSession(sessionId, { error: msg.error, status: 'error' });
+        useAppStore
+          .getState()
+          .updateSession(sessionId, { error: pushMessage.error, status: 'error' });
         break;
 
       case 'status_sync':
-        controller.setStatus(msg.isStreaming ? 'streaming' : 'idle');
+        controller.setStatus(pushMessage.isStreaming ? 'streaming' : 'idle');
         useAppStore.getState().updateSession(sessionId, { status: controller.state.status });
         break;
 
       case 'event':
-        controller.processEvent(msg.event);
+        controller.processEvent(pushMessage.event);
         useAppStore.getState().updateSession(sessionId, { status: controller.state.status });
         break;
 
       case 'error':
-        console.error(`[session ${sessionId}] error:`, msg.error);
+        console.error(`[session ${sessionId}] error:`, pushMessage.error);
         break;
 
       case 'login_open_url':
-        window.piApi.openExternal(msg.url);
+        window.piApi.openExternal(pushMessage.url);
         break;
 
       case 'login_complete':

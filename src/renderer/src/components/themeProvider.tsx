@@ -25,6 +25,7 @@ function isTheme(value: string | null): value is Theme {
     return false;
   }
 
+  // Cast required: TS Array.includes() signature doesn't accept supertype
   return THEME_VALUES.includes(value as Theme);
 }
 

@@ -1,11 +1,12 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconArrowDown, IconCopy, IconCheck } from '@tabler/icons-react';
-import type {
-  TranscriptNode,
-  AssistantNode,
-  ToolNode,
-  UserNode,
+import {
+  type TranscriptNode,
+  type AssistantNode,
+  type ToolNode,
+  type UserNode,
+  getToolArgs,
 } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
@@ -74,26 +75,26 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
   // detects when content height changes (virtualizer spacer div grows).
   // Stable effect — never re-created.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    let lastScrollHeight = el.scrollHeight;
+    let lastScrollHeight = container.scrollHeight;
     let pendingRaf = 0;
 
     function scrollToBottom(): void {
       if (!autoScrollRef.current) return;
-      el!.scrollTop = el!.scrollHeight;
+      container!.scrollTop = container!.scrollHeight;
     }
 
     const ro = new ResizeObserver(() => {
-      if (el!.scrollHeight !== lastScrollHeight) {
-        lastScrollHeight = el!.scrollHeight;
+      if (container!.scrollHeight !== lastScrollHeight) {
+        lastScrollHeight = container!.scrollHeight;
         if (pendingRaf) cancelAnimationFrame(pendingRaf);
         pendingRaf = requestAnimationFrame(scrollToBottom);
       }
     });
     // Observe the first child (the content wrapper whose height changes)
-    const content = el.firstElementChild;
+    const content = container.firstElementChild;
     if (content) ro.observe(content);
 
     // Also observe the container itself — when it shrinks (e.g. StreamingQueue appears)
@@ -104,25 +105,26 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         pendingRaf = requestAnimationFrame(scrollToBottom);
       }
     });
-    containerRo.observe(el);
+    containerRo.observe(container);
 
     function handleWheel(event: WheelEvent): void {
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
-      } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(el!)) {
+      } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(container!)) {
         autoScrollRef.current = true;
       }
     }
 
     function handleScroll(): void {
-      const distanceFromBottom = el!.scrollHeight - el!.scrollTop - el!.clientHeight;
+      const distanceFromBottom =
+        container!.scrollHeight - container!.scrollTop - container!.clientHeight;
       setShowScrollButton(
-        distanceFromBottom > el!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER,
+        distanceFromBottom > container!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER,
       );
     }
 
-    el.addEventListener('wheel', handleWheel, { capture: true, passive: true });
-    el.addEventListener('scroll', handleScroll, { passive: true });
+    container.addEventListener('wheel', handleWheel, { capture: true, passive: true });
+    container.addEventListener('scroll', handleScroll, { passive: true });
 
     scrollToBottom();
 
@@ -130,18 +132,18 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       ro.disconnect();
       containerRo.disconnect();
       if (pendingRaf) cancelAnimationFrame(pendingRaf);
-      el.removeEventListener('wheel', handleWheel, { capture: true });
-      el.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', handleWheel, { capture: true });
+      container.removeEventListener('scroll', handleScroll);
     };
   }, []);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   function handleScrollToBottom(): void {
-    const el = containerRef.current;
-    if (!el) return;
+    const container = containerRef.current;
+    if (!container) return;
     autoScrollRef.current = true;
-    el.scrollTop = el.scrollHeight;
+    container.scrollTop = container.scrollHeight;
     setShowScrollButton(false);
   }
 
@@ -211,8 +213,11 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
   }
 }
 
-function isAtBottom(el: HTMLDivElement): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_BOTTOM_THRESHOLD;
+function isAtBottom(container: HTMLDivElement): boolean {
+  return (
+    container.scrollHeight - container.scrollTop - container.clientHeight <
+    AUTO_SCROLL_BOTTOM_THRESHOLD
+  );
 }
 
 function estimateUserHeight(text: string): number {
@@ -264,7 +269,7 @@ function countLines(text: string): number {
 }
 
 function estimateToolCommandLineCount(node: ToolNode): number {
-  const args = node.args as Record<string, unknown> | undefined;
+  const args = getToolArgs(node);
   const command =
     node.name === 'bash'
       ? `$ ${String(args?.command ?? '')}`

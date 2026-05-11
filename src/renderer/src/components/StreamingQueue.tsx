@@ -70,28 +70,28 @@ export default function StreamingQueue({
   // Build list of all bars with stable keys
   const bars: { key: string; node: React.ReactNode }[] = [];
 
-  queuedSteering.forEach((msg, i) => {
+  queuedSteering.forEach((message, i) => {
     bars.push({
       key: `steer-${i}`,
       node: (
         <QueuedMessageBar
           label="Steer"
           labelClassName="text-yellow-600"
-          message={msg}
+          message={message}
           onEdit={() => onEditQueuedMessage('steer', i)}
         />
       ),
     });
   });
 
-  queuedFollowUp.forEach((msg, i) => {
+  queuedFollowUp.forEach((message, i) => {
     bars.push({
       key: `followUp-${i}`,
       node: (
         <QueuedMessageBar
           label="Follow-up"
           labelClassName="text-blue-500"
-          message={msg}
+          message={message}
           onEdit={() => onEditQueuedMessage('followUp', i)}
         />
       ),

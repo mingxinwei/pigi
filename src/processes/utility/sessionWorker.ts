@@ -5,8 +5,8 @@ import type {
   SessionWorkerResponse,
 } from '../../shared/ipcContract';
 
-function sendToMain(msg: SessionWorkerResponse): void {
-  process.parentPort?.postMessage(msg);
+function sendToMain(response: SessionWorkerResponse): void {
+  process.parentPort?.postMessage(response);
 }
 
 function serializeSessionInfo(session: SessionInfo): PiSessionInfo {
@@ -34,46 +34,51 @@ async function listProjectSessions(requestId: string, cwd: string): Promise<void
       success: true,
       sessions: sessions.map(serializeSessionInfo),
     });
-  } catch (err) {
+  } catch (error) {
     sendToMain({
       type: 'project_sessions_chunk',
       requestId,
       cwd,
       success: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
 process.parentPort?.on('message', async (messageEvent) => {
-  const cmd = messageEvent.data as SessionWorkerCommand;
+  // parentPort only receives SessionWorkerCommand from main — safe narrowing
+  const command: SessionWorkerCommand = messageEvent.data;
 
-  switch (cmd.type) {
+  switch (command.type) {
     case 'list_project_sessions': {
-      await Promise.all(cmd.cwds.map((cwd) => listProjectSessions(cmd.requestId, cwd)));
+      await Promise.all(command.cwds.map((cwd) => listProjectSessions(command.requestId, cwd)));
       break;
     }
     case 'rename_session': {
-      const trimmedName = cmd.name?.trim();
+      const trimmedName = command.name?.trim();
       if (!trimmedName) {
         sendToMain({
           type: 'rename_session_result',
-          requestId: cmd.requestId,
+          requestId: command.requestId,
           success: false,
           error: 'name must be a non-empty string',
         });
         break;
       }
       try {
-        const sm = SessionManager.open(cmd.sessionPath);
-        sm.appendSessionInfo(trimmedName);
-        sendToMain({ type: 'rename_session_result', requestId: cmd.requestId, success: true });
-      } catch (err) {
+        const sessionManager = SessionManager.open(command.sessionPath);
+        sessionManager.appendSessionInfo(trimmedName);
         sendToMain({
           type: 'rename_session_result',
-          requestId: cmd.requestId,
+          requestId: command.requestId,
+          success: true,
+        });
+      } catch (error) {
+        sendToMain({
+          type: 'rename_session_result',
+          requestId: command.requestId,
           success: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: error instanceof Error ? error.message : String(error),
         });
       }
       break;

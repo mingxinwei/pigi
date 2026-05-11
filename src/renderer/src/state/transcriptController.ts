@@ -767,7 +767,6 @@ export class TranscriptController {
     // Finalize the assistant node
     assistant.isStreaming = false;
     assistant.stopReason = endMessage.stopReason;
-    assistant.errorMessage = endMessage.errorMessage;
     assistant.model = endMessage.model?.name;
     assistant.provider = endMessage.model?.provider;
 
@@ -776,6 +775,29 @@ export class TranscriptController {
       const { text, thinking } = extractAssistantContent(endMessage.content);
       if (text) assistant.text = text;
       if (thinking) assistant.thinking = thinking;
+    }
+
+    // If there's an error message and tool nodes exist after the assistant node,
+    // append a separate error assistant node at the end to preserve visual ordering.
+    if (endMessage.errorMessage) {
+      const assistantIndex = this._state.nodes.indexOf(assistant);
+      const hasToolsAfter = this._state.nodes.slice(assistantIndex + 1).some((n) => isToolNode(n));
+      if (hasToolsAfter) {
+        const errorNode: AssistantNode = {
+          id: nextNodeId(),
+          role: 'assistant',
+          text: '',
+          thinking: '',
+          errorMessage: endMessage.errorMessage,
+          isStreaming: false,
+        };
+        this.setState({
+          nodes: [...this._state.nodes, errorNode],
+          activeAssistantId: null,
+        });
+        return;
+      }
+      assistant.errorMessage = endMessage.errorMessage;
     }
 
     this.setState({
@@ -869,6 +891,23 @@ export class TranscriptController {
     const assistant = this.getActiveAssistant();
     if (assistant && assistant.isStreaming) {
       assistant.isStreaming = false;
+    }
+
+    // Finalize any tool nodes still in 'running' state (e.g. abort during tool execution)
+    let toolsFinalized = false;
+    const nodes = this._state.nodes.map((n) => {
+      if (isToolNode(n) && n.status === 'running') {
+        toolsFinalized = true;
+        return {
+          ...n,
+          status: 'cancelled' as const,
+          durationMs: getElapsedMs(n.startedAt, Date.now()),
+        };
+      }
+      return n;
+    });
+    if (toolsFinalized) {
+      this._state.nodes = nodes;
     }
   }
 }

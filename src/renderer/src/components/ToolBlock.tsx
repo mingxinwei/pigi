@@ -73,17 +73,16 @@ const STATUS_CONFIG = {
   },
 } as const;
 
-function ElapsedTimer(): React.JSX.Element {
-  const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(0);
+function ElapsedTimer({ startedAt }: { startedAt?: number }): React.JSX.Element {
+  const [startMs] = useState(() => startedAt ?? Date.now());
+  const [elapsed, setElapsed] = useState(() => (Date.now() - startMs) / 1000);
 
   useEffect(() => {
-    startRef.current = Date.now();
     const interval = setInterval(() => {
-      setElapsed((Date.now() - startRef.current) / 1000);
+      setElapsed((Date.now() - startMs) / 1000);
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [startMs]);
 
   return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>;
 }
@@ -365,7 +364,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           )}
         >
           {node.status === 'running' ? (
-            <ElapsedTimer />
+            <ElapsedTimer startedAt={node.startedAt} />
           ) : (
             <>{durationLabel && <span>{durationLabel}</span>}</>
           )}

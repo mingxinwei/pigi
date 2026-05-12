@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Remove pi-mono reference from AGENTS.md, add changelog update workflow rule.
-
 ## [0.2.0] - 2026-05-11
 
 ### Added

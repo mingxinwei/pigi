@@ -3,7 +3,7 @@
 ## Workflow
 
 - Do NOT commit automatically after changes; wait for explicit commit instruction
-- After committing, add a changelog entry under `## [Unreleased]` in `CHANGELOG.md` describing the change
+- After committing, add a user-facing changelog entry under `## [Unreleased]` in `CHANGELOG.md` if the commit introduces a new feature or fixes a bug. Use sections `### Added`, `### Changed`, or `### Fixed`. Skip for internal-only changes (docs, tooling, refactors with no user impact).
 - Commit messages must use conventional commits format (e.g. `fix:`, `feat:`, `refactor:`, `chore:`)
 - If the change is non-trivial, include bullet points in the commit body describing what was done in detail
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change

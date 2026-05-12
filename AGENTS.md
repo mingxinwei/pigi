@@ -1,8 +1,14 @@
 # Development Rules
 
-## Development Environment
+## Workflow
 
-- pi SDK source: `/Users/mwei2/PersonalCode/pi-mono`
+- Do NOT commit automatically after changes; wait for explicit commit instruction
+- After committing, add a changelog entry under `## [Unreleased]` in `CHANGELOG.md` describing the change
+- Commit messages must use conventional commits format (e.g. `fix:`, `feat:`, `refactor:`, `chore:`)
+- If the change is non-trivial, include bullet points in the commit body describing what was done in detail
+- Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
+- Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
+- Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.
 
 ## Conversational Style
 
@@ -29,12 +35,3 @@
 - No abbreviated variable/function names — use full descriptive names for readability (e.g. `message` not `msg`, `command` not `cmd`, `callback` not `cb`, `sessionPort` not `sp`, `index` not `idx`). Common terms like `id`, `url`, `api` are fine.
 - IPC channel names use snake_case with `pi:` prefix, defined in `src/shared/ipcChannels.ts` (no magic strings)
 - No magic strings anywhere in the codebase; use constants, enums, or registries. If a magic string seems unavoidable, ask the user first.
-
-## Workflow
-
-- Do NOT commit automatically after changes; wait for explicit commit instruction
-- Commit messages must use conventional commits format (e.g. `fix:`, `feat:`, `refactor:`, `chore:`)
-- If the change is non-trivial, include bullet points in the commit body describing what was done in detail
-- Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
-- Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
-- Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.

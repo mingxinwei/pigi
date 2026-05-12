@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { IconLoader2 } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
@@ -127,6 +127,7 @@ interface SessionListProps {
   selectedSessionId: string | null;
   relativeTimeBase: number;
   isExpanded: boolean;
+  visibleWhenCollapsedSessionIds?: Set<string>;
   onSwitchSession: (sessionId: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onRenameSession: (sessionId: string, name: string) => void;
@@ -138,6 +139,7 @@ export function SessionList({
   selectedSessionId,
   relativeTimeBase,
   isExpanded,
+  visibleWhenCollapsedSessionIds,
   onSwitchSession,
   onResumeSession,
   onRenameSession,
@@ -145,8 +147,22 @@ export function SessionList({
   const [showAll, setShowAll] = useState(false);
   const visibleSessionCount = 5;
 
-  const visibleSessions = showAll ? projectSessions : projectSessions.slice(0, visibleSessionCount);
-  const hiddenCount = projectSessions.length - visibleSessions.length;
+  const isCollapsedWithPinned =
+    !isExpanded && visibleWhenCollapsedSessionIds && visibleWhenCollapsedSessionIds.size > 0;
+
+  // When collapsed with pinned sessions, show only those.
+  // When expanded, show all with pagination.
+  const sessionsToRender = useMemo(() => {
+    if (isCollapsedWithPinned) {
+      return projectSessions.filter((s) => visibleWhenCollapsedSessionIds!.has(s.id));
+    }
+    return projectSessions;
+  }, [projectSessions, isCollapsedWithPinned, visibleWhenCollapsedSessionIds]);
+
+  const visibleSessions = showAll
+    ? sessionsToRender
+    : sessionsToRender.slice(0, visibleSessionCount);
+  const hiddenCount = sessionsToRender.length - visibleSessions.length;
 
   function handleSessionSwitch(session: PiSessionInfo): void {
     if (session.path) {
@@ -156,11 +172,13 @@ export function SessionList({
     }
   }
 
+  const showList = isExpanded || isCollapsedWithPinned;
+
   return (
     <div
-      aria-hidden={!isExpanded}
+      aria-hidden={!showList}
       className={
-        isExpanded
+        showList
           ? 'grid grid-rows-[1fr] translate-y-0 opacity-100 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
           : 'grid grid-rows-[0fr] -translate-y-1 opacity-0 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]'
       }
@@ -189,7 +207,7 @@ export function SessionList({
               />
             ))
           )}
-          {hiddenCount > 0 && (
+          {hiddenCount > 0 && !isCollapsedWithPinned && (
             <SidebarMenuSubItem>
               <SidebarMenuSubButton
                 asChild
@@ -201,7 +219,7 @@ export function SessionList({
               </SidebarMenuSubButton>
             </SidebarMenuSubItem>
           )}
-          {showAll && projectSessions.length > visibleSessionCount && (
+          {showAll && sessionsToRender.length > visibleSessionCount && !isCollapsedWithPinned && (
             <SidebarMenuSubItem>
               <SidebarMenuSubButton
                 asChild
@@ -216,60 +234,5 @@ export function SessionList({
         </SidebarMenuSub>
       </div>
     </div>
-  );
-}
-
-interface RunningSessionsCollapsedProps {
-  sessions: Map<string, SessionEntry>;
-  projectSessions: PiSessionInfo[];
-  selectedSessionId: string | null;
-  onSwitchSession: (sessionId: string) => void;
-  onResumeSession: (session: PiSessionInfo) => void;
-}
-
-export function RunningSessionsCollapsed({
-  sessions,
-  projectSessions,
-  selectedSessionId,
-  onSwitchSession,
-  onResumeSession,
-}: RunningSessionsCollapsedProps): React.JSX.Element | null {
-  const runningSessions = projectSessions.filter((s) => isSessionRunning(s.id, sessions));
-  if (runningSessions.length === 0) return null;
-
-  return (
-    <SidebarMenuSub className="mx-0 border-l-0 px-0">
-      {runningSessions.map((session) => {
-        const isActive = session.id === selectedSessionId;
-        return (
-          <SidebarMenuSubItem key={session.path || session.id}>
-            <SidebarMenuSubButton
-              asChild
-              isActive={isActive}
-              className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (session.path) {
-                    onResumeSession(session);
-                  } else {
-                    onSwitchSession(session.id);
-                  }
-                }}
-              >
-                <span
-                  className="min-w-0 flex-1 truncate text-left"
-                  title={getSessionTitle(session)}
-                >
-                  {getSessionTitle(session)}
-                </span>
-                <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-spin text-green-500" />
-              </button>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        );
-      })}
-    </SidebarMenuSub>
   );
 }

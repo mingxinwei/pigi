@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { IconFolderPlus, IconPlus } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
+import { isSessionRunning } from './utils';
 import { TooltipProvider } from '../ui/tooltip';
 import {
   Sidebar as ShadcnSidebar,
@@ -33,6 +34,9 @@ export default function Sidebar({
   onRenameSession,
 }: SidebarProps): React.JSX.Element {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [visibleWhenCollapsedSessionIds, setVisibleWhenCollapsedSessionIds] = useState<
+    Record<string, Set<string>>
+  >({});
   const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now());
 
   useEffect(() => {
@@ -66,17 +70,44 @@ export default function Sidebar({
     [projectSessions, sessions],
   );
 
-  const toggleProjectExpand = useCallback((projectPath: string) => {
-    setExpandedProjects((current) => {
-      const next = new Set(current);
-      if (next.has(projectPath)) {
-        next.delete(projectPath);
-      } else {
-        next.add(projectPath);
-      }
-      return next;
-    });
-  }, []);
+  const toggleProjectExpand = useCallback(
+    (projectPath: string) => {
+      setExpandedProjects((current) => {
+        const next = new Set(current);
+        if (next.has(projectPath)) {
+          // Collapsing: snapshot currently-running session IDs so they stay visible.
+          next.delete(projectPath);
+          const runningIds = new Set(
+            getProjectSessions(projectPath)
+              .filter((s) => isSessionRunning(s.id, sessions))
+              .map((s) => s.id),
+          );
+          if (runningIds.size > 0) {
+            setVisibleWhenCollapsedSessionIds((prev) => ({
+              ...prev,
+              [projectPath]: runningIds,
+            }));
+          } else {
+            setVisibleWhenCollapsedSessionIds((prev) => {
+              const nextState = { ...prev };
+              delete nextState[projectPath];
+              return nextState;
+            });
+          }
+        } else {
+          // Expanding: clear the snapshot for this project.
+          next.add(projectPath);
+          setVisibleWhenCollapsedSessionIds((prev) => {
+            const nextState = { ...prev };
+            delete nextState[projectPath];
+            return nextState;
+          });
+        }
+        return next;
+      });
+    },
+    [getProjectSessions, sessions],
+  );
 
   const handleNewSessionForProject = useCallback(
     (projectPath: string) => {
@@ -133,6 +164,7 @@ export default function Sidebar({
                 selectedSessionId={selectedSessionId}
                 relativeTimeBase={relativeTimeBase}
                 expandedProjects={expandedProjects}
+                visibleWhenCollapsedSessionIdsByPath={visibleWhenCollapsedSessionIds}
                 onToggleProjectExpand={toggleProjectExpand}
                 onSelectProject={onSelectProject}
                 onNewSessionForProject={handleNewSessionForProject}

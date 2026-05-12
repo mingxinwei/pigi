@@ -22,7 +22,7 @@ import {
   SettingsManager,
   type WriteToolInput,
   type EditToolInput,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import type {
   ModelInfo,
   PiCommand,

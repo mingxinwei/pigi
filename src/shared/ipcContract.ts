@@ -1,4 +1,4 @@
-import type { EditToolInput, WriteToolInput } from '@mariozechner/pi-coding-agent';
+import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-agent';
 
 /**
  * IPC Contract - single source of truth for all inter-process communication.

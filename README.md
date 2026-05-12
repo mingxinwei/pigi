@@ -1,15 +1,14 @@
 # pigi
 
-*A sleek, high-performance GUI for pi.*
+<img src="./build/icon.png" width="128" alt="app icon" />
 
-pigi is a desktop GUI for [pi](https://github.com/earendil-works/pi).
+_A sleek, high-performance GUI for [pi](https://github.com/earendil-works/pi)._
 
 - Clean, elegant UI that stays out of your way.
 - Faithful to the original pi experience.
 - High-performance rendering, no compromises.
 
-![alt text](./resources/hello-pigi.png)
----
+## ![hello pigi](./resources/hello-pigi.jpg)
 
 ## Installation
 

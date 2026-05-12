@@ -10,7 +10,7 @@
 <h1 align="center">pigi</h1>
 
 <p align="center">
-  <strong>A sleek, high-performance desktop GUI for <a href="https://pi.dev">pi</a></strong>
+  <strong>A decent desktop GUI for <a href="https://pi.dev">pi</a></strong>
 </p>
 
 ---
@@ -20,6 +20,8 @@
 - Clean, elegant UI that stays out of your way
 - Faithful to the original pi experience
 - High-performance rendering, no compromises
+
+![hello pigi](./resources/hello-pigi.jpg)
 
 ## Install
 

@@ -1,4 +1,4 @@
-import { type SessionInfo, SessionManager } from '@mariozechner/pi-coding-agent';
+import { type SessionInfo, SessionManager } from '@earendil-works/pi-coding-agent';
 import type {
   PiSessionInfo,
   SessionWorkerCommand,

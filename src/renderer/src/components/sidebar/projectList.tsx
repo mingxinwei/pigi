@@ -10,7 +10,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
 } from '../ui/context-menu';
-import { SessionList, RunningSessionsCollapsed } from './sessionList';
+import { SessionList } from './sessionList';
 
 const NEW_PROJECT_SESSION_LABEL = 'New chat';
 
@@ -18,6 +18,7 @@ interface ProjectItemProps {
   project: ProjectDirectory;
   sessions: Map<string, SessionEntry>;
   projectSessions: PiSessionInfo[];
+  visibleWhenCollapsedSessionIds: Set<string>;
   selectedSessionId: string | null;
   relativeTimeBase: number;
   isExpanded: boolean;
@@ -39,6 +40,7 @@ function ProjectItem({
   project,
   sessions,
   projectSessions,
+  visibleWhenCollapsedSessionIds,
   selectedSessionId,
   relativeTimeBase,
   isExpanded,
@@ -111,23 +113,13 @@ function ProjectItem({
             <span className="sr-only">{NEW_PROJECT_SESSION_LABEL}</span>
           </SidebarMenuAction>
 
-          {/* Show running sessions when project is collapsed */}
-          {!isExpanded && (
-            <RunningSessionsCollapsed
-              sessions={sessions}
-              projectSessions={projectSessions}
-              selectedSessionId={selectedSessionId}
-              onSwitchSession={onSwitchSession}
-              onResumeSession={onResumeSession}
-            />
-          )}
-
           <SessionList
             sessions={sessions}
             projectSessions={projectSessions}
             selectedSessionId={selectedSessionId}
             relativeTimeBase={relativeTimeBase}
             isExpanded={isExpanded}
+            visibleWhenCollapsedSessionIds={visibleWhenCollapsedSessionIds}
             onSwitchSession={onSwitchSession}
             onResumeSession={onResumeSession}
             onRenameSession={onRenameSession}
@@ -147,6 +139,7 @@ interface ProjectListProps {
   selectedSessionId: string | null;
   relativeTimeBase: number;
   expandedProjects: Set<string>;
+  visibleWhenCollapsedSessionIdsByPath: Record<string, Set<string>>;
   onToggleProjectExpand: (path: string) => void;
   onSelectProject: (path: string) => void;
   onNewSessionForProject: (path: string) => void;
@@ -165,6 +158,7 @@ export function ProjectList({
   selectedSessionId,
   relativeTimeBase,
   expandedProjects,
+  visibleWhenCollapsedSessionIdsByPath,
   onToggleProjectExpand,
   onSelectProject,
   onNewSessionForProject,
@@ -238,6 +232,9 @@ export function ProjectList({
           project={project}
           sessions={sessions}
           projectSessions={getProjectSessions(project.path)}
+          visibleWhenCollapsedSessionIds={
+            visibleWhenCollapsedSessionIdsByPath[project.path] ?? new Set()
+          }
           selectedSessionId={selectedSessionId}
           relativeTimeBase={relativeTimeBase}
           isExpanded={expandedProjects.has(project.path)}

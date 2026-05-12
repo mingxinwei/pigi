@@ -13,6 +13,7 @@
 
 ## Code Quality
 
+- **NEVER add eslint-disable comments** — restructure code to satisfy lint rules instead. The only exception is when there is a genuine false positive with no architectural workaround, and must be approved by the user first.
 - No `any` types unless absolutely necessary
 - No `as` type assertions unless absolutely necessary (use type guards, typed variables, or discriminated unions). When `as` is unavoidable (e.g. untyped SDK data, TS `Array.includes` limitation, `React.CSSProperties` for custom CSS vars), add a comment explaining why.
 - Check node_modules for external API type definitions instead of guessing

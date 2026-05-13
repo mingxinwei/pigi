@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Empty state screen when no session is active, replacing the chat input. First-time users see "Welcome to pigi" with a shortcut hint (Cmd+O) to open a project. Returning users see "No session open" with a prompt to select from the sidebar.
+- Global Cmd+O keyboard shortcut to open a project directory.
+
+### Changed
+
+- Chat input, message list, and streaming queue are now hidden when no session is open.
+
 ## [0.2.0] - 2026-05-11
 
 ### Added

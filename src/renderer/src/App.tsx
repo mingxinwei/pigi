@@ -47,6 +47,14 @@ import ChatInput from './components/ChatInput';
 import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
 import { SidebarProvider } from './components/ui/sidebar';
+import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+  return target.isContentEditable;
+}
 
 function App(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(244);
@@ -400,6 +408,18 @@ function App(): React.JSX.Element {
     }
   }, [refreshProjectSessions, setActiveSession]);
 
+  // Global Cmd+O to open project
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'o' && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        void handleOpenProject();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleOpenProject]);
+
   const handleSelectProject = useCallback(async (path: string) => {
     const result = await setActiveProject(path);
     if (result.success) {
@@ -572,29 +592,57 @@ function App(): React.JSX.Element {
           className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize"
           onPointerDown={handleSidebarResizeStart}
         />
-        <MessageList nodes={transcript.nodes} />
-        <StreamingQueue
-          isStreaming={transcript.status !== 'idle'}
-          queuedSteering={transcript.queuedSteering}
-          queuedFollowUp={transcript.queuedFollowUp}
-          onEditQueuedMessage={handleEditQueuedMessage}
-        />
-        <ChatInput
-          onSend={handleSend}
-          onFollowUp={handleFollowUp}
-          onAbort={handleAbort}
-          onSlashCommand={handleSlashCommand}
-          isStreaming={transcript.status !== 'idle'}
-          gitBranch={gitBranch}
-          restoreText={restoreText}
-          onRestoredText={handleRestoredText}
-          onRefreshGitBranch={refreshGitBranch}
-          session={activeSession}
-          modelOptions={activeSessionId ? modelOptions : []}
-          thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}
-          onSelectModel={handleSelectModel}
-          onSelectThinkingLevel={handleSelectThinkingLevel}
-        />
+        {activeSession ? (
+          <>
+            <MessageList nodes={transcript.nodes} />
+            <StreamingQueue
+              isStreaming={transcript.status !== 'idle'}
+              queuedSteering={transcript.queuedSteering}
+              queuedFollowUp={transcript.queuedFollowUp}
+              onEditQueuedMessage={handleEditQueuedMessage}
+            />
+            <ChatInput
+              onSend={handleSend}
+              onFollowUp={handleFollowUp}
+              onAbort={handleAbort}
+              onSlashCommand={handleSlashCommand}
+              isStreaming={transcript.status !== 'idle'}
+              gitBranch={gitBranch}
+              restoreText={restoreText}
+              onRestoredText={handleRestoredText}
+              onRefreshGitBranch={refreshGitBranch}
+              session={activeSession}
+              modelOptions={activeSessionId ? modelOptions : []}
+              thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}
+              onSelectModel={handleSelectModel}
+              onSelectThinkingLevel={handleSelectThinkingLevel}
+            />
+          </>
+        ) : recentProjects.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle className="text-xl">Welcome to pigi</EmptyTitle>
+              <EmptyDescription>
+                Open a project to get started
+                <br />
+                {/* TODO: Use Ctrl instead of ⌘ on Windows/Linux */}
+                <kbd className="inline-flex items-center justify-center rounded border border-border bg-muted px-2 py-0 font-mono text-xs ml-1 min-w-6">
+                  {'\u2318'}
+                </kbd>
+                <kbd className="inline-flex items-center justify-center rounded border border-border bg-muted px-2 py-0 font-mono text-xs ml-1 min-w-6">
+                  o
+                </kbd>
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle className="text-xl">No session open</EmptyTitle>
+              <EmptyDescription>Select a session from the sidebar to get started.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
       </main>
 
       <LoginDialog

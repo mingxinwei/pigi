@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
+
 ## [0.2.1] - 2026-05-15
 
 ### Added

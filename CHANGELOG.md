@@ -6,6 +6,10 @@
 
 - Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
 
+### Changed
+
+- Unify empty-state branding: session-empty screen now shows "Welcome to pigi" instead of "No session open", matching the project-empty screen.
+
 ## [0.2.1] - 2026-05-15
 
 ### Added

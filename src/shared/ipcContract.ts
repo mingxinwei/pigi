@@ -250,6 +250,29 @@ export enum PiChannel {
   RenamePersistedSession = 'pi:rename_persisted_session',
   /** renderer → main: open a URL in the system browser */
   OpenExternal = 'pi:open_external',
+  /** renderer → main: get all keyboard shortcut definitions with current bindings */
+  GetShortcuts = 'pi:get_shortcuts',
+  /** renderer → main: update a keyboard shortcut binding */
+  SetShortcut = 'pi:set_shortcut',
+}
+
+// =============================================================================
+// Keyboard Shortcuts
+// =============================================================================
+
+export interface ShortcutBinding {
+  key: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+export interface ShortcutDefinition {
+  id: string;
+  label: string;
+  defaultBinding: ShortcutBinding;
+  binding: ShortcutBinding;
 }
 
 export interface ListProjectSessionsCommand {

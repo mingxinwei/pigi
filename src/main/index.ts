@@ -10,6 +10,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { createMainWindow } from './windows/createMainWindow';
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
 import { registerProjectHandlers } from './ipc/projectHandlers';
+import { registerShortcutHandlers } from './ipc/shortcutHandlers';
 import { PiChannel } from '../shared/ipcContract';
 import { configureDebugPanel } from './debugConfig';
 import { initializeShellEnv } from './processes/shellEnvResolver';
@@ -31,6 +32,7 @@ app.whenReady().then(() => {
   initializeShellEnv();
   registerIpcHandlers();
   registerProjectHandlers();
+  registerShortcutHandlers();
 
   ipcMain.on(PiChannel.OpenExternal, (_event, url: string) => {
     if (typeof url !== 'string') return;

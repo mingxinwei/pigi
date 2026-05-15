@@ -5,6 +5,7 @@ import type {
   PiSessionInfo,
   ProjectDirectory,
 } from '../../../shared/ipcContract';
+import type { Platform } from '../../../shared/platform';
 import type { AgentStatus } from './transcriptController';
 
 export type { AgentStatus };
@@ -45,6 +46,10 @@ interface AppState {
   // Sidebar
   sidebarExpanded: boolean;
   toggleSidebar: () => void;
+
+  // Platform
+  platform: Platform;
+  setPlatform: (platform: Platform) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -115,4 +120,8 @@ export const useAppStore = create<AppState>((set) => ({
   // Sidebar
   sidebarExpanded: true,
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
+
+  // Platform
+  platform: 'unknown',
+  setPlatform: (platform) => set({ platform }),
 }));

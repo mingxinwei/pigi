@@ -1,6 +1,8 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useAppStore } from './state/appStore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { detectPlatform } from './lib/platform';
 import {
   disposeTranscriptSession,
   ensureTranscriptSession,
@@ -48,13 +50,6 @@ import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
 import { SidebarProvider } from './components/ui/sidebar';
 import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName.toLowerCase();
-  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
-  return target.isContentEditable;
-}
 
 function App(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(244);
@@ -139,6 +134,10 @@ function App(): React.JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    useAppStore.getState().setPlatform(detectPlatform());
+  }, []);
 
   useEffect(() => {
     return onProjectSessionsChunk((chunk) => {
@@ -408,17 +407,18 @@ function App(): React.JSX.Element {
     }
   }, [refreshProjectSessions, setActiveSession]);
 
-  // Global Cmd+O to open project
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'o' && !isEditableTarget(e.target)) {
-        e.preventDefault();
-        void handleOpenProject();
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleOpenProject]);
+  const shortcutActions = useMemo(
+    () => ({
+      'sidebar.newChat': () => {
+        handleNewSession();
+      },
+      'sidebar.openProject': () => {
+        handleOpenProject();
+      },
+    }),
+    [handleNewSession, handleOpenProject],
+  );
+  const shortcutBindings = useKeyboardShortcuts(shortcutActions);
 
   const handleSelectProject = useCallback(async (path: string) => {
     const result = await setActiveProject(path);
@@ -572,6 +572,7 @@ function App(): React.JSX.Element {
           selectedSessionId={selectedSessionId}
           recentProjects={recentProjects}
           projectSessions={projectSessions}
+          shortcutBindings={shortcutBindings}
           onNewSession={handleNewSession}
           onNewSessionForProject={handleNewSessionForProject}
           onSwitchSession={handleSwitchSession}

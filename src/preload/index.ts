@@ -20,6 +20,8 @@ import {
   type ProjectSessionsChunk,
   type ProjectStateResult,
   type SessionListResult,
+  type ShortcutBinding,
+  type ShortcutDefinition,
   type StreamBatch,
 } from '../shared/ipcContract';
 
@@ -360,6 +362,16 @@ const piApi = {
   openExternal: (url: string): void => {
     ipcRenderer.send(PiChannel.OpenExternal, url);
   },
+
+  /** Get all keyboard shortcut definitions with current bindings. */
+  getShortcuts: (): Promise<ShortcutDefinition[]> => ipcRenderer.invoke(PiChannel.GetShortcuts),
+
+  /** Update a keyboard shortcut binding. */
+  setShortcut: (
+    id: string,
+    binding: ShortcutBinding,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(PiChannel.SetShortcut, id, binding),
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

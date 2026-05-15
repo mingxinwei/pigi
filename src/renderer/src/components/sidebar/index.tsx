@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { IconFolderPlus, IconPlus } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
+import { formatShortcutLabel } from '../../shortcuts/formatShortcutLabel';
+import type { ShortcutBinding } from '../../../../shared/ipcContract';
+import { Kbd } from '../ui/kbd';
 import { isSessionRunning } from './utils';
 import { TooltipProvider } from '../ui/tooltip';
 import {
@@ -23,6 +26,7 @@ export default function Sidebar({
   selectedSessionId,
   recentProjects,
   projectSessions,
+  shortcutBindings,
   onNewSession,
   onNewSessionForProject,
   onSwitchSession,
@@ -137,12 +141,24 @@ export default function Sidebar({
               <SidebarMenuButton onClick={onNewSession}>
                 <IconPlus data-icon="inline-start" />
                 <span>New chat</span>
+                <Kbd className="ml-auto hidden shrink-0 group-hover/menu-item:inline-flex">
+                  {formatShortcutLabel(
+                    shortcutBindings?.get('sidebar.newChat') ??
+                      ({ key: 'n', meta: true } satisfies ShortcutBinding),
+                  )}
+                </Kbd>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={onOpenProject}>
                 <IconFolderPlus data-icon="inline-start" />
                 <span>Open project</span>
+                <Kbd className="ml-auto hidden shrink-0 group-hover/menu-item:inline-flex">
+                  {formatShortcutLabel(
+                    shortcutBindings?.get('sidebar.openProject') ??
+                      ({ key: 'o', meta: true } satisfies ShortcutBinding),
+                  )}
+                </Kbd>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

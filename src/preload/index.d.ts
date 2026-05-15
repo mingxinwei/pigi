@@ -6,6 +6,8 @@ import type {
   ProjectSessionsChunk,
   ProjectStateResult,
   SessionListResult,
+  ShortcutBinding,
+  ShortcutDefinition,
   StreamBatch,
 } from '../shared/ipcContract';
 
@@ -45,6 +47,13 @@ interface PiApi {
   // Utilities
   getCwd: () => string;
   openExternal: (url: string) => void;
+
+  // Keyboard shortcuts
+  getShortcuts: () => Promise<ShortcutDefinition[]>;
+  setShortcut: (
+    id: string,
+    binding: ShortcutBinding,
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

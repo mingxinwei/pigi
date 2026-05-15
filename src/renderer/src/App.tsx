@@ -1,6 +1,8 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useAppStore } from './state/appStore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { detectPlatform } from './lib/platform';
 import {
   disposeTranscriptSession,
   ensureTranscriptSession,
@@ -131,6 +133,10 @@ function App(): React.JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    useAppStore.getState().setPlatform(detectPlatform());
+  }, []);
 
   useEffect(() => {
     return onProjectSessionsChunk((chunk) => {
@@ -400,6 +406,19 @@ function App(): React.JSX.Element {
     }
   }, [refreshProjectSessions, setActiveSession]);
 
+  const shortcutActions = useMemo(
+    () => ({
+      'sidebar.newChat': () => {
+        handleNewSession();
+      },
+      'sidebar.openProject': () => {
+        handleOpenProject();
+      },
+    }),
+    [handleNewSession, handleOpenProject],
+  );
+  const shortcutBindings = useKeyboardShortcuts(shortcutActions);
+
   const handleSelectProject = useCallback(async (path: string) => {
     const result = await setActiveProject(path);
     if (result.success) {
@@ -552,6 +571,7 @@ function App(): React.JSX.Element {
           selectedSessionId={selectedSessionId}
           recentProjects={recentProjects}
           projectSessions={projectSessions}
+          shortcutBindings={shortcutBindings}
           onNewSession={handleNewSession}
           onNewSessionForProject={handleNewSessionForProject}
           onSwitchSession={handleSwitchSession}

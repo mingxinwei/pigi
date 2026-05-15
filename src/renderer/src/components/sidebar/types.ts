@@ -1,4 +1,5 @@
 import type { PiSessionInfo, ProjectDirectory } from '../../../../shared/ipcContract';
+import type { ShortcutBinding } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
 
 export interface SidebarProps {
@@ -6,6 +7,7 @@ export interface SidebarProps {
   selectedSessionId: string | null;
   recentProjects: ProjectDirectory[];
   projectSessions: Record<string, PiSessionInfo[]>;
+  shortcutBindings: Map<string, ShortcutBinding> | null;
   onNewSession: () => void;
   onNewSessionForProject: (path: string) => void;
   onSwitchSession: (sessionId: string) => void;

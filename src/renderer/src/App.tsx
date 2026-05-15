@@ -51,6 +51,8 @@ import LoginDialog from './components/LoginDialog';
 import { SidebarProvider } from './components/ui/sidebar';
 import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
 
+const WELCOME_TITLE = 'Welcome to pigi';
+
 function App(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(244);
   // Used only for immediate sidebar feedback while a persisted session is resuming.
@@ -622,7 +624,7 @@ function App(): React.JSX.Element {
         ) : recentProjects.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle className="text-xl">Welcome to pigi</EmptyTitle>
+              <EmptyTitle className="text-xl">{WELCOME_TITLE}</EmptyTitle>
               <EmptyDescription>
                 Open a project to get started
                 <br />
@@ -639,7 +641,7 @@ function App(): React.JSX.Element {
         ) : (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle className="text-xl">No session open</EmptyTitle>
+              <EmptyTitle className="text-xl">{WELCOME_TITLE}</EmptyTitle>
               <EmptyDescription>Select a session from the sidebar to get started.</EmptyDescription>
             </EmptyHeader>
           </Empty>

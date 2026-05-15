@@ -10,7 +10,7 @@
 <h1 align="center">pigi</h1>
 
 <p align="center">
-  <strong>A decent desktop GUI for <a href="https://pi.dev">pi</a></strong>
+  <strong>A sleek desktop GUI for <a href="https://pi.dev">pi</a></strong>
 </p>
 
 ---

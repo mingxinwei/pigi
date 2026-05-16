@@ -250,6 +250,8 @@ export enum PiChannel {
   RenamePersistedSession = 'pi:rename_persisted_session',
   /** renderer → main: open a URL in the system browser */
   OpenExternal = 'pi:open_external',
+  /** renderer → main: get system accent color */
+  GetAccentColor = 'pi:get_accent_color',
   /** renderer → main: get all keyboard shortcut definitions with current bindings */
   GetShortcuts = 'pi:get_shortcuts',
   /** renderer → main: update a keyboard shortcut binding */

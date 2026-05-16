@@ -37,7 +37,7 @@ const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a
       href={href}
-      className="underline underline-offset-2 cursor-pointer"
+      className="underline underline-offset-2"
       rel="noreferrer"
       onClick={(e) => {
         e.preventDefault();

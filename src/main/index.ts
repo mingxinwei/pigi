@@ -5,7 +5,7 @@
  * - Sessions are created on-demand from renderer
  * - Each session gets control/data MessagePorts for commands and streaming
  */
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, shell, systemPreferences } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { createMainWindow } from './windows/createMainWindow';
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
@@ -39,6 +39,13 @@ app.whenReady().then(() => {
     if (url.startsWith('https://') || url.startsWith('http://')) {
       shell.openExternal(url);
     }
+  });
+
+  ipcMain.handle(PiChannel.GetAccentColor, () => {
+    // macOS returns a hex string like '#007aff'. The 'accent' key works at runtime
+    // but is not included in Electron's type definitions for systemPreferences.getColor.
+    const accent = systemPreferences.getColor('accent' as never);
+    return typeof accent === 'string' ? accent : null;
   });
 
   createMainWindow();

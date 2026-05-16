@@ -155,7 +155,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         data-testid="message-list"
       >
         <div
-          className="mx-auto px-5 pb-8 pt-14"
+          className="mx-auto px-5 pb-8 pt-14 user-content"
           style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}

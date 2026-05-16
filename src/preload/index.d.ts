@@ -54,6 +54,7 @@ interface PiApi {
     id: string,
     binding: ShortcutBinding,
   ) => Promise<{ success: boolean; error?: string }>;
+  getAccentColor: () => Promise<string | null>;
 }
 
 declare global {

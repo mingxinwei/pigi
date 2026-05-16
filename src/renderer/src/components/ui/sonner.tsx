@@ -13,6 +13,8 @@ function Toaster({ ...props }: ToasterProps): React.JSX.Element {
     <Sonner
       theme="system"
       className="toaster group"
+      position="bottom-right"
+      gap={8}
       icons={{
         success: <IconCircleCheck className="size-4" />,
         info: <IconInfoCircle className="size-4" />,
@@ -24,14 +26,14 @@ function Toaster({ ...props }: ToasterProps): React.JSX.Element {
         {
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
+          '--normal-border': 'transparent',
           '--success-bg': 'color-mix(in oklab, var(--popover) 85%, #16a34a)',
           '--success-text': '#15803d',
-          '--success-border': 'color-mix(in oklab, var(--border) 70%, #16a34a)',
+          '--success-border': 'transparent',
           '--error-bg': 'color-mix(in oklab, var(--popover) 85%, #dc2626)',
           '--error-text': '#b91c1c',
-          '--error-border': 'color-mix(in oklab, var(--border) 70%, #dc2626)',
-          '--border-radius': 'var(--radius)',
+          '--error-border': 'transparent',
+          '--border-radius': 'var(--radius-md)',
         } as React.CSSProperties
       }
       {...props}

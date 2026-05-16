@@ -372,6 +372,9 @@ const piApi = {
     binding: ShortcutBinding,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(PiChannel.SetShortcut, id, binding),
+
+  /** Get the system accent color as a hex string (e.g. '#007aff'). Returns null on unsupported platforms. */
+  getAccentColor: (): Promise<string | null> => ipcRenderer.invoke(PiChannel.GetAccentColor),
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

@@ -1,16 +1,12 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '@fontsource-variable/geist';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
-  --font-weight-normal: 450;
-  --font-weight-medium: 550;
-  --font-weight-semibold: 650;
-  --font-weight-bold: 750;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --text-xs: 0.8125rem;
   --text-xs--line-height: calc(1.0625 / 0.8125);
   --text-sm: 0.9375rem;
@@ -58,6 +54,7 @@
 }
 
 :root {
+  --system-accent: oklch(0.623 0.214 259.815);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -75,7 +72,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: var(--system-accent);
   --chart-1: oklch(0.785 0.115 274.713);
   --chart-2: oklch(0.585 0.233 277.117);
   --chart-3: oklch(0.511 0.262 276.966);
@@ -89,10 +86,11 @@
   --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: var(--system-accent);
 }
 
 .dark {
+  --system-accent: oklch(0.623 0.214 259.815);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -110,7 +108,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: var(--system-accent);
   --chart-1: oklch(0.785 0.115 274.713);
   --chart-2: oklch(0.585 0.233 277.117);
   --chart-3: oklch(0.511 0.262 276.966);
@@ -123,7 +121,7 @@
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: var(--system-accent);
 }
 
 @layer base {
@@ -142,10 +140,15 @@
     height: 100%;
     overflow: hidden;
     font-size: 14px;
-    font-weight: var(--font-weight-normal);
+    font-weight: 400;
     line-height: 1.4;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .user-content {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   #root {
@@ -154,6 +157,17 @@
 
   button {
     cursor: default;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

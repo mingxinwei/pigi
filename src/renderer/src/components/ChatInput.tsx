@@ -349,7 +349,7 @@ export default function ChatInput({
 
         <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
           <span
-            className="flex min-w-0 cursor-pointer items-center gap-1.5"
+            className="flex min-w-0 items-center gap-1.5"
             onClick={() => void onRefreshGitBranch()}
           >
             <IconGitBranch className="size-4 shrink-0" />

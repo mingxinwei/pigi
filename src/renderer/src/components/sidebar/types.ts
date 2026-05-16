@@ -17,4 +17,5 @@ export interface SidebarProps {
   onRemoveProject: (path: string) => void;
   onReorderProjects: (paths: string[]) => void;
   onRenameSession: (sessionId: string, name: string) => void;
+  onLogin: () => void;
 }

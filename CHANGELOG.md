@@ -4,6 +4,7 @@
 
 ### Added
 
+- Settings button in sidebar footer with upward popover containing a Login item.
 - System accent color used for focus rings and sidebar highlights instead of gray.
 - Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
 

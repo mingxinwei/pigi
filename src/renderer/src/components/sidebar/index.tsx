@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { IconFolderPlus, IconPlus } from '@tabler/icons-react';
+import { IconFolderPlus, IconPlus, IconSettings, IconLogin2 } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import { formatShortcutLabel } from '../../shortcuts/formatShortcutLabel';
 import type { ShortcutBinding } from '../../../../shared/ipcContract';
@@ -9,6 +9,7 @@ import { TooltipProvider } from '../ui/tooltip';
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
@@ -17,7 +18,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from '../ui/sidebar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import type { SidebarProps } from './types';
 import { ProjectList } from './projectList';
 
@@ -36,6 +39,7 @@ export default function Sidebar({
   onRemoveProject,
   onReorderProjects,
   onRenameSession,
+  onLogin,
 }: SidebarProps): React.JSX.Element {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [visibleWhenCollapsedSessionIds, setVisibleWhenCollapsedSessionIds] = useState<
@@ -195,6 +199,33 @@ export default function Sidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+
+        <SidebarSeparator />
+
+        <SidebarFooter className="p-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <SidebarMenuButton>
+                    <IconSettings data-icon="inline-start" />
+                    <span>Settings</span>
+                  </SidebarMenuButton>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="end" sideOffset={2} className="w-48 p-1.5">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                    onClick={onLogin}
+                  >
+                    <IconLogin2 className="size-4 shrink-0" />
+                    <span>Login</span>
+                  </button>
+                </PopoverContent>
+              </Popover>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
       </ShadcnSidebar>
     </TooltipProvider>
   );

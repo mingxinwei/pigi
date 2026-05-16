@@ -443,6 +443,20 @@ function App(): React.JSX.Element {
     }
   }, []);
 
+  const handleLogin = useCallback(async () => {
+    let sessionId = activeSessionId;
+    if (!sessionId) {
+      await handleNewSession();
+      sessionId = useAppStore.getState().activeSessionId;
+    }
+    if (!sessionId) return;
+    const result = await getAuthProviders(sessionId);
+    if (result.success) {
+      setAuthProviders(result.providers);
+    }
+    setLoginDialogOpen(true);
+  }, [activeSessionId, handleNewSession]);
+
   const handleRenameSession = useCallback(
     async (sessionId: string, name: string) => {
       // Find the running session that matches this persisted session ID
@@ -584,6 +598,7 @@ function App(): React.JSX.Element {
           onRemoveProject={handleRemoveProject}
           onReorderProjects={handleReorderProjects}
           onRenameSession={handleRenameSession}
+          onLogin={handleLogin}
         />
       </div>
 

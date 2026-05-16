@@ -4,11 +4,16 @@
 
 ### Added
 
+- System accent color used for focus rings and sidebar highlights instead of gray.
 - Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
 
 ### Changed
 
 - Unify empty-state branding: session-empty screen now shows "Welcome to pigi" instead of "No session open", matching the project-empty screen.
+- Switch from Geist web font to system font stack for more native text rendering on each OS.
+- Disable text selection on UI chrome (labels, buttons, headings); message content remains selectable.
+- Dialog overlay backdrop lightened and auto-focus on open removed for more native dialog behavior.
+- Toast notifications repositioned to bottom-right with transparent borders.
 
 ## [0.2.1] - 2026-05-15
 

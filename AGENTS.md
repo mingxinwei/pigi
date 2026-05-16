@@ -3,9 +3,11 @@
 ## Workflow
 
 - Do NOT commit automatically after changes; wait for explicit commit instruction
-- After committing, add a user-facing changelog entry under `## [Unreleased]` in `CHANGELOG.md` if the commit introduces a new feature or fixes a bug. Use sections `### Added`, `### Changed`, or `### Fixed`. Skip for internal-only changes (docs, tooling, refactors with no user impact).
-- Commit messages must use conventional commits format (e.g. `fix:`, `feat:`, `refactor:`, `chore:`)
-- If the change is non-trivial, include bullet points in the commit body describing what was done in detail
+- When asked to commit:
+  1. Review all uncommitted changes and summarize them
+  2. Write a changelog entry under `## [Unreleased]` in `CHANGELOG.md` using sections `### Added`, `### Changed`, or `### Fixed`. Skip for internal-only changes (docs, tooling, refactors with no user impact).
+  3. Write a conventional commit message (e.g. `fix:`, `feat:`, `refactor:`, `chore:`) with bullet points in the body for non-trivial changes
+  4. Stage and commit the changelog together with the changes in a single commit
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
 - Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.

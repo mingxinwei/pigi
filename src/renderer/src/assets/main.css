@@ -179,6 +179,23 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Content bottom fade mask, 16px gradient to transparent */
+  .content-fade-bottom {
+    mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
+  }
+
+  /* Frosted menu content: frosted glass + hairline ring + blur shadow */
+  .menu-content {
+    background: hsl(0 0% 100% / 0.95);
+    backdrop-filter: blur(24px);
+    border-radius: var(--radius-lg);
+    padding: 0.25rem;
+    box-shadow:
+      0 0 0 0.5px hsl(0 0% 0% / 0.1),
+      0 2px 8px hsl(0 0% 0% / 0.08);
+  }
 }
 
 @keyframes shimmer {

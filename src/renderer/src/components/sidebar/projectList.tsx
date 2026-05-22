@@ -4,12 +4,8 @@ import type { PiSessionInfo, ProjectDirectory } from '../../../../shared/ipcCont
 import type { SessionEntry } from '../../state/appStore';
 import { cn } from '../../lib/utils';
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from '../ui/sidebar';
-import {
-  ContextMenuRoot,
-  ContextMenuTrigger,
-  ContextMenuContent,
-  ContextMenuItem,
-} from '../ui/context-menu';
+import { ContextMenuRoot, ContextMenuTrigger, ContextMenuContent } from '../ui/context-menu';
+import { MenuItem } from '../MenuItem';
 import { SessionList } from './sessionList';
 
 const NEW_PROJECT_SESSION_LABEL = 'New chat';
@@ -126,8 +122,8 @@ function ProjectItem({
           />
         </SidebarMenuItem>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={onRemove}>Remove</ContextMenuItem>
+      <ContextMenuContent className="menu-content min-w-0 p-0 bg-transparent shadow-none ring-0 border-0">
+        <MenuItem onClick={onRemove}>Remove</MenuItem>
       </ContextMenuContent>
     </ContextMenuRoot>
   );

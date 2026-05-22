@@ -5,6 +5,7 @@
 ### Added
 
 - Settings button in sidebar footer with upward popover containing a Login item.
+- Chat input textarea now auto-grows up to 35vh with scrollbar at max height.
 - System accent color used for focus rings and sidebar highlights instead of gray.
 - Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
 

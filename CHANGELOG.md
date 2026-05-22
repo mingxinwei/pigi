@@ -4,13 +4,16 @@
 
 ### Added
 
-- Settings button in sidebar footer with upward popover containing a Login item.
+- Settings button in sidebar footer with frosted-glass popover containing Login and Settings items.
+- `MenuItem` component and `.menu-content` CSS utility for reusable frosted-glass menu styling.
 - Chat input textarea now auto-grows up to 35vh with scrollbar at max height.
 - System accent color used for focus rings and sidebar highlights instead of gray.
 - Centralized keyboard shortcut system with persistent keybinding store and customizable shortcuts.
 
 ### Changed
 
+- Sidebar and main content divider refined to 0.5px hairline border for native-feel precision.
+- Project right-click context menu uses frosted-glass styling matching the Settings popover.
 - Unify empty-state branding: session-empty screen now shows "Welcome to pigi" instead of "No session open", matching the project-empty screen.
 - Switch from Geist web font to system font stack for more native text rendering on each OS.
 - Disable text selection on UI chrome (labels, buttons, headings); message content remains selectable.

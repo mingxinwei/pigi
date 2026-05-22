@@ -24,6 +24,9 @@
 ### Added
 
 ### Changed
+
+- Base font weight reduced from 400 to 350 and UI controls switched from `font-medium` (500) to `font-normal` (350) for lighter, more native macOS appearance. Dialog, sheet, popover, and empty-state titles use `font-semibold` (600) to match native title emphasis.
+- Markdown bold text (`**text**`) now renders at `font-medium` (500) instead of browser default 700.
 - Toast notifications repositioned to bottom-right with transparent borders.
 
 ## [0.2.1] - 2026-05-15

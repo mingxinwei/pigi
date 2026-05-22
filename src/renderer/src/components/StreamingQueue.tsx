@@ -46,7 +46,7 @@ function QueuedMessageBar({
 }): React.JSX.Element {
   return (
     <QueueBar>
-      <span className={cn('shrink-0 font-medium', labelClassName)}>{label}</span>
+      <span className={cn('shrink-0 font-normal', labelClassName)}>{label}</span>
       <span className="flex-1 truncate">{message}</span>
       <button
         type="button"

@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-weight-normal: 350;
   --font-heading: var(--font-sans);
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
@@ -140,7 +141,7 @@
     height: 100%;
     overflow: hidden;
     font-size: 14px;
-    font-weight: 400;
+    font-weight: 350;
     line-height: 1.4;
     user-select: none;
     -webkit-user-select: none;

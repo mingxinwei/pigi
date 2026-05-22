@@ -69,6 +69,7 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
   'high',
   'xhigh',
 ];
+const TEXTAREA_MAX_HEIGHT_RATIO = 0.35;
 
 export default function ChatInput({
   onSend,
@@ -129,7 +130,8 @@ export default function ChatInput({
     const combined = [restoreText, currentText].filter((t) => t).join('\n\n');
     textarea.value = combined;
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
+    const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
+    textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
     textarea.focus();
     onRestoredText();
   }, [restoreText, onRestoredText]);
@@ -246,7 +248,8 @@ export default function ChatInput({
       return;
     }
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
+    const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
+    textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
 
     // Update slash command matches
     const value = textarea.value;
@@ -299,7 +302,7 @@ export default function ChatInput({
             onInput={handleInput}
             placeholder="Ask for follow-up changes"
             rows={1}
-            className="min-h-16 max-h-32 px-4 pb-2 pt-4 text-sm leading-5 placeholder:text-muted-foreground/70"
+            className="flex-initial min-h-16 field-sizing-fixed px-4 pb-2 pt-4 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto"
             data-testid="chat-textarea"
           />
           <InputGroupAddon

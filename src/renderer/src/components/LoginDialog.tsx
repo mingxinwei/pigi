@@ -136,7 +136,7 @@ export default function LoginDialog({
                 className="flex items-center justify-between rounded-md border px-3 py-2"
               >
                 <div>
-                  <div className="font-medium text-sm">{provider.name}</div>
+                  <div className="font-normal text-sm">{provider.name}</div>
                   <div className="text-xs text-muted-foreground">
                     {isEnvAuth
                       ? `Via ${provider.authStatus.source}`
@@ -198,7 +198,7 @@ export default function LoginDialog({
           {apiKeyExpanded && (
             <div className="flex flex-col gap-3 pt-2">
               <div>
-                <label className="text-sm font-medium mb-1 block">Provider</label>
+                <label className="text-sm font-normal mb-1 block">Provider</label>
                 <input
                   type="text"
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
@@ -209,7 +209,7 @@ export default function LoginDialog({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">API Key</label>
+                <label className="text-sm font-normal mb-1 block">API Key</label>
                 <input
                   type="password"
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring"

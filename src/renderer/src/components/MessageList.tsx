@@ -328,7 +328,7 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
             <div className="mt-2">
               <button
                 type="button"
-                className="h-7 rounded px-2 text-sm font-medium text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                className="h-7 rounded px-2 text-sm font-normal text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
                 onClick={() => {
                   setExpanded((current) => !current);
                 }}
@@ -420,7 +420,7 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="mb-4 rounded-md bg-muted/35 px-3 py-2 text-muted-foreground">
-      <div className="mb-1.5 text-[14px] font-medium">Thinking</div>
+      <div className="mb-1.5 text-[14px] font-semibold">Thinking</div>
       <pre className="whitespace-pre-wrap break-words font-sans text-[15px] leading-6 text-muted-foreground">
         {text}
       </pre>

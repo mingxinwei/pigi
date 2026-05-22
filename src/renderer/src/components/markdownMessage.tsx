@@ -77,7 +77,7 @@ const markdownComponents: Components = {
     if (language) {
       return (
         <>
-          <span className="mb-2 block text-[12px] font-medium text-muted-foreground">
+          <span className="mb-2 block text-[12px] font-normal text-muted-foreground">
             {getCodeLanguageLabel(language)}
           </span>
           <SyntaxHighlightedCode code={code} language={language} />
@@ -100,6 +100,7 @@ const markdownComponents: Components = {
     <th className="border border-border bg-muted/60 px-2 py-1 font-medium">{children}</th>
   ),
   td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+  strong: ({ children }) => <strong className="font-medium">{children}</strong>,
   img: ({ src, alt, title }) => (
     <img src={src} alt={alt ?? ''} title={title} className="my-3 max-w-full rounded-md" />
   ),

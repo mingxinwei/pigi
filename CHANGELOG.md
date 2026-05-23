@@ -25,8 +25,8 @@
 
 ### Changed
 
-- Font weight scale shifted down: `font-normal` 300, `font-medium` 400, `font-semibold` 500, `font-bold` 600, with body baseline at 300 for lighter native appearance.
-- Tool block command titles switched from `font-semibold` to `font-medium`.
+- Font weight adjusted for native macOS feel: baseline 350, UI controls use `font-normal` (350), dialog/sheet/popover/empty titles use `font-semibold` (600), markdown bold and tool block command titles use `font-medium` (500).
+- Toast notifications repositioned to bottom-right with transparent borders.
 
 ## [0.2.1] - 2026-05-15
 

@@ -90,6 +90,7 @@ function App(): React.JSX.Element {
         thinkingLevel: sessionState.thinkingLevel,
         contextUsage: sessionState.contextUsage,
         autoCompactionEnabled: sessionState.autoCompactionEnabled,
+        messageCount: sessionState.messageCount,
       });
     } catch (err) {
       console.error('Failed to refresh session state:', err);
@@ -339,7 +340,7 @@ function App(): React.JSX.Element {
     try {
       // If there's already an empty session in the current project, switch to it instead of creating a new one.
       const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.cwd === activeCwd && entry.title === 'New chat',
+        (entry) => entry.cwd === activeCwd && entry.messageCount === 0,
       );
       if (existingEmptySession) {
         setActiveSession(existingEmptySession.sessionId);
@@ -361,7 +362,7 @@ function App(): React.JSX.Element {
 
       // If there's already an empty session in this project, switch to it instead of creating a new one.
       const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.cwd === path && entry.title === 'New chat',
+        (entry) => entry.cwd === path && entry.messageCount === 0,
       );
       if (existingEmptySession) {
         setActiveSession(existingEmptySession.sessionId);
@@ -399,6 +400,7 @@ function App(): React.JSX.Element {
         thinkingLevel: null,
         contextUsage: null,
         autoCompactionEnabled: false,
+        messageCount: session.messageCount,
         error: null,
       });
       setActiveSession(sessionId);

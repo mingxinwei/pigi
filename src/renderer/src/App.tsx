@@ -337,17 +337,35 @@ function App(): React.JSX.Element {
 
   const handleNewSession = useCallback(async (): Promise<void> => {
     try {
+      // If there's already an empty session in the current project, switch to it instead of creating a new one.
+      const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
+        (entry) => entry.cwd === activeCwd && entry.title === 'New chat',
+      );
+      if (existingEmptySession) {
+        setActiveSession(existingEmptySession.sessionId);
+        return;
+      }
+
       await createAndActivateSession(activeCwd);
     } catch (err) {
       console.error('Failed to create session:', err);
     }
-  }, [activeCwd, createAndActivateSession]);
+  }, [activeCwd, createAndActivateSession, setActiveSession]);
 
   async function handleNewSessionForProject(path: string): Promise<void> {
     try {
       const result = await setActiveProject(path);
       if (result.success) {
         useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
+      }
+
+      // If there's already an empty session in this project, switch to it instead of creating a new one.
+      const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
+        (entry) => entry.cwd === path && entry.title === 'New chat',
+      );
+      if (existingEmptySession) {
+        setActiveSession(existingEmptySession.sessionId);
+        return;
       }
 
       await createAndActivateSession(path);

@@ -91,7 +91,7 @@ export function SessionItem({
             isActive={isActive}
             className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
           >
-            <button type="button" onClick={onSwitch}>
+            <button type="button" onClick={onSwitch} onDoubleClick={handleStartRename}>
               <span className="min-w-0 flex-1 truncate text-left" title={getSessionTitle(session)}>
                 {getSessionTitle(session)}
               </span>

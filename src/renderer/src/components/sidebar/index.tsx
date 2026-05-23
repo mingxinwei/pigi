@@ -170,13 +170,15 @@ export default function Sidebar({
 
         <SidebarContent className="overflow-hidden">
           <SidebarGroup className="min-h-0 flex-1">
-            <SidebarGroupLabel className="text-sm text-muted-foreground">
-              Projects
-            </SidebarGroupLabel>
-            <SidebarGroupAction onClick={onOpenProject} title="Open project">
-              <IconFolderPlus />
-              <span className="sr-only">Open project</span>
-            </SidebarGroupAction>
+            <div className="group/projects-header">
+              <SidebarGroupLabel className="text-sm text-muted-foreground">
+                Projects
+              </SidebarGroupLabel>
+              <SidebarGroupAction onClick={onOpenProject} title="Open project" className="opacity-0 group-hover/projects-header:opacity-100 transition-opacity">
+                <IconFolderPlus />
+                <span className="sr-only">Open project</span>
+              </SidebarGroupAction>
+            </div>
             <SidebarGroupContent className="min-h-0 flex-1 overflow-auto no-scrollbar content-fade-bottom">
               <ProjectList
                 sessions={sessions}

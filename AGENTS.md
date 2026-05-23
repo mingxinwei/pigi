@@ -12,6 +12,14 @@
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
 - Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.
 
+## Release
+
+When asked to release a new version:
+1. Bump `version` in `package.json` (minor by default unless user says otherwise).
+2. Rename `## [Unreleased]` to `## [<version>]` in `CHANGELOG.md`, add date.
+3. Commit with message `release: v<version>`.
+4. Tag `v<version>`, push code and tag: `git push --follow-tags`.
+
 ## Conversational Style
 
 - Keep answers short and concise

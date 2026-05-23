@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.2.5] - 2026-05-23
+
+### Added
+
+- Double-click session name in sidebar to rename it inline.
+
+### Changed
+
+- Projects group action button (+ icon) now only appears on hover, reducing visual clutter.
+
+### Fixed
+
+- Prevent duplicate empty sessions when quickly creating new chats in succession.
+
+## [0.2.4] - 2026-05-23
+
+### Changed
+
+- Font weight scale adjusted: `font-normal` 350, `font-medium` 550, `font-semibold` 650, `font-bold` 750.
+
+## [0.2.3] - 2026-05-23
+
+### Changed
+
+- Font weight adjusted for native macOS feel: baseline 350, UI controls use `font-normal` (350), dialog/sheet/popover/empty titles use `font-semibold` (600), markdown bold and tool block command titles use `font-medium` (500).
+- Toast notifications repositioned to bottom-right with transparent borders.
+
 ## [0.2.2]
 
 ### Added
@@ -18,19 +47,6 @@
 - Switch from Geist web font to system font stack for more native text rendering on each OS.
 - Disable text selection on UI chrome (labels, buttons, headings); message content remains selectable.
 - Dialog overlay backdrop lightened and auto-focus on open removed for more native dialog behavior.
-
-## [0.2.4] - 2026-05-23
-
-### Changed
-
-- Font weight scale adjusted: `font-normal` 350, `font-medium` 550, `font-semibold` 650, `font-bold` 750.
-
-## [0.2.3] - 2026-05-23
-
-### Changed
-
-- Font weight adjusted for native macOS feel: baseline 350, UI controls use `font-normal` (350), dialog/sheet/popover/empty titles use `font-semibold` (600), markdown bold and tool block command titles use `font-medium` (500).
-- Toast notifications repositioned to bottom-right with transparent borders.
 
 ## [0.2.1] - 2026-05-15
 

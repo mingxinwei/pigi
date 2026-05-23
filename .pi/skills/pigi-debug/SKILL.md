@@ -1,21 +1,22 @@
 ---
 name: pigi-debug
-description: Start dev server, debug via CDP, take screenshots, verify app state. Use when starting the app, debugging UI, running smoke checks, or needing to inspect renderer state.
+description: Start dev server, debug via CDP, take screenshots. Use when starting the app, debugging UI, running smoke checks, or needing to inspect renderer state.
 ---
 
 # pigi Debug
 
 ## Start Dev
 
-Kill existing processes and start fresh:
+Kill all existing Electron processes and start fresh:
 
 ```bash
-pkill -f "PersonalCode/pigi/node_modules.*Electron"
-pkill -f "electron-vite dev"
-sleep 2 && nohup npm run dev > /tmp/pigi-dev.log 2>&1 &
+pkill -9 -f Electron || true
+nohup npm run dev > /tmp/pigi-dev.log 2>&1 &
 ```
 
-Wait ~12s for the app to load, then verify:
+## Verify App
+
+Only when instructed. Wait ~12s after dev start, then:
 
 ```bash
 node scripts/cdp.mjs eval 'document.querySelector("textarea") ? "ready" : "not ready"'

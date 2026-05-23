@@ -7,7 +7,7 @@ description: Start dev server, debug via CDP, take screenshots. Use when startin
 
 ## Start Dev
 
-Kill all existing Electron processes and start fresh:
+Kill all existing Electron processes and start fresh. **Stop here** — do NOT wait or verify unless explicitly asked.
 
 ```bash
 pkill -9 -f Electron || true
@@ -16,7 +16,7 @@ nohup npm run dev > /tmp/pigi-dev.log 2>&1 &
 
 ## Verify App
 
-Only when instructed. Wait ~12s after dev start, then:
+Only when explicitly instructed. Wait ~12s after dev start, then:
 
 ```bash
 node scripts/cdp.mjs eval 'document.querySelector("textarea") ? "ready" : "not ready"'

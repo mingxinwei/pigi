@@ -287,19 +287,36 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             >
               {command.body}
             </span>
-            {isCommandTruncated && (
-              <button
-                type="button"
-                onClick={() => setCommandExpanded((v) => !v)}
-                className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
-              >
-                {commandExpanded ? 'less' : 'more'}
-              </button>
-            )}
-            {timeout !== undefined && (
-              <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
-                timeout {timeout}s
-              </span>
+            {isCommandTruncated && timeout !== undefined ? (
+              <div className="ml-auto shrink-0 flex flex-col items-end">
+                <span className="text-xs font-normal text-muted-foreground">
+                  timeout {timeout}s
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCommandExpanded((v) => !v)}
+                  className="text-xs font-normal text-muted-foreground hover:text-foreground"
+                >
+                  {commandExpanded ? 'less' : 'more'}
+                </button>
+              </div>
+            ) : (
+              <>
+                {isCommandTruncated && (
+                  <button
+                    type="button"
+                    onClick={() => setCommandExpanded((v) => !v)}
+                    className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
+                  >
+                    {commandExpanded ? 'less' : 'more'}
+                  </button>
+                )}
+                {timeout !== undefined && (
+                  <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
+                    timeout {timeout}s
+                  </span>
+                )}
+              </>
             )}
           </div>
         ) : (

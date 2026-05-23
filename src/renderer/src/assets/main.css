@@ -5,6 +5,9 @@
 
 @theme inline {
   --font-weight-normal: 350;
+  --font-weight-medium: 550;
+  --font-weight-semibold: 650;
+  --font-weight-bold: 750;
   --font-heading: var(--font-sans);
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;

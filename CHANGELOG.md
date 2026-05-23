@@ -19,9 +19,13 @@
 - Disable text selection on UI chrome (labels, buttons, headings); message content remains selectable.
 - Dialog overlay backdrop lightened and auto-focus on open removed for more native dialog behavior.
 
-## [0.2.3] - 2026-05-23
+## [0.2.4] - 2026-05-23
 
-### Added
+### Changed
+
+- Font weight scale adjusted: `font-normal` 350, `font-medium` 550, `font-semibold` 650, `font-bold` 750.
+
+## [0.2.3] - 2026-05-23
 
 ### Changed
 

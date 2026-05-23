@@ -22,6 +22,7 @@ export interface SessionEntry {
   thinkingLevel: string | null;
   contextUsage: ContextUsage | null;
   autoCompactionEnabled: boolean;
+  messageCount: number;
   error: string | null;
 }
 
@@ -75,6 +76,7 @@ export const useAppStore = create<AppState>((set) => ({
         thinkingLevel: null,
         contextUsage: null,
         autoCompactionEnabled: false,
+        messageCount: 0,
         error: null,
       });
       return { sessions };

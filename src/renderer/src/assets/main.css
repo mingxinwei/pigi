@@ -192,7 +192,7 @@
 
   /* Frosted menu content: frosted glass + hairline ring + blur shadow */
   .menu-content {
-    background: hsl(0 0% 100% / 0.95);
+    background: hsl(0 0% 100% / 0.8);
     backdrop-filter: blur(24px);
     border-radius: var(--radius-lg);
     padding: 0.25rem;

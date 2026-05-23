@@ -15,6 +15,7 @@
 ## Release
 
 When asked to release a new version:
+
 1. Bump `version` in `package.json` (minor by default unless user says otherwise).
 2. Rename `## [Unreleased]` to `## [<version>]` in `CHANGELOG.md`, add date.
 3. Commit with message `release: v<version>`.

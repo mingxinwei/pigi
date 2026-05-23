@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Settings popover and context menus now use frosted glass with 80% opacity instead of solid backgrounds.
+
 ### Fixed
 
 - Bash toolblock: fix "more" button position when timeout indicator is also present, now right-aligned below timeout instead of stranded mid-line after the command text.

@@ -19,7 +19,7 @@
 - Disable text selection on UI chrome (labels, buttons, headings); message content remains selectable.
 - Dialog overlay backdrop lightened and auto-focus on open removed for more native dialog behavior.
 
-## [Unreleased]
+## [0.2.3] - 2026-05-23
 
 ### Added
 

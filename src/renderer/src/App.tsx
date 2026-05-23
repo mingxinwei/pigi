@@ -336,22 +336,27 @@ function App(): React.JSX.Element {
     [addSession, setActiveSession],
   );
 
-  const handleNewSession = useCallback(async (): Promise<void> => {
-    try {
-      // If there's already an empty session in the current project, switch to it instead of creating a new one.
+  const createSessionIfNoDuplicate = useCallback(
+    async (cwd: string): Promise<void> => {
       const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.cwd === activeCwd && entry.messageCount === 0,
+        (entry) => entry.cwd === cwd && entry.messageCount === 0,
       );
       if (existingEmptySession) {
         setActiveSession(existingEmptySession.sessionId);
         return;
       }
+      await createAndActivateSession(cwd);
+    },
+    [createAndActivateSession, setActiveSession],
+  );
 
-      await createAndActivateSession(activeCwd);
+  const handleNewSession = useCallback(async (): Promise<void> => {
+    try {
+      await createSessionIfNoDuplicate(activeCwd);
     } catch (err) {
       console.error('Failed to create session:', err);
     }
-  }, [activeCwd, createAndActivateSession, setActiveSession]);
+  }, [activeCwd, createSessionIfNoDuplicate]);
 
   async function handleNewSessionForProject(path: string): Promise<void> {
     try {
@@ -360,16 +365,7 @@ function App(): React.JSX.Element {
         useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
       }
 
-      // If there's already an empty session in this project, switch to it instead of creating a new one.
-      const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.cwd === path && entry.messageCount === 0,
-      );
-      if (existingEmptySession) {
-        setActiveSession(existingEmptySession.sessionId);
-        return;
-      }
-
-      await createAndActivateSession(path);
+      await createSessionIfNoDuplicate(path);
     } catch (err) {
       console.error('Failed to create project session:', err);
     }

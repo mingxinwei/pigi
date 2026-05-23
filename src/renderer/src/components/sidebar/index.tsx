@@ -174,7 +174,11 @@ export default function Sidebar({
               <SidebarGroupLabel className="text-sm text-muted-foreground">
                 Projects
               </SidebarGroupLabel>
-              <SidebarGroupAction onClick={onOpenProject} title="Open project" className="opacity-0 group-hover/projects-header:opacity-100 transition-opacity">
+              <SidebarGroupAction
+                onClick={onOpenProject}
+                title="Open project"
+                className="opacity-0 group-hover/projects-header:opacity-100 transition-opacity"
+              >
                 <IconFolderPlus />
                 <span className="sr-only">Open project</span>
               </SidebarGroupAction>

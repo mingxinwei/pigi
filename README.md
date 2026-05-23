@@ -10,18 +10,19 @@
 <h1 align="center">pigi</h1>
 
 <p align="center">
-  <strong>A sleek desktop GUI for <a href="https://pi.dev">pi</a></strong>
+  <strong>A sleek desktop GUI for <a href"https://pi.dev">pi</a></strong>
 </p>
 
 ---
 
 ## Features
 
-- Clean, elegant UI that stays out of your way
+- Clean, native UI that stays out of your way
 - Faithful to the original pi experience
-- High-performance rendering, no compromises
+- Respects your pi config — picks up models, skills, and settings automatically
+- Built with performance in mind, no compromises
 
-![hello pigi](./resources/hello-pigi.jpg)
+![hi pigi](./resources/hi-pigi.jpg)
 
 ## Install
 

@@ -4,6 +4,10 @@
 
 ### Changed
 
+- Font weight scale aligned with standard values (400/500/600/700) for lighter text rendering.
+- Light mode foreground color aligned with Codex (#1a1c1f) for less aggressive contrast.
+- Body font weight reduced from 350 to 380.
+- Thinking block: removed bold from title, swapped title/content font sizes for proper hierarchy.
 - Settings popover and context menus now use frosted glass with 80% opacity instead of solid backgrounds.
 - macOS sidebar now uses `menu` vibrancy with semi-transparent background for a more refined frosted glass appearance.
 

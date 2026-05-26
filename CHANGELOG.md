@@ -5,6 +5,7 @@
 ### Changed
 
 - Settings popover and context menus now use frosted glass with 80% opacity instead of solid backgrounds.
+- macOS sidebar now uses `menu` vibrancy with semi-transparent background for a more refined frosted glass appearance.
 
 ### Fixed
 

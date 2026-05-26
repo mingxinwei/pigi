@@ -134,7 +134,7 @@ export default function Sidebar({
     <TooltipProvider delayDuration={300}>
       <ShadcnSidebar
         collapsible="none"
-        className="[&_.tabler-icon]:stroke-[1.25] bg-transparent"
+        className="sidebar-surface [&_.tabler-icon]:stroke-[1.25]"
         data-testid="sidebar"
       >
         {/* WebkitAppRegion is Electron-specific, not in React's CSSProperties */}

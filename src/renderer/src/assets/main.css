@@ -83,7 +83,7 @@
   --chart-4: oklch(0.457 0.24 277.023);
   --chart-5: oklch(0.398 0.195 277.366);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: color-mix(in srgb, white 55%, transparent);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -118,7 +118,7 @@
   --chart-3: oklch(0.511 0.262 276.966);
   --chart-4: oklch(0.457 0.24 277.023);
   --chart-5: oklch(0.398 0.195 277.366);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.269 0 0 / 55%);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -188,6 +188,19 @@
   .content-fade-bottom {
     mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
     -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
+  }
+
+  .sidebar-surface {
+    position: relative;
+  }
+
+  .sidebar-surface::after {
+    position: absolute;
+    inset: 0 calc(-1 * var(--radius-2xl)) 0 auto;
+    width: var(--radius-2xl);
+    background: inherit;
+    content: '';
+    pointer-events: none;
   }
 
   /* Frosted menu content: frosted glass + hairline ring + blur shadow */

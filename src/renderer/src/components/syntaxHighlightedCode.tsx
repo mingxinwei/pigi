@@ -24,7 +24,7 @@ interface HighlightedState {
   lines: HighlightedLine[] | null;
 }
 
-const SHIKI_THEME = 'github-light';
+const SHIKI_THEME = 'one-light';
 const MAX_HIGHLIGHTED_CODE_LENGTH = 80_000;
 const MAX_HIGHLIGHT_CACHE_SIZE = 100;
 const MAX_TOKENIZED_LINE_LENGTH = 2_000;

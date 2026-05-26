@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Markdown links now use system accent color with improved underline styling for better visibility.
+
 - Code syntax highlighting theme switched from `github-light` to `one-light`.
 - Thinking block: tighter title-content spacing and increased background opacity for better visibility.
 - Enable font smoothing (antialiased) for crisper text on macOS.

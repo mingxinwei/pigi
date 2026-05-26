@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Code syntax highlighting theme switched from `github-light` to `one-light`.
+- Thinking block: tighter title-content spacing and increased background opacity for better visibility.
 - Enable font smoothing (antialiased) for crisper text on macOS.
 - Body font-weight now uses `--font-weight-normal` variable instead of hardcoded value.
 - Thinking block: 13px medium title, 14px content with tighter line-height.

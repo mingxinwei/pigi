@@ -420,8 +420,8 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="mb-4 rounded-md bg-muted/35 px-3 py-2 text-muted-foreground">
-      <div className="mb-1.5 text-[15px]">Thinking</div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-6 text-muted-foreground">
+      <div className="mb-1.5 text-[13px] font-medium">Thinking</div>
+      <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
         {text}
       </pre>
     </div>

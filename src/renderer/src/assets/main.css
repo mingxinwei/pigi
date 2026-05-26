@@ -139,13 +139,14 @@
   }
 
   body {
-    @apply text-foreground;
+    @apply text-foreground font-normal;
     background: transparent;
     height: 100%;
     overflow: hidden;
     font-size: 14px;
-    font-weight: 380;
     line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     user-select: none;
     -webkit-user-select: none;
   }

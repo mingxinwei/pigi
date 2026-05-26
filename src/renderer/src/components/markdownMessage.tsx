@@ -58,13 +58,13 @@ const markdownComponents: Components = {
   ),
   hr: () => <hr className="my-4 border-border" />,
   h1: ({ children }) => (
-    <h1 className="mb-3 text-[19px] font-semibold leading-7 last:mb-0">{children}</h1>
+    <h1 className="mb-4 text-[26px] font-semibold leading-9 last:mb-0">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mb-3 text-[17px] font-semibold leading-7 last:mb-0">{children}</h2>
+    <h2 className="mb-3 text-[19px] font-semibold leading-7 last:mb-0">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mb-2 text-[16px] font-semibold leading-6 last:mb-0">{children}</h3>
+    <h3 className="mb-2 text-[17px] font-semibold leading-6 last:mb-0">{children}</h3>
   ),
   pre: ({ children }) => (
     <pre className="mb-3 w-full max-w-full overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-[14px] leading-5 text-foreground last:mb-0 [&_code]:bg-transparent [&_code]:p-0">

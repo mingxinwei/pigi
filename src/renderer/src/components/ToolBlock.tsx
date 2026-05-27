@@ -101,40 +101,31 @@ const READ_IMAGE_RE = /^Read image file \[(.+)\]$/;
 
 const SECONDS_PER_MILLISECOND = 1 / 1000;
 
-const TOOL_OUTPUT_LANGUAGE_BY_NAME: Record<string, string> = {
-  bash: 'bash',
-};
-
-const FILE_EXTENSION_LANGUAGE_MAP: Record<string, string> = {
-  c: 'c',
+/**
+ * Override map for file extensions that don't directly match a shiki language id/alias.
+ * Most extensions (e.g. rs, go, py, ts, lua, zig) are valid shiki language keys and
+ * are resolved at runtime via `bundledLanguages` in SyntaxHighlightedCode.
+ */
+const FILE_EXTENSION_LANGUAGE_OVERRIDE: Record<string, string> = {
   cc: 'cpp',
   cjs: 'javascript',
-  cpp: 'cpp',
-  css: 'css',
   cts: 'typescript',
+  cxx: 'cpp',
   h: 'c',
+  hbs: 'handlebars',
   hpp: 'cpp',
-  html: 'html',
-  java: 'java',
-  js: 'javascript',
-  json: 'json',
-  jsonc: 'jsonc',
-  jsx: 'jsx',
-  md: 'markdown',
+  hx: 'haxe',
+  kts: 'kotlin',
   mjs: 'javascript',
+  mk: 'make',
   mts: 'typescript',
-  php: 'php',
-  py: 'python',
-  scss: 'scss',
-  sh: 'bash',
-  sql: 'sql',
-  ts: 'typescript',
-  tsx: 'tsx',
-  vue: 'vue',
-  xml: 'xml',
-  yaml: 'yaml',
-  yml: 'yaml',
-  zsh: 'zsh',
+  pl: 'perl',
+  ex: 'elixir',
+  exs: 'elixir',
+  ml: 'ocaml',
+  pas: 'pascal',
+  ps1: 'powershell',
+  tf: 'terraform',
 };
 
 function getToolCommandParts(node: ToolNode): ToolCommandParts {
@@ -171,7 +162,7 @@ function getToolCommandParts(node: ToolNode): ToolCommandParts {
 function getToolOutputLanguage(node: ToolNode): string {
   const args = getToolArgs(node);
   const path = typeof args?.path === 'string' ? args.path : '';
-  return getLanguageFromPath(path) ?? TOOL_OUTPUT_LANGUAGE_BY_NAME[node.name] ?? 'bash';
+  return getLanguageFromPath(path) ?? 'text';
 }
 
 function getLanguageFromPath(path: string): string | null {
@@ -181,7 +172,9 @@ function getLanguageFromPath(path: string): string | null {
     return null;
   }
 
-  return FILE_EXTENSION_LANGUAGE_MAP[extension] ?? null;
+  // Check override map first, then use the extension directly
+  // (most extensions like rs, go, py, ts are valid shiki language ids/aliases)
+  return FILE_EXTENSION_LANGUAGE_OVERRIDE[extension] ?? extension;
 }
 
 function getEditEntries(node: ToolNode): EditEntry[] | null {

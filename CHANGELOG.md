@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Tool block: bash execution output no longer has syntax highlighting (plain text).
+- Tool block: use shiki full bundle for syntax highlighting, supporting all languages (rust, go, etc.).
+- Tool block: file extension resolved directly as shiki language key at runtime; only a small override map for ambiguous extensions.
+- Sidebar: session labels slightly darker than folder labels for better visual hierarchy.
+
 ## [0.2.6] - 2026-05-26
 
 ### Changed

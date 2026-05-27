@@ -64,7 +64,7 @@ export function SessionItem({
         <SidebarMenuSubButton
           asChild
           isActive={isActive}
-          className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
+          className="w-full justify-start pl-6 text-left text-sidebar-foreground/85 data-active:bg-primary/10 data-active:text-foreground"
         >
           <div>
             <input
@@ -89,7 +89,7 @@ export function SessionItem({
           <SidebarMenuSubButton
             asChild
             isActive={isActive}
-            className="w-full justify-start pl-6 text-left text-sidebar-foreground/65 data-active:bg-primary/10 data-active:text-foreground"
+            className="w-full justify-start pl-6 text-left text-sidebar-foreground/85 data-active:bg-primary/10 data-active:text-foreground"
           >
             <button type="button" onClick={onSwitch} onDoubleClick={handleStartRename}>
               <span className="min-w-0 flex-1 truncate text-left" title={getSessionTitle(session)}>

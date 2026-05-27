@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Disable Electron cookie encryption fuse to prevent macOS Keychain password prompt on launch.
+
 ### Changed
 
 - Tool block: bash execution output no longer has syntax highlighting (plain text).

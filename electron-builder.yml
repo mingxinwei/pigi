@@ -38,6 +38,8 @@ linux:
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
+electronFuses:
+  enableCookieEncryption: false
 npmRebuild: false
 publish:
   provider: github

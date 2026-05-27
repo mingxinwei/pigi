@@ -4,7 +4,7 @@ import {
   createHighlighter,
   type BundledLanguage,
   type Highlighter,
-} from 'shiki/bundle/web';
+} from 'shiki/bundle/full';
 
 interface SyntaxHighlightedCodeProps {
   code: string;

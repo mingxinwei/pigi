@@ -5,6 +5,8 @@
 ### Fixed
 
 - Disable Electron cookie encryption fuse to prevent macOS Keychain password prompt on launch.
+- ESC/send button now correctly aborts in-progress compaction via `abortCompaction()`.
+- Steer/followUp messages sent during compaction are preserved and replayed when compaction finishes.
 
 ### Changed
 
@@ -12,6 +14,7 @@
 - Tool block: use shiki full bundle for syntax highlighting, supporting all languages (rust, go, etc.).
 - Tool block: file extension resolved directly as shiki language key at runtime; only a small override map for ambiguous extensions.
 - Sidebar: session labels slightly darker than folder labels for better visual hierarchy.
+- Compaction: show abort button during compaction, correct end-of-compaction text (aborted/failed/success), position marker at chronological boundary instead of scroll-out-of-view top, and display "Compacted N times" at the bottom of reopened compacted sessions.
 
 ## [0.2.6] - 2026-05-26
 

@@ -84,6 +84,7 @@ export interface SessionState {
   messageCount: number;
   contextUsage: ContextUsage | null;
   autoCompactionEnabled: boolean;
+  compactionCount: number;
 }
 
 export interface ContextUsage {

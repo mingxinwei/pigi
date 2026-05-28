@@ -144,8 +144,12 @@ export async function getSessionOptions(sessionId: string): Promise<SessionOptio
   return send<SessionOptions>(sessionId, { type: 'get_session_options' });
 }
 
-export async function getMessages(sessionId: string): Promise<unknown[]> {
-  return send<unknown[]>(sessionId, { type: 'get_messages' });
+export async function getMessages(
+  sessionId: string,
+): Promise<{ messages: unknown[]; compactionCount: number }> {
+  return send<{ messages: unknown[]; compactionCount: number }>(sessionId, {
+    type: 'get_messages',
+  });
 }
 
 export async function listSessions(sessionId: string, cwd?: string): Promise<unknown[]> {

@@ -376,6 +376,7 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
     }
 
     case 'abort':
+      runtime.session.abortCompaction();
       await runtime.session.abort();
       setSessionBusy(runtime.session.isStreaming);
       return { success: true };
@@ -395,11 +396,19 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
         messageCount: s.messages.length,
         contextUsage: s.getContextUsage() ?? null,
         autoCompactionEnabled: s.autoCompactionEnabled,
+        compactionCount: s.sessionManager
+          .getBranch()
+          .filter((e: { type: string }) => e.type === 'compaction').length,
       };
     }
 
-    case 'get_messages':
-      return runtime.session.messages;
+    case 'get_messages': {
+      const msgs = runtime.session.messages;
+      const count = runtime.session.sessionManager
+        .getBranch()
+        .filter((e: { type: string }) => e.type === 'compaction').length;
+      return { messages: msgs, compactionCount: count };
+    }
 
     case 'get_session_options': {
       const session = runtime.session;

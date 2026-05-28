@@ -53,10 +53,10 @@ function ensureSessionHydration(sessionId: string, controller: TranscriptControl
 
   hydrationStartedSessions.add(sessionId);
   void getMessages(sessionId)
-    .then((messages) => {
+    .then(({ messages, compactionCount }) => {
       // Do not overwrite live or optimistic content that may have arrived before hydration returns.
       if (controller.state.nodes.length === 0) {
-        controller.hydrate(messages);
+        controller.hydrate(messages, compactionCount);
       } else {
         controller.mergeHydratedMessages(messages);
       }

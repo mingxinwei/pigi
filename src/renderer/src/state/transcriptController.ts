@@ -97,6 +97,8 @@ export interface TranscriptState {
   activeToolCallId: string | null;
   queuedSteering: string[];
   queuedFollowUp: string[];
+  isCompacting: boolean;
+  compactionQueue: Array<{ text: string; mode: 'steer' | 'followUp' }>;
 }
 
 // =============================================================================
@@ -171,6 +173,11 @@ function nextNodeId(): string {
   return `node-${++nodeIdCounter}`;
 }
 
+type CompactionReplayCallback = (
+  sessionId: string,
+  queue: Array<{ text: string; mode: 'steer' | 'followUp' }>,
+) => void;
+
 export class TranscriptController {
   private _state: TranscriptState = {
     nodes: [],
@@ -179,6 +186,8 @@ export class TranscriptController {
     activeToolCallId: null,
     queuedSteering: [],
     queuedFollowUp: [],
+    isCompacting: false,
+    compactionQueue: [],
   };
 
   private listeners = new Set<Listener>();
@@ -186,6 +195,14 @@ export class TranscriptController {
   private renderTimer: ReturnType<typeof setTimeout> | null = null;
   private lastRenderAt = 0;
   private static readonly MIN_RENDER_INTERVAL_MS = 16;
+  private _compactionReplayCallback: CompactionReplayCallback | null = null;
+  private _sessionId: string | null = null;
+
+  /** Register a callback that fires when compaction ends with queued messages to replay. */
+  setCompactionReplayCallback(sessionId: string, callback: CompactionReplayCallback): void {
+    this._sessionId = sessionId;
+    this._compactionReplayCallback = callback;
+  }
 
   get state(): TranscriptState {
     return this._state;
@@ -252,9 +269,28 @@ export class TranscriptController {
   // Hydration (from getMessages on session_ready or switch)
   // ===========================================================================
 
-  hydrate(messages: unknown[]): void {
+  hydrate(messages: unknown[], compactionCount?: number): void {
     this._optimisticUserMessages.clear();
     const nodes = this.createNodesFromMessages(messages);
+
+    // If the last message is a compaction marker, update it with the count
+    // instead of adding a duplicate line.
+    if (compactionCount && compactionCount > 0) {
+      const lastNode = nodes[nodes.length - 1];
+      if (lastNode?.role === 'system' && lastNode.text === 'Context compacted') {
+        nodes[nodes.length - 1] = {
+          ...lastNode,
+          text: `Compacted ${compactionCount} time${compactionCount !== 1 ? 's' : ''}`,
+        };
+      } else {
+        nodes.push({
+          id: nextNodeId(),
+          role: 'system',
+          text: `Compacted ${compactionCount} time${compactionCount !== 1 ? 's' : ''}`,
+          isLoading: false,
+        });
+      }
+    }
 
     this._state = {
       nodes,
@@ -263,6 +299,8 @@ export class TranscriptController {
       activeToolCallId: null,
       queuedSteering: [],
       queuedFollowUp: [],
+      isCompacting: false,
+      compactionQueue: [],
     };
     this.notify();
   }
@@ -285,6 +323,16 @@ export class TranscriptController {
     const nodes: TranscriptNode[] = [];
     const toolCalls = new Map<string, { name: string; args: unknown; startedAt?: number }>();
 
+    // Pi SDK places compactionSummary at messages[0]. Extract its timestamp so we can
+    // insert the visual marker between pre-compaction kept messages and post-compaction
+    // messages instead of at the top (where it scrolls out of view).
+    const firstMessage = messages[0] as { role?: string; timestamp?: number | string } | undefined;
+    const compactionTimestamp =
+      firstMessage?.role === 'compactionSummary'
+        ? tryNormalizeTimestamp(firstMessage.timestamp)
+        : undefined;
+    let compactionInserted = false;
+
     for (const rawMessage of messages) {
       // SDK messages are untyped; runtime shape check
       const parsed = rawMessage as {
@@ -297,6 +345,25 @@ export class TranscriptController {
         errorMessage?: string;
       };
       if (!parsed.role) continue;
+
+      // Insert compaction marker at the boundary between pre-compaction kept messages
+      // and post-compaction messages, determined by timestamp.
+      if (
+        compactionTimestamp !== undefined &&
+        !compactionInserted &&
+        parsed.role !== 'compactionSummary'
+      ) {
+        const messageTimestamp = tryNormalizeTimestamp(parsed.timestamp);
+        if (messageTimestamp !== undefined && messageTimestamp > compactionTimestamp) {
+          nodes.push({
+            id: nextNodeId(),
+            role: 'system',
+            text: 'Context compacted',
+            isLoading: false,
+          });
+          compactionInserted = true;
+        }
+      }
 
       switch (parsed.role) {
         case 'user': {
@@ -367,16 +434,21 @@ export class TranscriptController {
           });
           break;
         }
-        case 'compactionSummary': {
-          nodes.push({
-            id: parsed.id || nextNodeId(),
-            role: 'system',
-            text: 'Context compacted',
-            isLoading: false,
-          });
+        case 'compactionSummary':
+          // Handled above via compactionTimestamp; marker is inserted at the
+          // chronological boundary between kept and post-compaction messages.
           break;
-        }
       }
+    }
+
+    // Fallback: compaction was the last thing that happened (no post-compaction messages).
+    if (compactionTimestamp !== undefined && !compactionInserted) {
+      nodes.push({
+        id: nextNodeId(),
+        role: 'system',
+        text: 'Context compacted',
+        isLoading: false,
+      });
     }
 
     return nodes;
@@ -400,6 +472,8 @@ export class TranscriptController {
       activeToolCallId: null,
       queuedSteering: [],
       queuedFollowUp: [],
+      isCompacting: false,
+      compactionQueue: [],
     };
     this.notify();
   }
@@ -414,6 +488,21 @@ export class TranscriptController {
    */
   clearLocalQueue(): void {
     this.setState({ queuedSteering: [], queuedFollowUp: [] });
+  }
+
+  /** Queue a message sent during compaction for replay after compaction ends. */
+  addCompactionMessage(text: string, mode: 'steer' | 'followUp'): void {
+    const updated = [...this._state.compactionQueue, { text, mode }];
+    const steering =
+      mode === 'steer' ? [...this._state.queuedSteering, text] : this._state.queuedSteering;
+    const followUp =
+      mode === 'followUp' ? [...this._state.queuedFollowUp, text] : this._state.queuedFollowUp;
+    this.setState({ compactionQueue: updated, queuedSteering: steering, queuedFollowUp: followUp });
+  }
+
+  /** Clear the compaction queue after replaying its messages. */
+  clearCompactionQueue(): void {
+    this.setState({ compactionQueue: [], queuedSteering: [], queuedFollowUp: [] });
   }
 
   // Optimistic user message (shown immediately before SDK echo)
@@ -509,12 +598,35 @@ export class TranscriptController {
         break;
 
       case 'compaction_start':
+        this.setState({
+          status: 'streaming',
+          isCompacting: true,
+          compactionQueue: [],
+          queuedSteering: [],
+          queuedFollowUp: [],
+        });
         this.addCompactionNode();
         break;
 
-      case 'compaction_end':
-        this.finalizeCompactionNode();
+      case 'compaction_end': {
+        const compactionEvent = event as { aborted?: boolean; errorMessage?: string };
+        this.finalizeCompactionNode(compactionEvent.aborted, compactionEvent.errorMessage);
+        this.setState({ isCompacting: false });
+
+        // Fire callback to replay messages queued during compaction.
+        // Uses the sessionId captured at callback registration, not the currently
+        // active session, to handle session switching during compaction.
+        if (
+          this._compactionReplayCallback &&
+          this._sessionId &&
+          this._state.compactionQueue.length > 0
+        ) {
+          const queue = [...this._state.compactionQueue];
+          this.clearCompactionQueue();
+          this._compactionReplayCallback(this._sessionId, queue);
+        }
         break;
+      }
 
       case 'queue_update': {
         // Runtime guard for expected shape
@@ -873,12 +985,17 @@ export class TranscriptController {
     this.setState({ nodes: [...this._state.nodes, node] });
   }
 
-  private finalizeCompactionNode(): void {
+  private finalizeCompactionNode(aborted?: boolean, errorMessage?: string): void {
     const nodes = this._state.nodes;
     for (let i = nodes.length - 1; i >= 0; i--) {
       const n = nodes[i];
       if (n.role === 'system' && n.isLoading && n.text.startsWith('Compacting')) {
-        const updated = { ...n, text: 'Context compacted', isLoading: false };
+        const text = aborted
+          ? 'Compaction cancelled'
+          : errorMessage
+            ? `Compaction failed: ${errorMessage}`
+            : 'Context compacted';
+        const updated = { ...n, text, isLoading: false };
         const newNodes = [...nodes];
         newNodes[i] = updated;
         this.setState({ nodes: newNodes });

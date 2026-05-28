@@ -230,6 +230,29 @@ function App(): React.JSX.Element {
     void touchSession(activeSessionId);
   }, [activeSessionId]);
 
+  // Register a callback so the controller can replay compaction-queued messages
+  // on the correct session, even if the user switches sessions mid-compaction.
+  useEffect(() => {
+    if (!activeSessionId) return;
+    transcriptControllerRef.current?.setCompactionReplayCallback(
+      activeSessionId,
+      (sessionId, queue) => {
+        void (async () => {
+          const first = queue[0];
+          ensureTranscriptSession(sessionId).addUserMessage(first.text);
+          await prompt(sessionId, first.text);
+          for (let i = 1; i < queue.length; i++) {
+            if (queue[i].mode === 'steer') {
+              await steer(sessionId, queue[i].text);
+            } else {
+              await followUp(sessionId, queue[i].text);
+            }
+          }
+        })();
+      },
+    );
+  }, [activeSessionId, transcriptControllerRef]);
+
   async function handleSend(message: string): Promise<void> {
     const cwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
     let sessionId = activeSessionId;
@@ -241,6 +264,13 @@ function App(): React.JSX.Element {
     const existing = useAppStore.getState().sessions.get(sessionId);
     if (existing?.title === 'New chat') {
       useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) });
+    }
+
+    // Queue locally during compaction — messages are replayed after compaction ends.
+    if (transcript.isCompacting) {
+      transcriptControllerRef.current?.addCompactionMessage(message, 'steer');
+      void listProjectSessions([cwd]);
+      return;
     }
 
     // If the session is already streaming, steer instead of prompting
@@ -257,6 +287,13 @@ function App(): React.JSX.Element {
     async (message: string): Promise<void> => {
       const sessionId = activeSessionId;
       if (!sessionId) return;
+
+      // Queue locally during compaction.
+      if (transcript.isCompacting) {
+        transcriptControllerRef.current?.addCompactionMessage(message, 'followUp');
+        return;
+      }
+
       if (transcript.status !== 'idle') {
         await followUp(sessionId, message);
       } else {
@@ -264,7 +301,7 @@ function App(): React.JSX.Element {
         await prompt(sessionId, message);
       }
     },
-    [activeSessionId, transcript.status],
+    [activeSessionId, transcript.status, transcript.isCompacting, transcriptControllerRef],
   );
 
   const handleAbort = useCallback(async () => {

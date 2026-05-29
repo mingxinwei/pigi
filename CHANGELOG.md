@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- macOS window: refined border to hairline-thin by aligning `vibrancy`/`backgroundColor` with native Codex approach, removing redundant `transparent: true` and `visualEffectState: 'active'`.
+
 ### Fixed
 
 - Disable Electron cookie encryption fuse to prevent macOS Keychain password prompt on launch.

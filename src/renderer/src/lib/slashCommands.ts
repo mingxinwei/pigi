@@ -1,3 +1,4 @@
+import fuzzysort from 'fuzzysort';
 import type { SkillSlashCommand } from '../../../shared/ipcContract';
 
 export interface SlashCommand {
@@ -42,6 +43,7 @@ export function getAllSlashCommands(skills: SkillSlashCommand[]): SlashCommand[]
 
 /**
  * Filter commands matching partial input (for autocomplete).
+ * Uses fuzzy match (matches non-contiguous character sequences) for both builtin and skill commands.
  */
 export function matchSlashCommands(
   input: string,
@@ -53,12 +55,18 @@ export function matchSlashCommands(
   const partial = trimmed.slice(1).toLowerCase();
   if (partial.includes(' ')) return { builtin: [], skill: [] }; // already typed arg, no autocomplete
 
-  const matches = allCommands.filter((c) => {
-    if (c.source === 'builtin') return c.name.startsWith(partial);
-    return c.name.includes(partial);
-  });
+  const builtinCommands = allCommands.filter((c) => c.source === 'builtin');
+  const skillCommands = allCommands.filter((c) => c.source === 'skill');
+
+  if (partial.length === 0) {
+    return { builtin: builtinCommands, skill: skillCommands };
+  }
+
+  const builtinMatches = fuzzysort.go(partial, builtinCommands, { key: 'name' });
+  const skillMatches = fuzzysort.go(partial, skillCommands, { key: 'name' });
+
   return {
-    builtin: matches.filter((c) => c.source === 'builtin'),
-    skill: matches.filter((c) => c.source === 'skill'),
+    builtin: builtinMatches.map((r) => r.obj),
+    skill: skillMatches.map((r) => r.obj),
   };
 }

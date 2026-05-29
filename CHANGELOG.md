@@ -4,7 +4,7 @@
 
 ### Added
 
-- Slash command autocomplete now shows available skills alongside builtin commands, with fuzzy matching for skill names.
+- Slash command autocomplete now shows available skills alongside builtin commands, with fuzzy search (fuzzysort) for both builtin and skill names.
 - Skill blocks in chat are rendered as compact inline links with a popover to view full skill content.
 - Global link styling: system accent color, no underline.
 

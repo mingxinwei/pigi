@@ -93,9 +93,15 @@ export interface ContextUsage {
   percent: number | null;
 }
 
+export interface SkillSlashCommand {
+  name: string;
+  description: string;
+}
+
 export interface SessionOptions {
   models: ModelInfo[];
   thinkingLevels: ThinkingLevel[];
+  skills: SkillSlashCommand[];
 }
 
 // =============================================================================

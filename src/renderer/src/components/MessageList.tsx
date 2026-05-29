@@ -1,6 +1,6 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { IconArrowDown, IconCopy, IconCheck } from '@tabler/icons-react';
+import { IconArrowDown, IconCopy, IconCheck, IconSparkles } from '@tabler/icons-react';
 import {
   type TranscriptNode,
   type AssistantNode,
@@ -12,6 +12,7 @@ import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layout
 import ToolBlock from './ToolBlock';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
@@ -221,6 +222,9 @@ function isAtBottom(container: HTMLDivElement): boolean {
 }
 
 function estimateUserHeight(text: string): number {
+  if (parseSkillBlock(text)) {
+    return 88;
+  }
   const preview = getUserMessagePreview(text);
   const visibleLineCount = countLines(preview.text);
   const characterLineCount = Math.ceil(preview.text.length / USER_MESSAGE_WRAP_ESTIMATE_WIDTH);
@@ -309,7 +313,15 @@ function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
 function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
   const { text } = node;
   const [expanded, setExpanded] = useState(false);
-  const preview = useMemo(() => getUserMessagePreview(text), [text]);
+
+  const skillBlock = useMemo(() => parseSkillBlock(text), [text]);
+
+  if (skillBlock) {
+    return <SkillLinkBubble skillBlock={skillBlock} timestamp={node.sentAt} />;
+  }
+
+  const preview = getUserMessagePreview(text);
+
   const displayText = expanded || !preview.isLong ? text : preview.text;
 
   return (
@@ -389,6 +401,70 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 
 function isSameLocalYear(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear();
+}
+
+interface ParsedSkillBlock {
+  name: string;
+  body: string;
+  userMessage: string | undefined;
+}
+
+const SKILL_BLOCK_PATTERN =
+  /^<skill name="([^"]+)" location="[^"]+">\r?\n([\s\S]*?)\r?\n<\/skill>(?:\r?\n\r?\n([\s\S]+))?$/;
+
+function parseSkillBlock(text: string): ParsedSkillBlock | null {
+  const match = text.match(SKILL_BLOCK_PATTERN);
+  if (!match) return null;
+  return {
+    name: match[1],
+    body: match[2],
+    userMessage: match[3] || undefined,
+  };
+}
+
+function SkillLinkBubble({
+  skillBlock,
+  timestamp,
+}: {
+  skillBlock: ParsedSkillBlock;
+  timestamp: number;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="flex justify-end pb-2 pt-6" data-testid="skill-message">
+      <div className="group flex max-w-[85%] flex-col items-end">
+        <div className="rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] w-fit">
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline text-[var(--system-accent)] hover:opacity-80 cursor-pointer"
+              >
+                <IconSparkles className="size-4 shrink-0 inline -mt-0.5 mr-0.5" />
+                {skillBlock.name}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="end"
+              className="w-[32rem] max-h-[60vh] overflow-y-auto p-4"
+            >
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+                <IconSparkles className="size-4 shrink-0" />
+                <span>{skillBlock.name}</span>
+              </div>
+              <MarkdownMessage text={skillBlock.body} />
+            </PopoverContent>
+          </Popover>
+          {skillBlock.userMessage && <> {skillBlock.userMessage}</>}
+        </div>
+        <div className="flex h-6 w-full items-center justify-end gap-2 pt-1">
+          <span className="text-xs text-muted-foreground">{formatUserMessageTime(timestamp)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {

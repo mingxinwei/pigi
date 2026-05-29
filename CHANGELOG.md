@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Slash command autocomplete now shows available skills alongside builtin commands, with fuzzy matching for skill names.
+- Skill blocks in chat are rendered as compact inline links with a popover to view full skill content.
+- Global link styling: system accent color, no underline.
+
+### Changed
+
+- Slash command autocomplete uses Popover with unified overlay styling, grouped into builtin commands and skills.
+- Unified overlay content style (`OVERLAY_CONTENT`) shared by Dialog, Popover, and other floating panels.
+- Borders refined to `0.5px` on input, tool blocks, and diff views for a lighter visual.
+- Overlay panel opacity set to 95% for subtle translucency.
+
 ## [0.2.7] - 2026-05-29
 
 ### Changed

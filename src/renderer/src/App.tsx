@@ -41,6 +41,7 @@ import type {
   ModelInfo,
   PiSessionInfo,
   ProjectDirectory,
+  SkillSlashCommand,
   ThinkingLevel,
 } from '../../shared/ipcContract';
 import Sidebar from './components/Sidebar';
@@ -75,6 +76,7 @@ function App(): React.JSX.Element {
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelInfo[]>([]);
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
+  const [skillOptions, setSkillOptions] = useState<SkillSlashCommand[]>([]);
   // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
   const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null;
   const { state: transcript, controller: transcriptControllerRef } = useTranscript(activeSessionId);
@@ -102,10 +104,12 @@ function App(): React.JSX.Element {
       const options = await getSessionOptions(sessionId);
       setModelOptions(options.models);
       setThinkingLevelOptions(options.thinkingLevels);
+      setSkillOptions(options.skills);
     } catch (err) {
       console.error('Failed to refresh session options:', err);
       setModelOptions([]);
       setThinkingLevelOptions([]);
+      setSkillOptions([]);
     }
   }, []);
 
@@ -180,6 +184,7 @@ function App(): React.JSX.Element {
         }
         setModelOptions(options.models);
         setThinkingLevelOptions(options.thinkingLevels);
+        setSkillOptions(options.skills);
       })
       .catch((err) => {
         if (cancelled) {
@@ -188,6 +193,7 @@ function App(): React.JSX.Element {
         console.error('Failed to refresh session options:', err);
         setModelOptions([]);
         setThinkingLevelOptions([]);
+        setSkillOptions([]);
       });
 
     return () => {
@@ -239,7 +245,9 @@ function App(): React.JSX.Element {
       (sessionId, queue) => {
         void (async () => {
           const first = queue[0];
-          ensureTranscriptSession(sessionId).addUserMessage(first.text);
+          if (!first.text.startsWith('/skill:')) {
+            ensureTranscriptSession(sessionId).addUserMessage(first.text);
+          }
           await prompt(sessionId, first.text);
           for (let i = 1; i < queue.length; i++) {
             if (queue[i].mode === 'steer') {
@@ -277,7 +285,10 @@ function App(): React.JSX.Element {
     if (transcript.status !== 'idle') {
       await steer(sessionId, message);
     } else {
-      ensureTranscriptSession(sessionId).addUserMessage(message);
+      // Skill commands: skip optimistic message — SDK echoes back the expanded version
+      if (!message.startsWith('/skill:')) {
+        ensureTranscriptSession(sessionId).addUserMessage(message);
+      }
       await prompt(sessionId, message);
     }
     void listProjectSessions([cwd]);
@@ -685,6 +696,7 @@ function App(): React.JSX.Element {
               session={activeSession}
               modelOptions={activeSessionId ? modelOptions : []}
               thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}
+              skillOptions={activeSessionId ? skillOptions : []}
               onSelectModel={handleSelectModel}
               onSelectThinkingLevel={handleSelectThinkingLevel}
             />

@@ -419,9 +419,14 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
         scopedModels.length > 0
           ? scopedModels.map((scoped) => toModelInfo(scoped.model))
           : (await session.modelRegistry.getAvailable()).map(toModelInfo);
+      const skills = runtime.services.resourceLoader.getSkills().skills.map((skill) => ({
+        name: `skill:${skill.name}`,
+        description: skill.description,
+      }));
       return {
         models,
         thinkingLevels: session.getAvailableThinkingLevels(),
+        skills,
       };
     }
 

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   IconArrowUp,
   IconCheck,
@@ -8,7 +8,12 @@ import {
   IconSquare,
   IconStarFilled,
 } from '@tabler/icons-react';
-import type { ContextUsage, ModelInfo, ThinkingLevel } from '../../../shared/ipcContract';
+import type {
+  ContextUsage,
+  ModelInfo,
+  SkillSlashCommand,
+  ThinkingLevel,
+} from '../../../shared/ipcContract';
 import type { SessionEntry } from '../state/appStore';
 import {
   InputGroup,
@@ -30,7 +35,7 @@ import { Separator } from './ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants';
 import { cn } from '../lib/utils';
-import { matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
+import { getAllSlashCommands, matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -45,6 +50,7 @@ interface ChatInputProps {
   session: SessionEntry | null;
   modelOptions: ModelInfo[];
   thinkingLevelOptions: ThinkingLevel[];
+  skillOptions: SkillSlashCommand[];
   onSelectModel: (model: ModelInfo) => void;
   onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
 }
@@ -86,12 +92,47 @@ export default function ChatInput({
   thinkingLevelOptions,
   onSelectModel,
   onSelectThinkingLevel,
+  skillOptions,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftsRef = useRef<Map<string, string>>(new Map());
   const prevSessionIdRef = useRef<string | null>(null);
-  const [slashMatches, setSlashMatches] = useState<SlashCommand[]>([]);
+  const [slashMatches, setSlashMatches] = useState<{
+    builtin: SlashCommand[];
+    skill: SlashCommand[];
+  }>({ builtin: [], skill: [] });
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const slashListRef = useRef<HTMLDivElement>(null);
+
+  const allSlashCommands = useMemo(() => getAllSlashCommands(skillOptions), [skillOptions]);
+
+  // Flat index helpers for keyboard nav across builtin + skill groups
+  const flatSlashMatches = useMemo(() => {
+    const items: SlashCommand[] = [];
+    for (const cmd of slashMatches.builtin) items.push(cmd);
+    for (const cmd of slashMatches.skill) items.push(cmd);
+    return items;
+  }, [slashMatches]);
+  const hasSlashMatches = slashMatches.builtin.length > 0 || slashMatches.skill.length > 0;
+
+  // Scroll selected slash item into view
+  useEffect(() => {
+    if (!hasSlashMatches) return;
+    const container = slashListRef.current;
+    if (!container) return;
+    // The scrollable element is PopoverContent (parent of the ref div)
+    const scrollParent = container.parentElement;
+    if (!scrollParent) return;
+    if (selectedSlashIndex === 0) {
+      scrollParent.scrollTop = 0;
+      return;
+    }
+    const buttons = container.querySelectorAll('button');
+    const selected = buttons[selectedSlashIndex];
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedSlashIndex, hasSlashMatches]);
 
   // Save/restore draft per session
   useEffect(() => {
@@ -159,14 +200,24 @@ export default function ChatInput({
       const spaceIndex = text.indexOf(' ');
       const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
       const arg = spaceIndex === -1 ? '' : text.slice(spaceIndex + 1).trim();
-      const matches = matchSlashCommands(`/${name}`);
-      const exactMatch = matches.find((c) => c.name === name);
 
-      if (exactMatch) {
+      // Check builtin commands
+      const builtinMatch = allSlashCommands.find((c) => c.source === 'builtin' && c.name === name);
+      if (builtinMatch) {
         textarea.value = '';
         textarea.style.height = 'auto';
-        setSlashMatches([]);
+        setSlashMatches({ builtin: [], skill: [] });
         onSlashCommand(name, arg);
+        return;
+      }
+
+      // Check skill commands — send as regular prompt, SDK handles expansion
+      const skillMatch = allSlashCommands.find((c) => c.source === 'skill' && c.name === name);
+      if (skillMatch) {
+        textarea.value = '';
+        textarea.style.height = 'auto';
+        setSlashMatches({ builtin: [], skill: [] });
+        onSend(text);
         return;
       }
       // Not a known command — fall through and send as regular message
@@ -175,7 +226,7 @@ export default function ChatInput({
     textarea.value = '';
     textarea.style.height = 'auto';
     onSend(text);
-  }, [onSend, onSlashCommand]);
+  }, [onSend, onSlashCommand, allSlashCommands]);
 
   const handleFollowUpSend = useCallback(() => {
     const textarea = textareaRef.current;
@@ -194,37 +245,37 @@ export default function ChatInput({
       }
 
       // Slash command autocomplete navigation
-      if (slashMatches.length > 0) {
+      if (hasSlashMatches) {
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          setSelectedSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+          setSelectedSlashIndex((i) => (i - 1 + flatSlashMatches.length) % flatSlashMatches.length);
           return;
         }
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          setSelectedSlashIndex((i) => (i + 1) % slashMatches.length);
+          setSelectedSlashIndex((i) => (i + 1) % flatSlashMatches.length);
           return;
         }
         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
           e.preventDefault();
-          const selectedCommand = slashMatches[selectedSlashIndex];
+          const selectedCommand = flatSlashMatches[selectedSlashIndex];
           if (selectedCommand && textareaRef.current) {
-            if (selectedCommand.hasArg) {
-              // hasArg: always complete to "/{name} " for both Tab and Enter
-              textareaRef.current.value = `/${selectedCommand.name} `;
-              setSlashMatches([]);
-            } else {
-              // No argument needed — execute immediately
+            if (selectedCommand.source === 'builtin' && !selectedCommand.hasArg) {
+              // Builtin no-arg: execute immediately (e.g., /compact, /new)
               textareaRef.current.value = '';
               textareaRef.current.style.height = 'auto';
-              setSlashMatches([]);
+              setSlashMatches({ builtin: [], skill: [] });
               onSlashCommand(selectedCommand.name, '');
+            } else {
+              textareaRef.current.value = `/${selectedCommand.name} `;
+              setSlashMatches({ builtin: [], skill: [] });
+              textareaRef.current.focus();
             }
           }
           return;
         }
         if (e.key === 'Escape') {
-          setSlashMatches([]);
+          setSlashMatches({ builtin: [], skill: [] });
           return;
         }
       }
@@ -239,7 +290,14 @@ export default function ChatInput({
         handleFollowUpSend();
       }
     },
-    [handleSend, handleFollowUpSend, isStreaming, slashMatches, selectedSlashIndex, onSlashCommand],
+    [
+      handleSend,
+      handleFollowUpSend,
+      isStreaming,
+      hasSlashMatches,
+      flatSlashMatches,
+      selectedSlashIndex,
+    ],
   );
 
   const handleInput = useCallback(() => {
@@ -253,118 +311,144 @@ export default function ChatInput({
 
     // Update slash command matches
     const value = textarea.value;
-    const matches = matchSlashCommands(value);
-    setSlashMatches(matches);
+    setSlashMatches(matchSlashCommands(value, allSlashCommands));
     setSelectedSlashIndex(0);
-  }, []);
+  }, [allSlashCommands]);
 
   return (
     <div className="relative z-10 shrink-0 px-8 pb-3" data-testid="chat-input">
-      <div className="relative mx-auto w-full" style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}>
-        {slashMatches.length > 0 && (
-          <div className="absolute inset-x-0 bottom-full mb-1 rounded-lg border border-border/60 bg-popover p-1 shadow-lg">
-            {slashMatches.map((slashCommand, i) => (
-              <button
+      <Popover
+        open={hasSlashMatches}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSlashMatches({ builtin: [], skill: [] });
+        }}
+      >
+        <PopoverContent
+          side="top"
+          align="start"
+          sideOffset={6}
+          className="max-h-[40vh] overflow-y-auto p-1"
+          style={{ width: `${CHAT_INPUT_MAX_WIDTH}px` }}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <div ref={slashListRef}>
+            {slashMatches.builtin.map((slashCommand, i) => (
+              <SlashCommandItem
                 key={slashCommand.name}
-                type="button"
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm',
-                  i === selectedSlashIndex ? 'bg-muted' : 'hover:bg-muted/60',
-                )}
-                onMouseDown={(e) => {
-                  e.preventDefault();
+                slashCommand={slashCommand}
+                isSelected={i === selectedSlashIndex}
+                onSelect={() => {
                   const textarea = textareaRef.current;
-                  if (textarea) {
-                    if (slashCommand.hasArg) {
-                      textarea.value = `/${slashCommand.name} `;
-                      setSlashMatches([]);
-                      handleInput();
-                      textarea.focus();
-                    } else {
-                      textarea.value = '';
-                      textarea.style.height = 'auto';
-                      setSlashMatches([]);
-                      onSlashCommand(slashCommand.name, '');
-                    }
-                  }
+                  if (!textarea) return;
+                  textarea.value = `/${slashCommand.name} `;
+                  setSlashMatches({ builtin: [], skill: [] });
+                  textarea.focus();
                 }}
-              >
-                <span className="font-mono text-foreground">/{slashCommand.name}</span>
-                <span className="text-muted-foreground">{slashCommand.description}</span>
-              </button>
+              />
             ))}
+            {slashMatches.builtin.length > 0 && slashMatches.skill.length > 0 && (
+              <Separator className="my-0.5 mx-auto h-px !w-[98%] opacity-90" />
+            )}
+            {slashMatches.skill.map((slashCommand, i) => {
+              const flatIndex = slashMatches.builtin.length + i;
+              return (
+                <SlashCommandItem
+                  key={slashCommand.name}
+                  slashCommand={slashCommand}
+                  isSelected={flatIndex === selectedSlashIndex}
+                  onSelect={() => {
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.value = `/${slashCommand.name} `;
+                    setSlashMatches({ builtin: [], skill: [] });
+                    textarea.focus();
+                  }}
+                />
+              );
+            })}
           </div>
-        )}
-        <InputGroup className="h-auto min-h-28 flex-col rounded-3xl bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">
-          <InputGroupTextarea
-            ref={textareaRef}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder="Ask for follow-up changes"
-            rows={1}
-            className="flex-initial min-h-16 field-sizing-fixed px-4 pb-2 pt-4 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto"
-            data-testid="chat-textarea"
-          />
-          <InputGroupAddon
-            align="block-end"
-            className="min-w-0 justify-between gap-2 px-2.5 pb-2.5 pt-0"
+        </PopoverContent>
+        <PopoverTrigger asChild>
+          <div
+            className="relative mx-auto w-full"
+            style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1">
-              <InputGroupButton size="icon-sm" variant="ghost" className="shrink-0 rounded-full">
-                <IconPlus />
-              </InputGroupButton>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <ModelSettingsPicker
-                modelLabel={modelLabel}
-                modelValue={session?.model ?? null}
-                modelOptions={modelOptions}
-                onSelectModel={onSelectModel}
-                thinkingLabel={thinkingLabel}
-                thinkingValue={thinkingValue}
-                thinkingOptions={thinkingLevelOptions}
-                onSelectThinkingLevel={onSelectThinkingLevel}
+            <InputGroup className="h-auto min-h-28 flex-col rounded-3xl border-[0.5px] bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+              <InputGroupTextarea
+                ref={textareaRef}
+                onKeyDown={handleKeyDown}
+                onInput={handleInput}
+                placeholder="Ask for follow-up changes"
+                rows={1}
+                className="flex-initial min-h-16 field-sizing-fixed px-4 pb-2 pt-4 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto"
+                data-testid="chat-textarea"
+              />
+              <InputGroupAddon
+                align="block-end"
+                className="min-w-0 justify-between gap-2 px-2.5 pb-2.5 pt-0"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1">
+                  <InputGroupButton
+                    size="icon-sm"
+                    variant="ghost"
+                    className="shrink-0 rounded-full"
+                  >
+                    <IconPlus />
+                  </InputGroupButton>
+                </div>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <ModelSettingsPicker
+                    modelLabel={modelLabel}
+                    modelValue={session?.model ?? null}
+                    modelOptions={modelOptions}
+                    onSelectModel={onSelectModel}
+                    thinkingLabel={thinkingLabel}
+                    thinkingValue={thinkingValue}
+                    thinkingOptions={thinkingLevelOptions}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                  />
+                </div>
+                {isStreaming ? (
+                  <InputGroupButton
+                    onClick={onAbort}
+                    size="icon-sm"
+                    variant="default"
+                    className="rounded-full"
+                    data-testid="abort-button"
+                  >
+                    <IconSquare className="fill-current" />
+                  </InputGroupButton>
+                ) : (
+                  <InputGroupButton
+                    onClick={handleSend}
+                    size="icon-sm"
+                    variant="default"
+                    className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
+                    data-testid="send-button"
+                  >
+                    <IconArrowUp />
+                  </InputGroupButton>
+                )}
+              </InputGroupAddon>
+            </InputGroup>
+
+            <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
+              <span
+                className="flex min-w-0 items-center gap-1.5"
+                onClick={() => void onRefreshGitBranch()}
+              >
+                <IconGitBranch className="size-4 shrink-0" />
+                <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
+              </span>
+              <ContextUsageTooltip
+                label={contextUsageLabel}
+                contextUsage={contextUsage}
+                autoCompactionEnabled={autoCompactionEnabled}
               />
             </div>
-            {isStreaming ? (
-              <InputGroupButton
-                onClick={onAbort}
-                size="icon-sm"
-                variant="default"
-                className="rounded-full"
-                data-testid="abort-button"
-              >
-                <IconSquare className="fill-current" />
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton
-                onClick={handleSend}
-                size="icon-sm"
-                variant="default"
-                className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
-                data-testid="send-button"
-              >
-                <IconArrowUp />
-              </InputGroupButton>
-            )}
-          </InputGroupAddon>
-        </InputGroup>
-
-        <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
-          <span
-            className="flex min-w-0 items-center gap-1.5"
-            onClick={() => void onRefreshGitBranch()}
-          >
-            <IconGitBranch className="size-4 shrink-0" />
-            <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
-          </span>
-          <ContextUsageTooltip
-            label={contextUsageLabel}
-            contextUsage={contextUsage}
-            autoCompactionEnabled={autoCompactionEnabled}
-          />
-        </div>
-      </div>
+          </div>
+        </PopoverTrigger>
+      </Popover>
     </div>
   );
 }
@@ -662,4 +746,33 @@ function formatPercent(value: number): string {
 
 function formatTokenCount(value: number): string {
   return `${Math.round(value / TOKEN_UNIT)}${TOKEN_SUFFIX}`;
+}
+
+function SlashCommandItem({
+  slashCommand,
+  isSelected,
+  onSelect,
+}: {
+  slashCommand: SlashCommand;
+  isSelected: boolean;
+  onSelect: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm',
+        isSelected ? 'bg-[var(--system-accent)]/30' : 'hover:bg-muted/60',
+      )}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onSelect();
+      }}
+    >
+      <span className="shrink-0 font-mono text-foreground">/{slashCommand.name}</span>
+      {slashCommand.source !== 'skill' && (
+        <span className="min-w-0 truncate text-muted-foreground">{slashCommand.description}</span>
+      )}
+    </button>
+  );
 }

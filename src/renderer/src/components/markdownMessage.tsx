@@ -37,7 +37,6 @@ const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a
       href={href}
-      className="font-medium text-ring no-underline hover:text-ring/80 transition-colors"
       rel="noreferrer"
       onClick={(e) => {
         e.preventDefault();

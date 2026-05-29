@@ -1,50 +1,64 @@
+import type { SkillSlashCommand } from '../../../shared/ipcContract';
+
 export interface SlashCommand {
   name: string;
   description: string;
+  source: 'builtin' | 'skill';
   hasArg?: boolean;
   argPlaceholder?: string;
 }
 
-export const SLASH_COMMANDS: SlashCommand[] = [
-  { name: 'compact', description: 'Compact session context' },
-  { name: 'login', description: 'Configure provider authentication' },
+const BUILTIN_COMMANDS: SlashCommand[] = [
+  { name: 'compact', description: 'Compact session context', source: 'builtin' },
+  { name: 'login', description: 'Configure provider authentication', source: 'builtin' },
   {
     name: 'logout',
     description: 'Remove stored credentials',
+    source: 'builtin',
     hasArg: true,
     argPlaceholder: 'provider',
   },
-  { name: 'name', description: 'Rename session', hasArg: true, argPlaceholder: 'new name' },
-  { name: 'new', description: 'Start a new chat' },
+  {
+    name: 'name',
+    description: 'Rename session',
+    source: 'builtin',
+    hasArg: true,
+    argPlaceholder: 'new name',
+  },
+  { name: 'new', description: 'Start a new chat', source: 'builtin' },
 ];
 
-/**
- * Parse a slash command from input text.
- * Returns the command and argument if valid, null otherwise.
- */
-export function parseSlashCommand(input: string): { command: SlashCommand; arg: string } | null {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith('/')) return null;
+function toSkillCommand(skill: SkillSlashCommand): SlashCommand {
+  return {
+    name: skill.name,
+    description: skill.description,
+    source: 'skill',
+  };
+}
 
-  const spaceIdx = trimmed.indexOf(' ');
-  const name = spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx);
-  const arg = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1).trim();
-
-  const command = SLASH_COMMANDS.find((c) => c.name === name);
-  if (!command) return null;
-
-  return { command, arg };
+export function getAllSlashCommands(skills: SkillSlashCommand[]): SlashCommand[] {
+  return [...BUILTIN_COMMANDS, ...skills.map(toSkillCommand)];
 }
 
 /**
  * Filter commands matching partial input (for autocomplete).
  */
-export function matchSlashCommands(input: string): SlashCommand[] {
+export function matchSlashCommands(
+  input: string,
+  allCommands: SlashCommand[],
+): { builtin: SlashCommand[]; skill: SlashCommand[] } {
   const trimmed = input.trim();
-  if (!trimmed.startsWith('/')) return [];
+  if (!trimmed.startsWith('/')) return { builtin: [], skill: [] };
 
   const partial = trimmed.slice(1).toLowerCase();
-  if (partial.includes(' ')) return []; // already typed arg, no autocomplete
+  if (partial.includes(' ')) return { builtin: [], skill: [] }; // already typed arg, no autocomplete
 
-  return SLASH_COMMANDS.filter((c) => c.name.startsWith(partial));
+  const matches = allCommands.filter((c) => {
+    if (c.source === 'builtin') return c.name.startsWith(partial);
+    return c.name.includes(partial);
+  });
+  return {
+    builtin: matches.filter((c) => c.source === 'builtin'),
+    skill: matches.filter((c) => c.source === 'skill'),
+  };
 }

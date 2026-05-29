@@ -27,7 +27,7 @@ function WritePreview({
   const displayContent = displayLines.join('\n');
 
   return (
-    <div className="overflow-hidden rounded border border-border/40 font-mono text-[13px] leading-5">
+    <div className="overflow-hidden rounded border-[0.5px] border-border/80 font-mono text-[13px] leading-5">
       <pre className="overflow-hidden whitespace-pre-wrap break-words px-3 py-2 text-muted-foreground [overflow-wrap:anywhere]">
         <SyntaxHighlightedCode code={displayContent} language={language} />
         {isStreaming && <span className="animate-pulse text-muted-foreground/50">▋</span>}
@@ -36,7 +36,7 @@ function WritePreview({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="w-full border-t border-border/30 bg-muted/30 px-3 py-0.5 text-left text-xs text-muted-foreground hover:text-foreground"
+          className="w-full border-t border-border/70 bg-muted/30 px-3 py-0.5 text-left text-xs text-muted-foreground hover:text-foreground"
         >
           {hiddenCount} more lines ({totalLines} total)
         </button>
@@ -261,7 +261,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   return (
     <>
       <div
-        className="overflow-hidden rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
+        className="overflow-hidden rounded-md border-[0.5px] border-border bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
         style={{
           maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
           minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,

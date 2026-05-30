@@ -666,7 +666,7 @@ function App(): React.JSX.Element {
         />
       </div>
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-xl border-l-[0.5px] border-foreground/20 bg-background">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-l-xl border-l-[0.5px] border-foreground/27 bg-background">
         <div
           aria-label="Resize sidebar"
           role="separator"

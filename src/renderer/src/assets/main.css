@@ -133,6 +133,10 @@
     @apply border-border outline-ring/50;
   }
 
+  .tabler-icon {
+    stroke-width: 1.25;
+  }
+
   html {
     @apply font-sans;
     height: 100%;
@@ -213,15 +217,10 @@
     pointer-events: none;
   }
 
-  /* Frosted menu content: frosted glass + hairline ring + blur shadow */
+  /* Frosted menu content: hairline ring + blur shadow */
   .menu-content {
-    background: hsl(0 0% 100% / 0.8);
-    backdrop-filter: blur(24px);
     border-radius: var(--radius-lg);
     padding: 0.25rem;
-    box-shadow:
-      0 0 0 0.5px hsl(0 0% 0% / 0.1),
-      0 2px 8px hsl(0 0% 0% / 0.08);
   }
 }
 

@@ -373,7 +373,7 @@ export default function ChatInput({
             className="relative mx-auto w-full"
             style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
           >
-            <InputGroup className="h-auto min-h-28 flex-col rounded-3xl border-[0.5px] bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:border-input has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+            <InputGroup className="h-auto min-h-28 flex-col rounded-3xl border bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-inherit">
               <InputGroupTextarea
                 ref={textareaRef}
                 onKeyDown={handleKeyDown}

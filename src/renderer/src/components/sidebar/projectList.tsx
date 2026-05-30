@@ -1,11 +1,21 @@
 import { useCallback, useRef, useState } from 'react';
-import { IconFolder, IconFolderOpen, IconFolderPlus, IconPlus } from '@tabler/icons-react';
+import {
+  IconFolder,
+  IconFolderOpen,
+  IconFolderPlus,
+  IconPlus,
+  IconTrash,
+} from '@tabler/icons-react';
 import type { PiSessionInfo, ProjectDirectory } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
 import { cn } from '../../lib/utils';
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from '../ui/sidebar';
-import { ContextMenuRoot, ContextMenuTrigger, ContextMenuContent } from '../ui/context-menu';
-import { MenuItem } from '../MenuItem';
+import {
+  ContextMenuRoot,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from '../ui/context-menu';
 import { SessionList } from './sessionList';
 
 const NEW_PROJECT_SESSION_LABEL = 'New chat';
@@ -122,8 +132,11 @@ function ProjectItem({
           />
         </SidebarMenuItem>
       </ContextMenuTrigger>
-      <ContextMenuContent className="menu-content min-w-0 p-0 bg-transparent shadow-none ring-0 border-0">
-        <MenuItem onClick={onRemove}>Remove</MenuItem>
+      <ContextMenuContent className="menu-content p-0">
+        <ContextMenuItem onClick={onRemove}>
+          <IconTrash />
+          Remove
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenuRoot>
   );

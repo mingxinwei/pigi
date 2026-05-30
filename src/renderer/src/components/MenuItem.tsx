@@ -15,7 +15,7 @@ export function MenuItem({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-popover-foreground outline-none transition-colors hover:bg-foreground/5 [&_svg]:size-3.5 [&_svg]:shrink-0',
+        'flex w-full items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs text-popover-foreground outline-none transition-colors hover:bg-foreground/5 [&_svg]:size-4 [&_svg]:shrink-0',
         inset && 'pl-8',
         className,
       )}

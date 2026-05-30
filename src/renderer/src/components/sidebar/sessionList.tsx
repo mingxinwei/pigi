@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { IconLoader2 } from '@tabler/icons-react';
+import { IconLoader2, IconPencil } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar';
@@ -114,8 +114,11 @@ export function SessionItem({
           </SidebarMenuSubButton>
         </SidebarMenuSubItem>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={handleStartRename}>Rename</ContextMenuItem>
+      <ContextMenuContent className="menu-content">
+        <ContextMenuItem onClick={handleStartRename}>
+          <IconPencil />
+          Rename
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenuRoot>
   );

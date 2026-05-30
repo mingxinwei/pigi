@@ -10,10 +10,22 @@
 
 ### Changed
 
-- Slash command autocomplete uses Popover with unified overlay styling, grouped into builtin commands and skills.
-- Unified overlay content style (`OVERLAY_CONTENT`) shared by Dialog, Popover, and other floating panels.
-- Borders refined to `0.5px` on input, tool blocks, and diff views for a lighter visual.
-- Overlay panel opacity set to 95% for subtle translucency.
+- Icon sizing and spacing unified across all sidebar, popover, and context menu items (16px icons, 6px gaps).
+- Global tabler icon stroke-width set to 1.25 via base CSS layer.
+- Context menu updated to latest shadcn style with `OVERLAY_CONTENT` shared styles; project and session right-click menus now use `ContextMenuItem`.
+- Write tool block preview simplified: removed internal truncation and expand button, relies on outer show-more/less mask.
+- DiffView borders removed for cleaner look.
+- Tool block footer (took/elapsed) spacing tightened.
+- Error messages in assistant bubbles now fit content width instead of full width.
+- Sidebar-main divider border opacity adjusted to 27%.
+- Chat input focus ring removed; border stays inherited on focus.
+- Thinking block background opacity increased to 70%.
+- Overlay panel ring opacity increased to 25% for more visible borders.
+- Tool block borders adjusted to 1px with 65% opacity.
+
+### Added
+
+- Write tool last trailing newline stripped to avoid rendering empty line.
 
 ## [0.2.7] - 2026-05-29
 

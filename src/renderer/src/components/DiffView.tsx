@@ -56,11 +56,11 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
   }, [edits]);
 
   return (
-    <div className="overflow-hidden rounded border-[0.5px] border-border/80 font-mono text-[13px] leading-5">
+    <div className="overflow-hidden rounded font-mono text-[13px] leading-5">
       {sections.map((section, sectionIdx) => (
         <div key={sectionIdx}>
           {sectionIdx > 0 && (
-            <div className="border-t border-border/80 bg-muted/40 px-3 py-0.5 text-xs text-muted-foreground">
+            <div className="bg-muted/40 px-3 py-0.5 text-xs text-muted-foreground">
               edit [{sectionIdx}]
             </div>
           )}
@@ -69,7 +69,7 @@ export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
               return (
                 <div
                   key={`sep-${lineIdx}`}
-                  className="border-y border-border/70 bg-muted/30 px-3 py-0.5 text-xs text-muted-foreground"
+                  className="bg-muted/30 px-3 py-0.5 text-xs text-muted-foreground"
                 >
                   ⋯
                 </div>

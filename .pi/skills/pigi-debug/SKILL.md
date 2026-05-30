@@ -16,7 +16,7 @@ nohup npm run dev > /tmp/pigi-dev.log 2>&1 &
 
 ## Verify App
 
-Only when explicitly instructed. Wait ~12s after dev start, then:
+Only when explicitly instructed. Wait ~5s after dev start, then:
 
 ```bash
 node scripts/cdp.mjs eval 'document.querySelector("textarea") ? "ready" : "not ready"'

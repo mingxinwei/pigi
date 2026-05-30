@@ -8,8 +8,6 @@ import type { EditEntry } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
 
 /** Max lines shown in collapsed write preview */
-const WRITE_PREVIEW_MAX_LINES = 10;
-
 function WritePreview({
   content,
   language,
@@ -19,28 +17,14 @@ function WritePreview({
   language: string;
   isStreaming: boolean;
 }): React.JSX.Element {
-  const lines = content.split('\n');
-  const totalLines = lines.length;
-  const [expanded, setExpanded] = useState(false);
-  const displayLines = expanded ? lines : lines.slice(0, WRITE_PREVIEW_MAX_LINES);
-  const hiddenCount = totalLines - displayLines.length;
-  const displayContent = displayLines.join('\n');
-
+  // Strip trailing newline to avoid rendering an extra empty line
+  const trimmed = content.endsWith('\n') ? content.slice(0, -1) : content;
   return (
-    <div className="overflow-hidden rounded border-[0.5px] border-border/80 font-mono text-[13px] leading-5">
-      <pre className="overflow-hidden whitespace-pre-wrap break-words px-3 py-2 text-muted-foreground [overflow-wrap:anywhere]">
-        <SyntaxHighlightedCode code={displayContent} language={language} />
+    <div className="mt-2 overflow-hidden rounded font-mono text-[13px] leading-5">
+      <pre className="overflow-hidden whitespace-pre-wrap break-words text-muted-foreground [overflow-wrap:anywhere]">
+        <SyntaxHighlightedCode code={trimmed} language={language} />
         {isStreaming && <span className="animate-pulse text-muted-foreground/50">▋</span>}
       </pre>
-      {hiddenCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="w-full border-t border-border/70 bg-muted/30 px-3 py-0.5 text-left text-xs text-muted-foreground hover:text-foreground"
-        >
-          {hiddenCount} more lines ({totalLines} total)
-        </button>
-      )}
     </div>
   );
 }
@@ -261,7 +245,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   return (
     <>
       <div
-        className="overflow-hidden rounded-md border-[0.5px] border-border bg-muted/25 px-3 py-2 text-sm text-muted-foreground"
+        className="overflow-hidden rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground"
         style={{
           maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
           minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,
@@ -269,7 +253,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="flex items-start gap-1 rounded py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -313,7 +297,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
           </div>
         ) : (
-          <div className="flex items-start gap-1 rounded bg-background/75 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="flex items-start gap-1 rounded py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>

@@ -113,6 +113,7 @@ export interface AuthProviderInfo {
   name: string;
   hasAuth: boolean;
   authStatus: { configured: boolean; source?: string; label?: string };
+  authType: 'oauth' | 'api_key';
 }
 
 export type PiCommand =

@@ -2,7 +2,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
-import { IconKey, IconLoader2, IconChevronDown } from '@tabler/icons-react';
+import { IconLoader2, IconChevronDown } from '@tabler/icons-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import type { AuthProviderInfo } from '../../../shared/ipcContract';
 
 interface LoginDialogProps {
@@ -23,15 +24,19 @@ export default function LoginDialog({
   onLogout,
 }: LoginDialogProps): React.JSX.Element {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [apiKeyExpanded, setApiKeyExpanded] = useState(false);
   const [apiKeyProvider, setApiKeyProvider] = useState('');
   const [apiKeyValue, setApiKeyValue] = useState('');
+  const [addProviderOpen, setAddProviderOpen] = useState(false);
+
+  const apiKeyProviders = providers.filter((p) => p.authType === 'api_key');
+  const oauthProviders = providers.filter((p) => p.authType === 'oauth');
+  const configuredApiKeyProviders = apiKeyProviders.filter((p) => p.hasAuth);
 
   const reset = useCallback(() => {
     setLoadingProvider(null);
-    setApiKeyExpanded(false);
     setApiKeyProvider('');
     setApiKeyValue('');
+    setAddProviderOpen(false);
   }, []);
 
   const handleOpenChange = useCallback(
@@ -75,6 +80,9 @@ export default function LoginDialog({
     try {
       await onLoginApiKey(apiKeyProvider.trim(), apiKeyValue.trim());
       toast.success(`API key saved for ${apiKeyProvider.trim()}`);
+      setApiKeyProvider('');
+      setApiKeyValue('');
+      setAddProviderOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -124,117 +132,168 @@ export default function LoginDialog({
           <DialogDescription>Sign in to an AI provider.</DialogDescription>
         </DialogHeader>
 
-        <div ref={listRef} onKeyDown={handleListKeyDown} className="flex flex-col gap-2">
-          {providers.map((provider) => {
-            const isLoading = loadingProvider === provider.id;
-            const isEnvAuth =
-              provider.authStatus.source === 'environment' ||
-              provider.authStatus.source === 'fallback';
-            return (
-              <div
-                key={provider.id}
-                className="flex items-center justify-between rounded-md border px-3 py-2"
-              >
-                <div>
-                  <div className="font-normal text-sm">{provider.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isEnvAuth
-                      ? `Via ${provider.authStatus.source}`
-                      : provider.hasAuth
-                        ? 'Authenticated'
-                        : 'Not configured'}
+        {/* OAuth section */}
+        <div>
+          <div className="text-sm font-medium mb-2">OAuth</div>
+          <div ref={listRef} onKeyDown={handleListKeyDown} className="flex flex-col gap-2">
+            {oauthProviders.map((provider) => {
+              const isLoading = loadingProvider === provider.id;
+              const isEnvAuth =
+                provider.authStatus.source === 'environment' ||
+                provider.authStatus.source === 'fallback';
+              return (
+                <div
+                  key={provider.id}
+                  className="flex items-center justify-between rounded-md border px-3 py-2"
+                >
+                  <div>
+                    <div className="font-normal text-sm">{provider.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {isEnvAuth
+                        ? `Via ${provider.authStatus.source}`
+                        : provider.hasAuth
+                          ? 'Authenticated'
+                          : 'Not configured'}
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  {provider.hasAuth && !isEnvAuth && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={loadingProvider !== null}
-                      onClick={() => handleLogout(provider.id)}
-                    >
-                      Logout
-                    </Button>
-                  )}
-                  {!isEnvAuth &&
-                    (isLoading ? (
-                      <Button variant="ghost" size="sm" onClick={handleCancelLogin}>
-                        Cancel
-                      </Button>
-                    ) : (
+                  <div className="flex gap-2">
+                    {provider.hasAuth && !isEnvAuth && (
                       <Button
-                        variant={provider.hasAuth ? 'outline' : 'default'}
+                        variant="ghost"
                         size="sm"
                         disabled={loadingProvider !== null}
-                        onClick={() => handleOAuthLogin(provider.id)}
+                        onClick={() => handleLogout(provider.id)}
                       >
-                        {provider.hasAuth ? 'Re-login' : 'Login'}
+                        Logout
                       </Button>
-                    ))}
+                    )}
+                    {!isEnvAuth &&
+                      (isLoading ? (
+                        <Button variant="ghost" size="sm" onClick={handleCancelLogin}>
+                          Cancel
+                        </Button>
+                      ) : (
+                        <Button
+                          variant={provider.hasAuth ? 'outline' : 'default'}
+                          size="sm"
+                          disabled={loadingProvider !== null}
+                          onClick={() => handleOAuthLogin(provider.id)}
+                        >
+                          {provider.hasAuth ? 'Re-login' : 'Login'}
+                        </Button>
+                      ))}
+                  </div>
                 </div>
+              );
+            })}
+            {oauthProviders.length === 0 && (
+              <div className="text-sm text-muted-foreground py-4 text-center">
+                No OAuth providers available.
               </div>
-            );
-          })}
-          {providers.length === 0 && (
-            <div className="text-sm text-muted-foreground py-4 text-center">
-              No providers available.
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Collapsible API key section */}
-        <div className="border-t pt-2">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-1 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setApiKeyExpanded((v) => !v)}
-          >
-            <IconKey className="size-4" />
-            <span>Use an API key</span>
-            <IconChevronDown
-              className={`size-4 ml-auto transition-transform ${apiKeyExpanded ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {apiKeyExpanded && (
-            <div className="flex flex-col gap-3 pt-2">
-              <div>
-                <label className="text-sm font-normal mb-1 block">Provider</label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="e.g. anthropic, openai, google"
-                  value={apiKeyProvider}
-                  onChange={(e) => setApiKeyProvider(e.target.value)}
-                  disabled={loadingProvider !== null}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-normal mb-1 block">API Key</label>
-                <input
-                  type="password"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="sk-..."
-                  value={apiKeyValue}
-                  onChange={(e) => setApiKeyValue(e.target.value)}
-                  disabled={loadingProvider !== null}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleApiKeySubmit();
-                  }}
-                />
-              </div>
-              <Button
-                size="sm"
-                disabled={loadingProvider !== null || !apiKeyProvider.trim() || !apiKeyValue.trim()}
-                onClick={handleApiKeySubmit}
-              >
-                {loadingProvider === apiKeyProvider.trim() ? (
-                  <IconLoader2 className="size-4 animate-spin" />
-                ) : (
-                  'Save'
-                )}
-              </Button>
+        {/* API key section */}
+        <div className="border-t pt-3">
+          <div className="text-sm font-medium mb-2">API key</div>
+
+          {/* Configured API key providers */}
+          {configuredApiKeyProviders.length > 0 && (
+            <div className="flex flex-col gap-2 mb-3">
+              {configuredApiKeyProviders.map((provider) => {
+                const isEnvAuth =
+                  provider.authStatus.source === 'environment' ||
+                  provider.authStatus.source === 'fallback';
+                return (
+                  <div
+                    key={provider.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <div>
+                      <div className="font-normal text-sm">{provider.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {isEnvAuth ? `Via ${provider.authStatus.source}` : 'Authenticated'}
+                      </div>
+                    </div>
+                    {!isEnvAuth && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={loadingProvider !== null}
+                        onClick={() => handleLogout(provider.id)}
+                      >
+                        Logout
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
+
+          {/* Add provider (collapsible) */}
+          <Collapsible open={addProviderOpen} onOpenChange={setAddProviderOpen}>
+            <CollapsibleTrigger className="flex w-full items-center gap-2 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <span>Add provider</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="flex flex-col gap-3 pt-2">
+                <div>
+                  <div className="relative">
+                    <select
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring appearance-none pr-8"
+                      value={apiKeyProvider}
+                      onChange={(e) => setApiKeyProvider(e.target.value)}
+                      disabled={loadingProvider !== null}
+                    >
+                      <option value="" disabled>
+                        Select a provider
+                      </option>
+                      {apiKeyProviders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <IconChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+                {apiKeyProvider && (
+                  <>
+                    <div>
+                      <label className="text-sm font-normal mb-1 block">API key</label>
+                      <input
+                        type="password"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="sk-..."
+                        value={apiKeyValue}
+                        onChange={(e) => setApiKeyValue(e.target.value)}
+                        disabled={loadingProvider !== null}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleApiKeySubmit();
+                        }}
+                      />
+                    </div>
+                    <Button
+                      className="self-start"
+                      disabled={
+                        loadingProvider !== null || !apiKeyProvider.trim() || !apiKeyValue.trim()
+                      }
+                      variant="outline"
+                      onClick={handleApiKeySubmit}
+                    >
+                      {loadingProvider === apiKeyProvider.trim() ? (
+                        <IconLoader2 className="size-4 animate-spin" />
+                      ) : (
+                        'Save'
+                      )}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </DialogContent>
     </Dialog>

@@ -24,6 +24,7 @@ import {
   type EditToolInput,
 } from '@earendil-works/pi-coding-agent';
 import type {
+  AuthProviderInfo,
   ModelInfo,
   PiCommand,
   PiPush,
@@ -412,6 +413,7 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
 
     case 'get_session_options': {
       const session = runtime.session;
+      session.modelRegistry.refresh();
       const scopedModels = session.scopedModels.filter((scoped) =>
         session.modelRegistry.hasConfiguredAuth(scoped.model),
       );
@@ -483,20 +485,43 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
     }
 
     case 'get_auth_providers': {
-      const authStorage = runtime.services.modelRegistry?.authStorage;
+      const modelRegistry = runtime.services.modelRegistry;
+      const authStorage = modelRegistry?.authStorage;
       if (!authStorage) {
         return { success: false, error: 'Auth storage not initialized' };
       }
+
+      // OAuth providers
       const oauthProviders = authStorage.getOAuthProviders();
-      const providers = oauthProviders.map((p) => {
+      const oauthProviderIds = new Set(oauthProviders.map((p) => p.id));
+      const seenProviderIds = new Set<string>(oauthProviderIds);
+
+      const providers: AuthProviderInfo[] = oauthProviders.map((p) => {
         const status = authStorage.getAuthStatus(p.id);
         return {
           id: p.id,
           name: p.name,
           hasAuth: authStorage.hasAuth(p.id),
           authStatus: status,
+          authType: 'oauth' as const,
         };
       });
+
+      // API key providers from model registry (providers with models that are not OAuth)
+      const modelProviders = modelRegistry.getAll().map((m) => m.provider);
+      for (const providerId of new Set(modelProviders)) {
+        if (seenProviderIds.has(providerId)) continue;
+        seenProviderIds.add(providerId);
+        const displayName = modelRegistry.getProviderDisplayName(providerId);
+        providers.push({
+          id: providerId,
+          name: displayName,
+          hasAuth: authStorage.hasAuth(providerId),
+          authStatus: authStorage.getAuthStatus(providerId),
+          authType: 'api_key' as const,
+        });
+      }
+
       return { success: true, providers };
     }
 

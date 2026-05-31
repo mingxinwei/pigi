@@ -17,6 +17,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Failed to flip fuses:', error);
-  process.exit(1);
+  // Electron binary may not be present in CI — fail gracefully
+  console.error('Failed to flip fuses (ignoring):', error.message);
+  process.exit(0);
 });

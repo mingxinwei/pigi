@@ -10,7 +10,7 @@ description: Commit changes and release new versions. Use when asked to commit, 
 - Do NOT commit automatically; wait for explicit commit instruction
 - When asked to commit:
   1. Review all uncommitted changes and summarize them
-  2. Write a changelog entry under `## [Unreleased]` in `CHANGELOG.md` using sections `### Added`, `### Changed`, or `### Fixed`. Skip for internal-only changes (docs, tooling, refactors with no user impact).
+  2. Write a changelog entry under `## [Unreleased]` in `CHANGELOG.md` using sections `### Added`, `### Changed`, or `### Fixed`. Keep entries user-facing — describe what the user sees and experiences, not internal implementation details. Omit technical jargon like file names, package names, refactors, or tooling changes. Skip entirely for internal-only changes with no user impact.
   3. Write a conventional commit message (e.g. `fix:`, `feat:`, `refactor:`, `chore:`) with bullet points in the body for non-trivial changes
   4. Stage and commit the changelog together with the changes in a single commit
 

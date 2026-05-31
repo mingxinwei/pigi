@@ -1,49 +1,21 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.8] - 2026-05-31
 
-### Fixed
+### Added
 
-- System accent color now correctly reads via `systemPreferences.getAccentColor()` (was using invalid `getColor('accent')` which always failed).
-- Tool block status bar now sticks to bottom when content area is empty (e.g. during running state of edit blocks).
+- Slash command autocomplete now includes available skills alongside built-in commands.
 
 ### Changed
 
 - Send shortcut changed from Cmd+Enter to Enter (Shift+Enter still inserts newline).
-- Tool block status bar: subtle gradient backgrounds with inset box-shadows and text shadows for refined appearance.
-- Scroll-to-bottom button border reduced to 0.5px with full opacity.
-- User message bubble overflow now uses CSS mask gradient fade instead of character/line truncation.
-- Slash command popover: hover now updates selection, selected item uses solid accent background with white text.
-- Slash command popover background opacity adjusted to 50%.
-- Working indicator star color changed from green to pink (#E86F8F), star-text gap reduced.
-- Global overlay background opacity adjusted from 90% to 88%.
 - New sessions now inherit the last-used model and thinking level from the previous session.
-- Model settings picker scrolls to selected item on open, and divider refined.
+- Long messages now fade out at the edge instead of being cut off.
+- Refined visual polish across tool blocks, icons, menus, and dialogs.
 
-### Added
+### Fixed
 
-- Slash command autocomplete now shows available skills alongside builtin commands, with fuzzy search (fuzzysort) for both builtin and skill names.
-- Skill blocks in chat are rendered as compact inline links with a popover to view full skill content.
-- Global link styling: system accent color, no underline.
-
-### Changed
-
-- Icon sizing and spacing unified across all sidebar, popover, and context menu items (16px icons, 6px gaps).
-- Global tabler icon stroke-width set to 1.25 via base CSS layer.
-- Context menu updated to latest shadcn style with `OVERLAY_CONTENT` shared styles; project and session right-click menus now use `ContextMenuItem`.
-- Write tool block preview simplified: removed internal truncation and expand button, relies on outer show-more/less mask.
-- DiffView borders removed for cleaner look.
-- Tool block footer (took/elapsed) spacing tightened.
-- Error messages in assistant bubbles now fit content width instead of full width.
-- Sidebar-main divider border opacity adjusted to 27%.
-- Chat input focus ring removed; border stays inherited on focus.
-- Thinking block background opacity increased to 70%.
-- Overlay panel ring opacity increased to 25% for more visible borders.
-- Tool block borders adjusted to 1px with 65% opacity.
-
-### Added
-
-- Write tool last trailing newline stripped to avoid rendering empty line.
+- System accent color now correctly matches the macOS accent color setting.
 
 ## [0.2.7] - 2026-05-29
 

@@ -9,6 +9,7 @@
 
 ### Changed
 
+- Send shortcut changed from Cmd+Enter to Enter (Shift+Enter still inserts newline).
 - Tool block status bar: subtle gradient backgrounds with inset box-shadows and text shadows for refined appearance.
 - Scroll-to-bottom button border reduced to 0.5px with full opacity.
 - User message bubble overflow now uses CSS mask gradient fade instead of character/line truncation.

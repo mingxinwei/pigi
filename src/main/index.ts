@@ -42,10 +42,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle(PiChannel.GetAccentColor, () => {
-    // macOS returns a hex string like '#007aff'. The 'accent' key works at runtime
-    // but is not included in Electron's type definitions for systemPreferences.getColor.
-    const accent = systemPreferences.getColor('accent' as never);
-    return typeof accent === 'string' ? accent : null;
+    // macOS 10.14+: returns system accent color as RGBA hex (#RRGGBBAA).
+    const accent = systemPreferences.getAccentColor();
+    return accent || null;
   });
 
   createMainWindow();

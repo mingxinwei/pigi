@@ -24,7 +24,7 @@ function QueueBar({
 }): React.JSX.Element {
   return (
     <div className="rounded-t-2xl bg-muted px-4 pb-15 pt-2 text-xs text-muted-foreground">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {icon}
         {children}
       </div>
@@ -103,7 +103,7 @@ export default function StreamingQueue({
     node: (
       <QueueBar
         icon={
-          <IconStarFilled className="size-4 animate-[spin_2.2s_linear_infinite] text-green-500" />
+          <IconStarFilled className="size-4 animate-[spin_2.2s_linear_infinite] text-[#E86F8F]" />
         }
       >
         <span>Working...</span>

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAppStore } from './state/appStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -83,6 +83,8 @@ function App(): React.JSX.Element {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
   const [restoreText, setRestoreText] = useState<string | null>(null);
+  const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
+  const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -268,6 +270,16 @@ function App(): React.JSX.Element {
       sessionId = await createSession(cwd);
       addSession(sessionId, cwd);
       setActiveSession(sessionId);
+
+      // Apply last-used model and thinking level to the new session
+      if (lastModelRef.current) {
+        void setModel(sessionId, lastModelRef.current.provider, lastModelRef.current.id).catch(
+          () => {},
+        );
+      }
+      if (lastThinkingLevelRef.current) {
+        void setThinkingLevel(sessionId, lastThinkingLevelRef.current).catch(() => {});
+      }
     }
     const existing = useAppStore.getState().sessions.get(sessionId);
     if (existing?.title === 'New chat') {
@@ -377,6 +389,17 @@ function App(): React.JSX.Element {
     async (cwd: string): Promise<void> => {
       const sessionId = await createSession(cwd);
       addSession(sessionId, cwd);
+
+      // Apply last-used model and thinking level to the new session
+      if (lastModelRef.current) {
+        void setModel(sessionId, lastModelRef.current.provider, lastModelRef.current.id).catch(
+          () => {},
+        );
+      }
+      if (lastThinkingLevelRef.current) {
+        void setThinkingLevel(sessionId, lastThinkingLevelRef.current).catch(() => {});
+      }
+
       setPendingSelectedSessionId(null);
       setActiveSession(sessionId);
       void listProjectSessions([cwd]);
@@ -558,6 +581,7 @@ function App(): React.JSX.Element {
         return;
       }
       await setModel(activeSessionId, model.provider, model.id);
+      lastModelRef.current = { provider: model.provider, id: model.id };
       await refreshSessionState(activeSessionId);
       await refreshSessionOptions(activeSessionId);
     },
@@ -570,6 +594,7 @@ function App(): React.JSX.Element {
         return;
       }
       await setThinkingLevel(activeSessionId, thinkingLevel);
+      lastThinkingLevelRef.current = thinkingLevel;
       await refreshSessionState(activeSessionId);
       await refreshSessionOptions(activeSessionId);
     },

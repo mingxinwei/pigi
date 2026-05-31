@@ -16,6 +16,7 @@
 ### Fixed
 
 - System accent color now correctly matches the macOS accent color setting.
+- Tool block footer spacing restored between content and status bar.
 
 ## [0.2.7] - 2026-05-29
 

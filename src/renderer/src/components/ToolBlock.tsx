@@ -328,6 +328,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           className="overflow-hidden"
           style={{
             maxHeight: expanded ? undefined : `${TOOL_BLOCK_MAX_HEIGHT}px`,
+            minHeight: node.name === 'edit' ? '1px' : undefined,
             maskImage:
               !expanded && isOverflowing
                 ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
@@ -361,6 +362,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
         </div>
 
+        <div className="mb-2">
         {isOverflowing && (
           <button
             type="button"
@@ -370,6 +372,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             {expanded ? 'Show less' : 'Show more'}
           </button>
         )}
+        </div>
 
         <div
           className={cn(

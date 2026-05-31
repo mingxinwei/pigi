@@ -265,7 +265,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   return (
     <>
       <div
-        className="overflow-hidden rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground"
+        className="overflow-hidden rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground flex flex-col"
         style={{
           maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
           minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,
@@ -373,7 +373,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
         <div
           className={cn(
-            '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
+            '-mx-3 -mb-2 mt-auto flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
             statusClassName,
           )}
           style={statusStyle}

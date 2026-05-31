@@ -26,14 +26,11 @@ const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
 const USER_MESSAGE_LEADING_PADDING = 24;
 const USER_MESSAGE_TRAILING_PADDING = 8;
-const LONG_USER_MESSAGE_LINE_LIMIT = 50;
-const LONG_USER_MESSAGE_CHARACTER_LIMIT = 3_000;
 const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72;
-
-interface UserMessagePreview {
-  isLong: boolean;
-  text: string;
-}
+/** Max estimated height for user bubbles capped by max-h-[40vh] CSS */
+const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
+/** Max height (px) for user bubble content before showing expand button */
+const USER_MESSAGE_MAX_HEIGHT = 360;
 
 export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,7 +186,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
         <button
           type="button"
           onClick={handleScrollToBottom}
-          className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 shadow-md backdrop-blur-sm transition-opacity hover:bg-muted size-9"
+          className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-background/90 shadow-md backdrop-blur-sm transition-opacity hover:bg-muted size-9"
         >
           <IconArrowDown className="size-5 text-muted-foreground" stroke={1.5} />
         </button>
@@ -225,20 +222,16 @@ function estimateUserHeight(text: string): number {
   if (parseSkillBlock(text)) {
     return 88;
   }
-  const preview = getUserMessagePreview(text);
-  const visibleLineCount = countLines(preview.text);
-  const characterLineCount = Math.ceil(preview.text.length / USER_MESSAGE_WRAP_ESTIMATE_WIDTH);
+  const visibleLineCount = countLines(text);
+  const characterLineCount = Math.ceil(text.length / USER_MESSAGE_WRAP_ESTIMATE_WIDTH);
   const estimatedLineCount = Math.max(visibleLineCount, characterLineCount);
-  const buttonHeight = preview.isLong ? 36 : 0;
-  return Math.max(
-    56,
+  const rawHeight =
     estimatedLineCount * 24 +
-      32 +
-      buttonHeight +
-      USER_MESSAGE_TOOLBAR_HEIGHT +
-      USER_MESSAGE_LEADING_PADDING +
-      USER_MESSAGE_TRAILING_PADDING,
-  );
+    32 +
+    USER_MESSAGE_TOOLBAR_HEIGHT +
+    USER_MESSAGE_LEADING_PADDING +
+    USER_MESSAGE_TRAILING_PADDING;
+  return Math.max(56, Math.min(rawHeight, USER_MESSAGE_MAX_ESTIMATE_HEIGHT));
 }
 
 function estimateAssistantHeight(node: AssistantNode): number {
@@ -313,41 +306,54 @@ function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
 function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
   const { text } = node;
   const [expanded, setExpanded] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
 
   const skillBlock = useMemo(() => parseSkillBlock(text), [text]);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setIsOverflowing(contentRef.current.scrollHeight > USER_MESSAGE_MAX_HEIGHT);
+    }
+  }, [text, expanded]);
 
   if (skillBlock) {
     return <SkillLinkBubble skillBlock={skillBlock} timestamp={node.sentAt} />;
   }
 
-  const preview = getUserMessagePreview(text);
-
-  const displayText = expanded || !preview.isLong ? text : preview.text;
-
   return (
     <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
       <div className="group flex max-w-[85%] flex-col items-end">
-        <div
-          className={cn(
-            'rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
-            'max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
-            preview.isLong ? 'w-full' : 'w-fit',
-          )}
-        >
-          {displayText}
-          {preview.isLong && !expanded && <span className="text-muted-foreground">{'\n...'}</span>}
-          {preview.isLong && (
-            <div className="mt-2">
-              <button
-                type="button"
-                className="h-7 rounded px-2 text-sm font-normal text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
-                onClick={() => {
-                  setExpanded((current) => !current);
-                }}
-              >
-                {expanded ? 'Show less' : 'Show more'}
-              </button>
-            </div>
+        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-hidden')}>
+          <div
+            ref={contentRef}
+            className={cn(
+              'px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
+              'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+              'overflow-hidden',
+            )}
+            style={{
+              maxHeight: expanded ? undefined : '40vh',
+              maskImage:
+                !expanded && isOverflowing
+                  ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
+                  : undefined,
+              WebkitMaskImage:
+                !expanded && isOverflowing
+                  ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
+                  : undefined,
+            }}
+          >
+            {text}
+          </div>
+          {isOverflowing && (
+            <button
+              type="button"
+              onClick={() => setExpanded((current) => !current)}
+              className="block w-full px-3.5 pt-1.5 pb-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
           )}
         </div>
         <div className="flex h-6 w-full items-center justify-end gap-2 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -359,19 +365,6 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
       </div>
     </div>
   );
-}
-
-function getUserMessagePreview(text: string): UserMessagePreview {
-  const lines = text.split('\n');
-  if (lines.length > LONG_USER_MESSAGE_LINE_LIMIT) {
-    return { isLong: true, text: lines.slice(0, LONG_USER_MESSAGE_LINE_LIMIT).join('\n') };
-  }
-
-  if (text.length > LONG_USER_MESSAGE_CHARACTER_LIMIT) {
-    return { isLong: true, text: text.slice(0, LONG_USER_MESSAGE_CHARACTER_LIMIT) };
-  }
-
-  return { isLong: false, text };
 }
 
 function formatUserMessageTime(timestamp: number): string {

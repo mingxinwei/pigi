@@ -41,19 +41,39 @@ interface ToolCommandParts {
 const STATUS_CONFIG = {
   running: {
     label: 'Running',
-    className: 'bg-yellow-50 text-yellow-700',
+    className: 'text-[#92400e]',
+    style: {
+      background: 'linear-gradient(180deg, #fef3c7, #fffbeb)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
   },
   success: {
     label: 'Succeeded',
-    className: 'bg-green-50 text-green-700',
+    className: 'text-[#166534]',
+    style: {
+      background: 'linear-gradient(180deg, #dcfce7, #f0fdf4)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
   },
   error: {
     label: 'Failed',
-    className: 'bg-red-50 text-red-700',
+    className: 'text-[#991b1b]',
+    style: {
+      background: 'linear-gradient(180deg, #fee2e2, #fef2f2)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
   },
   cancelled: {
     label: 'Cancelled',
-    className: 'bg-muted/60 text-muted-foreground',
+    className: 'text-[#3f3f46]',
+    style: {
+      background: 'linear-gradient(180deg, #f4f4f5, #fafafa)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.2)',
+    },
   },
 } as const;
 
@@ -232,7 +252,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   // Read tool returns fast — skip rendering the running state to avoid flicker
   if (node.name === 'read' && node.status === 'running') return null;
 
-  const { className: statusClassName } = STATUS_CONFIG[node.status];
+  const { className: statusClassName, style: statusStyle } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editEntries = getEditEntries(node);
   const writeEntries = getWriteEntries(node);
@@ -353,9 +373,10 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
         <div
           className={cn(
-            '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs',
+            '-mx-3 -mb-2 mt-2 flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
             statusClassName,
           )}
+          style={statusStyle}
         >
           {node.status === 'running' ? (
             <ElapsedTimer startedAt={node.startedAt} />

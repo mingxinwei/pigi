@@ -5,6 +5,7 @@
 ### Fixed
 
 - System accent color now correctly reads via `systemPreferences.getAccentColor()` (was using invalid `getColor('accent')` which always failed).
+- Tool block status bar now sticks to bottom when content area is empty (e.g. during running state of edit blocks).
 
 ### Changed
 

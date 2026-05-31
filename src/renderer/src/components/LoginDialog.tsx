@@ -2,8 +2,9 @@ import React, { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
-import { IconLoader2, IconChevronDown } from '@tabler/icons-react';
+import { IconLoader2 } from '@tabler/icons-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
+import { NativeSelect, NativeSelectOption } from './ui/native-select';
 import type { AuthProviderInfo } from '../../../shared/ipcContract';
 
 interface LoginDialogProps {
@@ -239,26 +240,21 @@ export default function LoginDialog({
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="flex flex-col gap-3 pt-2">
-                <div>
-                  <div className="relative">
-                    <select
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring appearance-none pr-8"
-                      value={apiKeyProvider}
-                      onChange={(e) => setApiKeyProvider(e.target.value)}
-                      disabled={loadingProvider !== null}
-                    >
-                      <option value="" disabled>
-                        Select a provider
-                      </option>
-                      {apiKeyProviders.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    <IconChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-                  </div>
-                </div>
+                <NativeSelect
+                  className="w-full"
+                  value={apiKeyProvider}
+                  onChange={(e) => setApiKeyProvider(e.target.value)}
+                  disabled={loadingProvider !== null}
+                >
+                  <NativeSelectOption value="" disabled>
+                    Select a provider
+                  </NativeSelectOption>
+                  {apiKeyProviders.map((p) => (
+                    <NativeSelectOption key={p.id} value={p.id}>
+                      {p.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
                 {apiKeyProvider && (
                   <>
                     <div>

@@ -1,5 +1,7 @@
 # Development Rules
 
+For DeepSeek model: do not overthink, think less and act more.
+
 ## Workflow
 
 - Do NOT commit automatically after changes; wait for explicit commit instruction. Commit and release workflow is in `pigi-release` skill.

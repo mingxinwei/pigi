@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- System accent color now correctly reads via `systemPreferences.getAccentColor()` (was using invalid `getColor('accent')` which always failed).
+
+### Changed
+
+- Slash command popover: hover now updates selection, selected item uses solid accent background with white text.
+- Slash command popover background opacity adjusted to 50%.
+- Working indicator star color changed from green to pink (#E86F8F), star-text gap reduced.
+- Global overlay background opacity adjusted from 90% to 88%.
+- New sessions now inherit the last-used model and thinking level from the previous session.
+- Model settings picker scrolls to selected item on open, and divider refined.
+
 ### Added
 
 - Slash command autocomplete now shows available skills alongside builtin commands, with fuzzy search (fuzzysort) for both builtin and skill names.

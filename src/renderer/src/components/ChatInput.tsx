@@ -6,7 +6,6 @@ import {
   IconGitBranch,
   IconPlus,
   IconSquare,
-  IconStarFilled,
 } from '@tabler/icons-react';
 import type {
   ContextUsage,
@@ -327,7 +326,7 @@ export default function ChatInput({
           side="top"
           align="start"
           sideOffset={6}
-          className="max-h-[40vh] overflow-y-auto p-1"
+          className="max-h-[40vh] overflow-y-auto p-1 bg-popover/50"
           style={{ width: `${CHAT_INPUT_MAX_WIDTH}px` }}
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
@@ -344,6 +343,7 @@ export default function ChatInput({
                   setSlashMatches({ builtin: [], skill: [] });
                   textarea.focus();
                 }}
+                onHover={() => setSelectedSlashIndex(i)}
               />
             ))}
             {slashMatches.builtin.length > 0 && slashMatches.skill.length > 0 && (
@@ -363,6 +363,7 @@ export default function ChatInput({
                     setSlashMatches({ builtin: [], skill: [] });
                     textarea.focus();
                   }}
+                  onHover={() => setSelectedSlashIndex(flatIndex)}
                 />
               );
             })}
@@ -486,15 +487,22 @@ function ModelSettingsPicker({
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      return;
+    if (!open || !modelValue) {
+      if (!open) return;
+      const frame = window.requestAnimationFrame(() => {
+        modelListRef.current?.scrollTo({ top: 0 });
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
 
     const frame = window.requestAnimationFrame(() => {
-      modelListRef.current?.scrollTo({ top: 0 });
+      const selectedEl = modelListRef.current?.querySelector<HTMLElement>('[data-checked="true"]');
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ block: 'center' });
+      }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, modelValue]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -530,7 +538,7 @@ function ModelSettingsPicker({
                     key={key}
                     value={modelSearchValue(model)}
                     data-checked={key === selectedKey ? true : undefined}
-                    className="items-start py-1.5"
+                    className="rounded-lg"
                     onSelect={() => {
                       onSelectModel(model);
                       setOpen(false);
@@ -548,7 +556,9 @@ function ModelSettingsPicker({
             </CommandGroup>
           </CommandList>
         </Command>
-        <Separator className="bg-foreground/20" />
+        <div className="px-2">
+          <Separator className="bg-foreground/25 !h-[0.5px]" />
+        </div>
         <ThinkingLevelFlyout
           value={thinkingValue}
           label={thinkingLabel}
@@ -583,7 +593,6 @@ function ModelSettingsButton({
       )}
       {...props}
     >
-      <IconStarFilled data-icon="inline-start" />
       <span className="min-w-0 truncate text-foreground">{modelLabel}</span>
       <span className="shrink-0 text-muted-foreground">{thinkingLabel}</span>
     </Button>
@@ -605,7 +614,7 @@ function ThinkingLevelFlyout({
 
   return (
     <div
-      className="relative px-1 py-0.5"
+      className="relative px-2 py-1.5"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
@@ -615,7 +624,7 @@ function ThinkingLevelFlyout({
         variant="ghost"
         size="sm"
         disabled={options.length === 0}
-        className="h-8 w-full justify-start gap-2 rounded-md px-2 text-sm font-normal hover:bg-muted/60"
+        className="h-8 w-full justify-start gap-2 rounded-lg px-1.5 text-sm font-normal hover:bg-muted/60 border-0"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -752,26 +761,35 @@ function SlashCommandItem({
   slashCommand,
   isSelected,
   onSelect,
+  onHover,
 }: {
   slashCommand: SlashCommand;
   isSelected: boolean;
   onSelect: () => void;
+  onHover: () => void;
 }): React.JSX.Element {
   return (
     <button
       type="button"
       className={cn(
         'flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm',
-        isSelected ? 'bg-[var(--system-accent)]/30' : 'hover:bg-muted/60',
+        isSelected && 'bg-[var(--system-accent)] text-white',
       )}
       onMouseDown={(e) => {
         e.preventDefault();
         onSelect();
       }}
+      onMouseEnter={onHover}
     >
-      <span className="shrink-0 font-mono text-foreground">/{slashCommand.name}</span>
+      <span className={cn('shrink-0 font-mono', isSelected ? 'text-white' : 'text-foreground')}>
+        /{slashCommand.name}
+      </span>
       {slashCommand.source !== 'skill' && (
-        <span className="min-w-0 truncate text-muted-foreground">{slashCommand.description}</span>
+        <span
+          className={cn('min-w-0 truncate', isSelected ? 'text-white' : 'text-muted-foreground')}
+        >
+          {slashCommand.description}
+        </span>
       )}
     </button>
   );

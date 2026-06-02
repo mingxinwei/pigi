@@ -15,6 +15,7 @@ import { PiAgentProcessPool } from './piAgentProcessPool';
 import {
   PiChannel,
   type ListProjectSessionsCommand,
+  type ReadSessionMessagesCommand,
   type RenameSessionCommand,
   type SessionWorkerResponse,
   type SessionListResult,
@@ -27,6 +28,17 @@ let sessionWorkerRequestId = 0;
 const pendingRenameCallbacks = new Map<
   string,
   (result: { success: boolean; error?: string }) => void
+>();
+const pendingReadMessagesCallbacks = new Map<
+  string,
+  (result: {
+    success: boolean;
+    messages?: unknown[];
+    compactionCount?: number;
+    thinkingLevel?: string;
+    model?: { provider: string; modelId: string } | null;
+    error?: string;
+  }) => void
 >();
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
@@ -67,6 +79,21 @@ function startSessionWorker(): void {
         }
         break;
       }
+      case 'session_messages_result': {
+        const callback = pendingReadMessagesCallbacks.get(message.requestId);
+        if (callback) {
+          pendingReadMessagesCallbacks.delete(message.requestId);
+          callback({
+            success: message.success,
+            messages: message.messages,
+            compactionCount: message.compactionCount,
+            thinkingLevel: message.thinkingLevel,
+            model: message.model,
+            error: message.error,
+          });
+        }
+        break;
+      }
     }
   });
 
@@ -77,6 +104,11 @@ function startSessionWorker(): void {
       for (const [id, callback] of pendingRenameCallbacks) {
         callback({ success: false, error: 'session worker process exited' });
         pendingRenameCallbacks.delete(id);
+      }
+      // Drain pending read messages callbacks on crash
+      for (const [id, callback] of pendingReadMessagesCallbacks) {
+        callback({ success: false, error: 'session worker process exited' });
+        pendingReadMessagesCallbacks.delete(id);
       }
     }
   });
@@ -255,4 +287,39 @@ export function registerIpcHandlers(): void {
       });
     },
   );
+
+  ipcMain.handle(PiChannel.ReadSessionMessages, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string' || sessionPath.trim().length === 0) {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
+    }
+    startSessionWorker();
+    if (!sessionWorkerProcess) {
+      return { success: false, error: 'session worker process not available' };
+    }
+    const requestId = `read-messages-${++sessionWorkerRequestId}`;
+    const proc = sessionWorkerProcess;
+    return new Promise<{
+      success: boolean;
+      messages?: unknown[];
+      compactionCount?: number;
+      thinkingLevel?: string;
+      model?: { provider: string; modelId: string } | null;
+      error?: string;
+    }>((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingReadMessagesCallbacks.delete(requestId);
+        resolve({ success: false, error: 'read session messages timed out' });
+      }, 10000);
+      pendingReadMessagesCallbacks.set(requestId, (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+      const readCmd: ReadSessionMessagesCommand = {
+        type: 'read_session_messages',
+        requestId,
+        sessionPath,
+      };
+      proc.postMessage(readCmd);
+    });
+  });
 }

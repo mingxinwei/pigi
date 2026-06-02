@@ -12,6 +12,10 @@ import { useAppStore } from '../state/appStore';
 import { onPush, onStreamBatch, getMessages, getState } from '../services/piAgentClient';
 import type { PiPush, StreamBatch } from '../../../shared/ipcContract';
 
+function hasSessionAlias(sessionId: string): boolean {
+  return window.piApi.hasSessionAlias(sessionId);
+}
+
 interface UseTranscriptResult {
   state: TranscriptState;
   controller: RefObject<TranscriptController>;
@@ -46,6 +50,14 @@ export function disposeTranscriptSession(sessionId: string): void {
   hydrationStartedSessions.delete(sessionId);
 }
 
+/**
+ * Mark a session as already hydrated so ensureSessionHydration skips the getMessages call.
+ * Used for sessions hydrated from file before the utility process is ready.
+ */
+export function markSessionHydrated(sessionId: string): void {
+  hydrationStartedSessions.add(sessionId);
+}
+
 function ensureSessionHydration(sessionId: string, controller: TranscriptController): void {
   if (hydrationStartedSessions.has(sessionId)) {
     return;
@@ -68,6 +80,8 @@ function ensureSessionHydration(sessionId: string, controller: TranscriptControl
 }
 
 function syncSessionState(sessionId: string, controller: TranscriptController): void {
+  // Skip for placeholder sessions without an alias (process not ready yet)
+  if (sessionId.startsWith('pending:') && !hasSessionAlias(sessionId)) return;
   void getState(sessionId)
     .then((sessionState) => {
       controller.setStatus(sessionState.isStreaming ? 'streaming' : 'idle');
@@ -86,6 +100,11 @@ function syncSessionState(sessionId: string, controller: TranscriptController): 
 
 function ensureSessionSubscription(sessionId: string, controller: TranscriptController): void {
   if (subscriptionsBySession.has(sessionId)) {
+    return;
+  }
+  // Skip if this is a placeholder session without an alias (process not ready yet).
+  // Once the alias is registered (process ready), this will be called again.
+  if (sessionId.startsWith('pending:') && !hasSessionAlias(sessionId)) {
     return;
   }
 

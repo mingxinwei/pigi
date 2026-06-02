@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Switching to a previous session is now near-instant — messages appear immediately without waiting for the background process.
+
 ## [0.2.8] - 2026-05-31
 
 ### Added

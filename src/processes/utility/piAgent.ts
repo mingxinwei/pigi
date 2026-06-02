@@ -654,7 +654,11 @@ async function createSession(cwd: string): Promise<void> {
       sessionManager: SessionManager.create(cwd),
     });
     await runtime.session.bindExtensions({});
-    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId });
+    sendToMain({
+      type: 'session_created',
+      sessionId: runtime.session.sessionId,
+      sessionPath: runtime.session.sessionManager.getSessionFile(),
+    });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });
   }
@@ -671,7 +675,11 @@ async function resumeSession(sessionPath: string): Promise<void> {
       sessionManager,
     });
     await runtime.session.bindExtensions({});
-    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId });
+    sendToMain({
+      type: 'session_created',
+      sessionId: runtime.session.sessionId,
+      sessionPath: runtime.session.sessionManager.getSessionFile(),
+    });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });
   }

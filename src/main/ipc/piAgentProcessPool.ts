@@ -13,6 +13,7 @@ const WARM_SESSION_PROCESS_COUNT = 1;
 
 export class PiAgentProcessPool {
   private readonly sessionProcesses = new Map<string, SessionProcess>();
+  private readonly sessionPathToId = new Map<string, string>();
   private readonly warmSessionProcesses: Electron.UtilityProcess[] = [];
   private activeSessionId: string | null = null;
   private warmSessionCwds: string[] = [];
@@ -41,7 +42,17 @@ export class PiAgentProcessPool {
     return proc;
   }
 
-  registerSessionProcess(sessionId: string, proc: Electron.UtilityProcess): void {
+  registerSessionProcess(
+    sessionId: string,
+    proc: Electron.UtilityProcess,
+    sessionPath?: string,
+  ): void {
+    // Kill old process if same sessionId was already registered (prevents leaks)
+    const existing = this.sessionProcesses.get(sessionId);
+    if (existing && existing.process !== proc) {
+      existing.process.kill();
+    }
+
     this.sessionProcesses.set(sessionId, {
       process: proc,
       sessionId,
@@ -50,13 +61,27 @@ export class PiAgentProcessPool {
     });
     this.activeSessionId = sessionId;
 
+    if (sessionPath) {
+      this.sessionPathToId.set(sessionPath, sessionId);
+    }
+
     proc.on('exit', (code) => {
       this.sessionProcesses.delete(sessionId);
+      if (sessionPath) {
+        this.sessionPathToId.delete(sessionPath);
+      }
       if (this.activeSessionId === sessionId) {
         this.activeSessionId = null;
       }
       this.onSessionProcessExit(sessionId, code);
     });
+  }
+
+  /** Find an existing session process by session file path. */
+  findSessionByPath(sessionPath: string): SessionProcess | undefined {
+    const sessionId = this.sessionPathToId.get(sessionPath);
+    if (!sessionId) return undefined;
+    return this.sessionProcesses.get(sessionId);
   }
 
   updateBusyState(proc: Electron.UtilityProcess, isBusy: boolean): void {

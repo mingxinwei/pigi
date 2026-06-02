@@ -66,7 +66,7 @@ export class PiAgentProcessPool {
    * Returns null if no warm process exists.
    */
   claimWarmProcess(): Electron.UtilityProcess | null {
-    if (!this.warmProcess) {
+    if (!this.warmProcess || !this.warmProcess.ready) {
       return null;
     }
     const proc = this.warmProcess.process;

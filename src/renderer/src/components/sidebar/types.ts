@@ -4,18 +4,18 @@ import type { SessionEntry } from '../../state/appStore';
 
 export interface SidebarProps {
   sessions: Map<string, SessionEntry>;
-  selectedSessionId: string | null;
+  selectedSessionPath: string | null;
   recentProjects: ProjectDirectory[];
   projectSessions: Record<string, PiSessionInfo[]>;
   shortcutBindings: Map<string, ShortcutBinding> | null;
   onNewSession: () => void;
   onNewSessionForProject: (path: string) => void;
-  onSwitchSession: (sessionId: string) => void;
+  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onOpenProject: () => void;
   onSelectProject: (path: string) => void;
   onRemoveProject: (path: string) => void;
   onReorderProjects: (paths: string[]) => void;
-  onRenameSession: (sessionId: string, name: string) => void;
+  onRenameSession: (sessionPath: string, name: string) => void;
   onLogin: () => void;
 }

@@ -13,12 +13,14 @@ import type {
 
 interface PiApi {
   // Session lifecycle (via main process IPC)
-  createSession: (cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>;
+  createSession: (
+    cwd: string,
+  ) => Promise<{ success: boolean; sessionPath?: string; error?: string }>;
   resumeSession: (
     sessionPath: string,
-  ) => Promise<{ success: boolean; sessionId?: string; error?: string }>;
-  destroySession: (sessionId: string) => Promise<{ success: boolean }>;
-  touchSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; sessionPath?: string; error?: string }>;
+  destroySession: (sessionPath: string) => Promise<{ success: boolean }>;
+  touchSession: (sessionPath: string) => Promise<{ success: boolean; error?: string }>;
 
   // Project directories
   getProjects: () => Promise<ProjectStateResult>;
@@ -43,18 +45,17 @@ interface PiApi {
   onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void) => () => void;
 
   // Commands (via control MessagePort, direct to utility)
-  send: (sessionId: string, command: PiCommand) => Promise<unknown>;
+  send: (sessionPath: string, command: PiCommand) => Promise<unknown>;
 
   // Subscriptions (via data MessagePort)
-  onPush: (sessionId: string, callback: (message: PiPush) => void) => () => void;
-  onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void) => () => void;
+  onPush: (sessionPath: string, callback: (message: PiPush) => void) => () => void;
+  onStreamBatch: (sessionPath: string, callback: (batch: StreamBatch) => void) => () => void;
 
   // Process lifecycle
-  onProcessExit: (callback: (data: { sessionId: string; code: number }) => void) => () => void;
+  onProcessExit: (callback: (data: { sessionPath: string; code: number }) => void) => () => void;
 
   // Utilities
   getCwd: () => string;
-  aliasSession: (aliasId: string, realId: string) => void;
   openExternal: (url: string) => void;
 
   // Keyboard shortcuts
@@ -64,7 +65,6 @@ interface PiApi {
     binding: ShortcutBinding,
   ) => Promise<{ success: boolean; error?: string }>;
   getAccentColor: () => Promise<string | null>;
-  hasSessionAlias: (sessionId: string) => boolean;
 }
 
 declare global {

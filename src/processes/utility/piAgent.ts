@@ -654,10 +654,14 @@ async function createSession(cwd: string): Promise<void> {
       sessionManager: SessionManager.create(cwd),
     });
     await runtime.session.bindExtensions({});
+    const sessionPath = runtime.session.sessionManager.getSessionFile();
+    if (!sessionPath) {
+      throw new Error('session created without a file path');
+    }
     sendToMain({
       type: 'session_created',
       sessionId: runtime.session.sessionId,
-      sessionPath: runtime.session.sessionManager.getSessionFile(),
+      sessionPath,
     });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });
@@ -678,7 +682,7 @@ async function resumeSession(sessionPath: string): Promise<void> {
     sendToMain({
       type: 'session_created',
       sessionId: runtime.session.sessionId,
-      sessionPath: runtime.session.sessionManager.getSessionFile(),
+      sessionPath,
     });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });

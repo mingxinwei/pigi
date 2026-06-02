@@ -266,6 +266,8 @@ export enum PiChannel {
   GetShortcuts = 'pi:get_shortcuts',
   /** renderer → main: update a keyboard shortcut binding */
   SetShortcut = 'pi:set_shortcut',
+  /** renderer → main: get model options from warm (pre-spawned) process */
+  GetWarmSessionOptions = 'pi:get_warm_session_options',
 }
 
 // =============================================================================
@@ -332,6 +334,7 @@ export type SessionWorkerResponse =
 export type UtilityCommand =
   | { type: 'create_session'; cwd: string }
   | { type: 'resume_session'; sessionPath: string }
+  | { type: 'warm_up'; cwds: string[] }
   | { type: 'prewarm_session_services'; cwds: string[] }
   | { type: 'attach_ports' };
 
@@ -342,4 +345,5 @@ export type UtilityCommand =
 export type UtilityResponse =
   | { type: 'session_created'; sessionId: string; sessionPath: string }
   | { type: 'session_error'; error: string }
-  | { type: 'session_busy_changed'; isBusy: boolean };
+  | { type: 'session_busy_changed'; isBusy: boolean }
+  | { type: 'warm_ready'; models: ModelInfo[]; thinkingLevels: string[] };

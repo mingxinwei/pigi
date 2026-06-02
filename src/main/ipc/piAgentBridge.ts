@@ -2,7 +2,7 @@
  * Pi Agent Bridge - main process bridge for session lifecycle.
  *
  * Each session gets its own utility process. Main manages:
- * 1. Spawning process per session
+ * 1. Spawning process per session (with warm process optimization)
  * 2. Two-step handshake: create session → get sessionPath → distribute ports
  * 3. Process cleanup on destroy or crash
  *
@@ -125,19 +125,21 @@ function listProjectSessions(cwds: string[]): SessionListResult {
     cwds: [...new Set(cwds)],
   };
   sessionWorkerProcess.postMessage(command);
-  processPool.ensureWarmSessionProcesses(cwds);
+  // Prewarm services in the warm process for these cwds
+  processPool.ensureWarmProcess(cwds);
   return { success: true, requestId };
 }
 
 /**
- * Spawn a utility process, send lifecycle command, wait for sessionPath,
- * then establish dedicated control/data MessagePorts between renderer and utility.
+ * Spawn a utility process (or claim the warm one), send lifecycle command,
+ * wait for sessionPath, then establish dedicated control/data MessagePorts.
  */
 async function spawnSessionProcess(
   command: UtilityCommand,
 ): Promise<{ success: boolean; sessionPath?: string; error?: string }> {
   return new Promise((resolve) => {
-    const proc = processPool.claimSessionProcess();
+    // Try to claim the warm process first; fall back to spawning fresh.
+    const proc = processPool.claimWarmProcess() ?? processPool.createFreshProcess();
     let resolved = false;
 
     const timeout = setTimeout(() => {
@@ -148,9 +150,15 @@ async function spawnSessionProcess(
       }
     }, 30000);
 
-    proc.on('message', (message: UtilityResponse) => {
+    const messageHandler = (message: UtilityResponse): void => {
+      // Always handle busy state changes
       if (message.type === 'session_busy_changed') {
         processPool.updateBusyState(proc, message.isBusy);
+        return;
+      }
+
+      // Ignore warm_ready during session setup (it's from the warm phase)
+      if (message.type === 'warm_ready') {
         return;
       }
 
@@ -170,7 +178,7 @@ async function spawnSessionProcess(
 
           processPool.registerSessionProcess(sessionPath, proc);
 
-          // Establish separate ports so high-volume stream output cannot delay controls.
+          // Establish control/data MessagePorts
           const controlChannel = new MessageChannelMain();
           const dataChannel = new MessageChannelMain();
           const attachCommand: UtilityCommand = { type: 'attach_ports' };
@@ -185,19 +193,19 @@ async function spawnSessionProcess(
           }
 
           resolve({ success: true, sessionPath });
-          processPool.refillAfterSetup();
           break;
         }
         case 'session_error': {
           resolved = true;
           clearTimeout(timeout);
           proc.kill();
-          processPool.ensureWarmSessionProcesses();
           resolve({ success: false, error: message.error });
           break;
         }
       }
-    });
+    };
+
+    proc.on('message', messageHandler);
 
     proc.on('exit', (code) => {
       if (!resolved) {
@@ -207,7 +215,7 @@ async function spawnSessionProcess(
       }
     });
 
-    // Send the lifecycle command to start session creation
+    // Send the lifecycle command
     proc.postMessage(command);
   });
 }
@@ -220,7 +228,8 @@ export function stopAllProcesses(): void {
 
 export function registerIpcHandlers(): void {
   startSessionWorker();
-  processPool.ensureWarmSessionProcesses();
+  // Spawn the initial warm process
+  processPool.ensureWarmProcess();
 
   ipcMain.handle(PiChannel.CreateSession, async (_e, cwd: string) => {
     if (!cwd || typeof cwd !== 'string') {
@@ -254,6 +263,10 @@ export function registerIpcHandlers(): void {
       return { success: false, error: 'sessionPath must be a non-empty string' };
     }
     return { success: processPool.touchSessionProcess(sessionPath) };
+  });
+
+  ipcMain.handle(PiChannel.GetWarmSessionOptions, async () => {
+    return processPool.getWarmSessionOptions();
   });
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {

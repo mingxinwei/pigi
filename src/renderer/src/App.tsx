@@ -557,13 +557,14 @@ function App(): React.JSX.Element {
     // If already in draft mode, do nothing.
     if (isDraftChat && !activeSessionPath) return;
     // Reset draft controller for a fresh chat.
-    draftControllerRef.current = new TranscriptController();
+    draftControllerRef.current.reset();
     isDraftSpawningRef.current = false;
     setIsDraftSpawning(false);
     setActiveSession(null);
     setIsDraftChat(true);
     setPendingSelectedPath(null);
-    // Fetch model info from warm process (retry if not ready yet)
+    // Fetch model info from warm process (retry if not ready yet, max 10 attempts)
+    let warmRetryCount = 0;
     const fetchWarmOptions = (): void => {
       void getWarmSessionOptions().then((options) => {
         if (options.models.length > 0) {
@@ -574,7 +575,8 @@ function App(): React.JSX.Element {
           setThinkingLevelOptions(options.thinkingLevels as ThinkingLevel[]);
         }
         // If empty, warm process isn't ready yet — retry after a short delay
-        if (options.models.length === 0) {
+        if (options.models.length === 0 && warmRetryCount < 10) {
+          warmRetryCount++;
           setTimeout(fetchWarmOptions, 500);
         }
       });
@@ -771,9 +773,9 @@ function App(): React.JSX.Element {
   }, [activeSessionPath, activeProject, addSession, setActiveSession]);
 
   const handleRenameSession = useCallback(
-    async (sessionId: string, name: string) => {
-      // Find the running session that matches this persisted session ID
-      const entry = Array.from(sessions.values()).find((s) => s.persistedSessionId === sessionId);
+    async (sessionPath: string, name: string) => {
+      // Find the running session by path
+      const entry = Array.from(sessions.values()).find((s) => s.sessionPath === sessionPath);
       if (entry) {
         // Session is running, rename via SDK
         try {
@@ -784,21 +786,16 @@ function App(): React.JSX.Element {
         }
       } else {
         // Session is not running; rename directly via persisted session file
-        const sessionInfo = Object.values(projectSessions)
-          .flat()
-          .find((s) => s.id === sessionId);
-        if (sessionInfo) {
-          const result = await window.piApi.renamePersistedSession(sessionInfo.path, name);
-          if (!result.success) {
-            console.error('Failed to rename persisted session:', result.error);
-          }
+        const result = await window.piApi.renamePersistedSession(sessionPath, name);
+        if (!result.success) {
+          console.error('Failed to rename persisted session:', result.error);
         }
       }
       // Refresh session list to reflect new name
       const activeCwdNow = activeProject?.path ?? window.piApi.getCwd();
       void listProjectSessions([activeCwdNow]);
     },
-    [sessions, activeProject, projectSessions],
+    [sessions, activeProject],
   );
 
   const handleSelectModel = useCallback(

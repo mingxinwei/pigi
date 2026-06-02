@@ -479,12 +479,16 @@ function ModelSettingsPicker({
   const selectedKey = modelValue ? modelOptionKey(modelValue) : '';
   const canOpen = modelOptions.length > 0 || thinkingOptions.length > 0;
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    setOpen(nextOpen);
-    if (!nextOpen) {
-      setModelSearch('');
-    }
-  }, []);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen && !canOpen) return;
+      setOpen(nextOpen);
+      if (!nextOpen) {
+        setModelSearch('');
+      }
+    },
+    [canOpen],
+  );
 
   useEffect(() => {
     if (!open || !modelValue) {
@@ -514,11 +518,7 @@ function ModelSettingsPicker({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <ModelSettingsButton
-          disabled={!canOpen}
-          modelLabel={modelLabel}
-          thinkingLabel={thinkingLabel}
-        />
+        <ModelSettingsButton modelLabel={modelLabel} thinkingLabel={thinkingLabel} />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 gap-0 overflow-visible p-0">
         <Command className="rounded-b-none">

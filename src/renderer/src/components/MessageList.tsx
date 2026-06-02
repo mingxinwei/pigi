@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconArrowDown, IconCopy, IconCheck, IconSparkles } from '@tabler/icons-react';
 import {
@@ -32,7 +32,7 @@ const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
 /** Max height (px) for user bubble content before showing expand button */
 const USER_MESSAGE_MAX_HEIGHT = 360;
 
-export default function MessageList({ nodes }: MessageListProps): React.JSX.Element {
+export default React.memo(function MessageList({ nodes }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   const lastNodeIdRef = useRef<string | null>(null);
@@ -193,7 +193,7 @@ export default function MessageList({ nodes }: MessageListProps): React.JSX.Elem
       )}
     </div>
   );
-}
+});
 
 function estimateNodeHeight(node: TranscriptNode | undefined): number {
   if (!node) {

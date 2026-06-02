@@ -9,7 +9,7 @@ interface SessionProcess {
 }
 
 const MAX_IDLE_SESSION_PROCESS_COUNT = 6;
-const WARM_SESSION_PROCESS_COUNT = 2;
+const WARM_SESSION_PROCESS_COUNT = 1;
 
 export class PiAgentProcessPool {
   private readonly sessionProcesses = new Map<string, SessionProcess>();

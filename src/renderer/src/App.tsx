@@ -6,6 +6,8 @@ import { detectPlatform } from './lib/platform';
 import {
   disposeTranscriptSession,
   ensureTranscriptSession,
+  getTranscriptController,
+  markSessionHydrated,
   useTranscript,
 } from './hooks/useTranscript';
 import {
@@ -35,6 +37,7 @@ import {
   removeProject,
   reorderProjects,
   renameSession,
+  readSessionMessages,
 } from './services/piAgentClient';
 import type {
   AuthProviderInfo,
@@ -85,6 +88,14 @@ function App(): React.JSX.Element {
   const [restoreText, setRestoreText] = useState<string | null>(null);
   const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
   const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
+
+  // Pending prompt buffer: holds messages sent before the utility process is ready.
+  // Maps the placeholder sessionId to the buffered message texts.
+  const pendingPromptsRef = useRef<Map<string, string[]>>(new Map());
+  // Maps placeholder sessionId to the session path being resumed (for process spawn tracking).
+  const pendingSessionRef = useRef<Map<string, string>>(new Map());
+  // Maps real sessionId → placeholder sessionId for onProcessExit resolution.
+  const realToPlaceholderRef = useRef<Map<string, string>>(new Map());
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -170,11 +181,17 @@ function App(): React.JSX.Element {
       return;
     }
     useAppStore.getState().updateSession(activeSessionId, { status: transcript.status });
-    void refreshSessionState(activeSessionId);
+    if (!activeSessionId.startsWith('pending:')) {
+      void refreshSessionState(activeSessionId);
+    }
   }, [activeSessionId, refreshSessionState, transcript.status]);
 
   useEffect(() => {
     if (!activeSessionId) {
+      return;
+    }
+    // Skip for placeholder sessions — port doesn't exist yet
+    if (activeSessionId.startsWith('pending:')) {
       return;
     }
 
@@ -226,13 +243,15 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     return window.piApi.onProcessExit(({ sessionId }) => {
-      disposeTranscriptSession(sessionId);
-      removeSession(sessionId);
+      // Resolve real sessionId to placeholder if aliased
+      const resolvedId = realToPlaceholderRef.current.get(sessionId) ?? sessionId;
+      disposeTranscriptSession(resolvedId);
+      removeSession(resolvedId);
     });
   }, [removeSession]);
 
   useEffect(() => {
-    if (!activeSessionId) {
+    if (!activeSessionId || activeSessionId.startsWith('pending:')) {
       return;
     }
     void touchSession(activeSessionId);
@@ -286,6 +305,16 @@ function App(): React.JSX.Element {
       useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) });
     }
 
+    // If the session is still pending (utility process not ready), buffer the prompt
+    if (pendingSessionRef.current.has(sessionId)) {
+      const queue = pendingPromptsRef.current.get(sessionId) ?? [];
+      queue.push(message);
+      pendingPromptsRef.current.set(sessionId, queue);
+      // Show optimistic user message
+      getTranscriptController(sessionId).addUserMessage(message);
+      return;
+    }
+
     // Queue locally during compaction — messages are replayed after compaction ends.
     if (transcript.isCompacting) {
       transcriptControllerRef.current?.addCompactionMessage(message, 'steer');
@@ -329,6 +358,19 @@ function App(): React.JSX.Element {
 
   const handleAbort = useCallback(async () => {
     if (!activeSessionId) {
+      return;
+    }
+    // If session is still pending (process not ready), just clear the buffered prompts
+    if (pendingSessionRef.current.has(activeSessionId)) {
+      const bufferedMessages = pendingPromptsRef.current.get(activeSessionId);
+      pendingPromptsRef.current.delete(activeSessionId);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        // Remove all optimistic user messages
+        for (let i = 0; i < bufferedMessages.length; i++) {
+          getTranscriptController(activeSessionId).removeLastUserMessage();
+        }
+        setRestoreText(bufferedMessages.join('\n\n'));
+      }
       return;
     }
     // Clear local queue state to prevent false delivery detection
@@ -453,28 +495,108 @@ function App(): React.JSX.Element {
       return;
     }
 
+    // Use a placeholder sessionId so we can display the session immediately.
+    // The real sessionId arrives once the utility process is ready.
+    const placeholderSessionId = `pending:${session.id}`;
+    pendingSessionRef.current.set(placeholderSessionId, session.path);
+
+    addSessionEntry({
+      sessionId: placeholderSessionId,
+      persistedSessionId: session.id,
+      sessionPath: session.path,
+      status: 'idle',
+      title: session.name ?? session.firstMessage,
+      cwd: session.cwd,
+      createdAt: session.created,
+      model: null,
+      thinkingLevel: null,
+      contextUsage: null,
+      autoCompactionEnabled: false,
+      messageCount: session.messageCount,
+      error: null,
+    });
+    // Mark as hydrated before activating so useTranscript doesn't try getMessages
+    markSessionHydrated(placeholderSessionId);
+
+    // Hydrate transcript from session file (fast path, no utility process needed)
+    // Do this BEFORE setActiveSession so the UI never renders empty/disabled state.
     try {
-      const sessionId = await resumeSession(session.path);
-      addSessionEntry({
-        sessionId,
-        persistedSessionId: session.id,
-        sessionPath: session.path,
-        status: 'idle',
-        title: session.name ?? session.firstMessage,
-        cwd: session.cwd,
-        createdAt: session.created,
-        model: null,
-        thinkingLevel: null,
-        contextUsage: null,
-        autoCompactionEnabled: false,
-        messageCount: session.messageCount,
-        error: null,
-      });
-      setActiveSession(sessionId);
+      const { messages, compactionCount, thinkingLevel, model } = await readSessionMessages(
+        session.path,
+      );
+      const controller = getTranscriptController(placeholderSessionId);
+      controller.hydrate(messages, compactionCount);
+      // Update session metadata so ChatInput displays correctly.
+      if (model) {
+        const matchedModel = modelOptions.find(
+          (m) => m.id === model.modelId && m.provider === model.provider,
+        );
+        useAppStore.getState().updateSession(placeholderSessionId, {
+          thinkingLevel,
+          ...(matchedModel ? { model: matchedModel } : {}),
+        });
+      } else {
+        useAppStore.getState().updateSession(placeholderSessionId, { thinkingLevel });
+      }
     } catch (err) {
-      console.error('Failed to resume session:', err);
+      console.error('Failed to hydrate session from file:', err);
+    }
+
+    // Now show the session — messages and metadata are ready
+    setActiveSession(placeholderSessionId);
+    setPendingSelectedSessionId(null);
+
+    // Spawn utility process in background
+    try {
+      const realSessionId = await resumeSession(session.path);
+      // Register alias so port communication using placeholder ID resolves to real port.
+      // This avoids changing activeSessionId which would cause MessageList to re-render.
+      window.piApi.aliasSession(placeholderSessionId, realSessionId);
+      realToPlaceholderRef.current.set(realSessionId, placeholderSessionId);
+
+      // Wire up live subscriptions using the placeholder ID (resolves to real port via alias)
+      ensureTranscriptSession(placeholderSessionId);
+
+      // Now that the process is ready, fetch session options and state
+      void refreshSessionState(placeholderSessionId);
+      void getSessionOptions(placeholderSessionId)
+        .then((options) => {
+          setModelOptions(options.models);
+          setThinkingLevelOptions(options.thinkingLevels);
+          setSkillOptions(options.skills);
+        })
+        .catch(() => {});
+      void touchSession(placeholderSessionId);
+
+      // Flush any pending prompts
+      const bufferedMessages = pendingPromptsRef.current.get(placeholderSessionId);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        pendingPromptsRef.current.delete(placeholderSessionId);
+        // First message is sent as prompt, subsequent as steer
+        await prompt(placeholderSessionId, bufferedMessages[0]);
+        for (let i = 1; i < bufferedMessages.length; i++) {
+          await steer(placeholderSessionId, bufferedMessages[i]);
+        }
+        void listProjectSessions([session.cwd]);
+      }
+    } catch (err) {
+      console.error('Failed to resume session process:', err);
+      // Clean up the placeholder — remove it so the user can retry from sidebar
+      const store = useAppStore.getState();
+      store.removeSession(placeholderSessionId);
+      disposeTranscriptSession(placeholderSessionId);
+      if (store.activeSessionId === placeholderSessionId) {
+        store.setActiveSession(null);
+      }
+      // Restore any buffered prompt text to the input
+      const bufferedMessages = pendingPromptsRef.current.get(placeholderSessionId);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        setRestoreText(bufferedMessages.join('\n\n'));
+      }
+      pendingPromptsRef.current.delete(placeholderSessionId);
+      toast.error('Failed to resume session. Please try again.');
     } finally {
-      setPendingSelectedSessionId(null);
+      pendingSessionRef.current.delete(placeholderSessionId);
     }
   }
 

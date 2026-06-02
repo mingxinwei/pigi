@@ -51,8 +51,14 @@ interface SessionPort {
 }
 
 const sessionPorts = new Map<string, SessionPort>();
+const sessionIdAliases = new Map<string, string>();
 const SESSION_PORT_CLOSED_ERROR = 'session process exited';
 const PORT_READY_TIMEOUT_MS = 5000;
+
+/** Resolve a session ID through the alias map. */
+function resolveSessionId(sessionId: string): string {
+  return sessionIdAliases.get(sessionId) ?? sessionId;
+}
 
 /** Handlers registered before port arrives */
 const pendingPushHandlers = new Map<string, Set<(message: PiPush) => void>>();
@@ -235,11 +241,11 @@ const piApi = {
 
   /** Destroy a session. */
   destroySession: (sessionId: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke(PiChannel.DestroySession, sessionId),
+    ipcRenderer.invoke(PiChannel.DestroySession, resolveSessionId(sessionId)),
 
   /** Mark a session as recently selected. */
   touchSession: (sessionId: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(PiChannel.TouchSession, sessionId),
+    ipcRenderer.invoke(PiChannel.TouchSession, resolveSessionId(sessionId)),
 
   /** Get persisted project directory state from main process. */
   getProjects: (): Promise<ProjectStateResult> => ipcRenderer.invoke(PiChannel.GetProjects),
@@ -271,6 +277,18 @@ const piApi = {
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(PiChannel.RenamePersistedSession, sessionPath, name),
 
+  /** Read messages from a session file without spawning a utility process. */
+  readSessionMessages: (
+    sessionPath: string,
+  ): Promise<{
+    success: boolean;
+    messages?: unknown[];
+    compactionCount?: number;
+    thinkingLevel?: string;
+    model?: { provider: string; modelId: string } | null;
+    error?: string;
+  }> => ipcRenderer.invoke(PiChannel.ReadSessionMessages, sessionPath),
+
   /** List persisted pi sessions for project directories. */
   listProjectSessions: (cwds: string[]): Promise<SessionListResult> =>
     ipcRenderer.invoke(PiChannel.ListProjectSessions, cwds),
@@ -286,7 +304,8 @@ const piApi = {
 
   /** Send a command to a session (via control MessagePort). Returns result. */
   send: (sessionId: string, command: PiCommand): Promise<unknown> => {
-    const session = sessionPorts.get(sessionId);
+    const resolved = resolveSessionId(sessionId);
+    const session = sessionPorts.get(resolved);
     if (!session)
       return Promise.reject(
         new Error(`no port for session ${sessionId} (port may not have arrived yet)`),
@@ -307,38 +326,40 @@ const piApi = {
 
   /** Subscribe to push events for a session (session_ready, event, error). */
   onPush: (sessionId: string, callback: (message: PiPush) => void): (() => void) => {
-    const session = sessionPorts.get(sessionId);
+    const resolved = resolveSessionId(sessionId);
+    const session = sessionPorts.get(resolved);
     if (session) {
       session.pushHandlers.add(callback);
     } else {
       // Port not yet arrived -- queue
-      if (!pendingPushHandlers.has(sessionId)) {
-        pendingPushHandlers.set(sessionId, new Set());
+      if (!pendingPushHandlers.has(resolved)) {
+        pendingPushHandlers.set(resolved, new Set());
       }
-      pendingPushHandlers.get(sessionId)!.add(callback);
+      pendingPushHandlers.get(resolved)!.add(callback);
     }
     return () => {
-      const current = sessionPorts.get(sessionId);
+      const current = sessionPorts.get(resolved);
       if (current) current.pushHandlers.delete(callback);
-      pendingPushHandlers.get(sessionId)?.delete(callback);
+      pendingPushHandlers.get(resolved)?.delete(callback);
     };
   },
 
   /** Subscribe to stream batches for a session. */
   onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void): (() => void) => {
-    const session = sessionPorts.get(sessionId);
+    const resolved = resolveSessionId(sessionId);
+    const session = sessionPorts.get(resolved);
     if (session) {
       session.streamHandlers.add(callback);
     } else {
-      if (!pendingStreamHandlers.has(sessionId)) {
-        pendingStreamHandlers.set(sessionId, new Set());
+      if (!pendingStreamHandlers.has(resolved)) {
+        pendingStreamHandlers.set(resolved, new Set());
       }
-      pendingStreamHandlers.get(sessionId)!.add(callback);
+      pendingStreamHandlers.get(resolved)!.add(callback);
     }
     return () => {
-      const current = sessionPorts.get(sessionId);
+      const current = sessionPorts.get(resolved);
       if (current) current.streamHandlers.delete(callback);
-      pendingStreamHandlers.get(sessionId)?.delete(callback);
+      pendingStreamHandlers.get(resolved)?.delete(callback);
     };
   },
 
@@ -358,6 +379,15 @@ const piApi = {
   /** Get the app's working directory (for session creation). */
   getCwd: (): string => process.cwd(),
 
+  /**
+   * Register a session ID alias so that port communication using the alias
+   * resolves to the real session's port. Used when a placeholder session
+   * is backed by a real utility process.
+   */
+  aliasSession: (aliasId: string, realId: string): void => {
+    sessionIdAliases.set(aliasId, realId);
+  },
+
   /** Open a URL in the system browser. */
   openExternal: (url: string): void => {
     ipcRenderer.send(PiChannel.OpenExternal, url);
@@ -375,6 +405,9 @@ const piApi = {
 
   /** Get the system accent color as a hex string (e.g. '#007aff'). Returns null on unsupported platforms. */
   getAccentColor: (): Promise<string | null> => ipcRenderer.invoke(PiChannel.GetAccentColor),
+
+  /** Check if a session ID has an alias registered (i.e., process is ready). */
+  hasSessionAlias: (sessionId: string): boolean => sessionIdAliases.has(sessionId),
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

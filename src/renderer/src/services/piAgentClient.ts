@@ -83,6 +83,25 @@ export async function listProjectSessions(cwds: string[]): Promise<SessionListRe
   return window.piApi.listProjectSessions(cwds);
 }
 
+/** Read messages from a session file without a live utility process. */
+export async function readSessionMessages(sessionPath: string): Promise<{
+  messages: unknown[];
+  compactionCount: number;
+  thinkingLevel: string;
+  model: { provider: string; modelId: string } | null;
+}> {
+  const result = await window.piApi.readSessionMessages(sessionPath);
+  if (!result.success || !result.messages) {
+    throw new Error(result.error || 'failed to read session messages');
+  }
+  return {
+    messages: result.messages,
+    compactionCount: result.compactionCount ?? 0,
+    thinkingLevel: result.thinkingLevel ?? 'off',
+    model: result.model ?? null,
+  };
+}
+
 export function onProjectSessionsChunk(
   callback: (chunk: ProjectSessionsChunk) => void,
 ): () => void {

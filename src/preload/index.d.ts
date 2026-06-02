@@ -31,6 +31,14 @@ interface PiApi {
     sessionPath: string,
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  readSessionMessages: (sessionPath: string) => Promise<{
+    success: boolean;
+    messages?: unknown[];
+    compactionCount?: number;
+    thinkingLevel?: string;
+    model?: { provider: string; modelId: string } | null;
+    error?: string;
+  }>;
   listProjectSessions: (cwds: string[]) => Promise<SessionListResult>;
   onProjectSessionsChunk: (callback: (chunk: ProjectSessionsChunk) => void) => () => void;
 
@@ -46,6 +54,7 @@ interface PiApi {
 
   // Utilities
   getCwd: () => string;
+  aliasSession: (aliasId: string, realId: string) => void;
   openExternal: (url: string) => void;
 
   // Keyboard shortcuts
@@ -55,6 +64,7 @@ interface PiApi {
     binding: ShortcutBinding,
   ) => Promise<{ success: boolean; error?: string }>;
   getAccentColor: () => Promise<string | null>;
+  hasSessionAlias: (sessionId: string) => boolean;
 }
 
 declare global {

@@ -164,7 +164,7 @@ async function spawnSessionProcess(
           clearTimeout(timeout);
 
           const sessionId = message.sessionId;
-          processPool.registerSessionProcess(sessionId, proc);
+          processPool.registerSessionProcess(sessionId, proc, message.sessionPath);
 
           // Establish separate ports so high-volume stream output cannot delay controls.
           const controlChannel = new MessageChannelMain();
@@ -228,6 +228,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(PiChannel.ResumeSession, async (_e, sessionPath: string) => {
     if (!sessionPath || typeof sessionPath !== 'string' || sessionPath.trim().length === 0) {
       return { success: false, error: 'sessionPath must be a non-empty string' };
+    }
+    // Reuse existing process if this session is already open
+    const existing = processPool.findSessionByPath(sessionPath);
+    if (existing) {
+      processPool.touchSessionProcess(existing.sessionId);
+      return { success: true, sessionId: existing.sessionId };
     }
     return spawnSessionProcess({ type: 'resume_session', sessionPath });
   });

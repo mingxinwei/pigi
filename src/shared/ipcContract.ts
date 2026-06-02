@@ -340,6 +340,6 @@ export type UtilityCommand =
 // =============================================================================
 
 export type UtilityResponse =
-  | { type: 'session_created'; sessionId: string }
+  | { type: 'session_created'; sessionId: string; sessionPath: string | undefined }
   | { type: 'session_error'; error: string }
   | { type: 'session_busy_changed'; isBusy: boolean };

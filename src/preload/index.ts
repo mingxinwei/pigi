@@ -14,6 +14,7 @@ import {
   type ControlPortMessage,
   type DataPortMessage,
   type GitBranchResult,
+  type ModelInfo,
   type PiCommand,
   type PiPush,
   type PiRequest,
@@ -364,6 +365,10 @@ const piApi = {
     ipcRenderer.on(PiChannel.ProcessExit, handler);
     return () => ipcRenderer.removeListener(PiChannel.ProcessExit, handler);
   },
+
+  /** Get model options from the warm (pre-spawned) process. */
+  getWarmSessionOptions: (): Promise<{ models: ModelInfo[]; thinkingLevels: string[] }> =>
+    ipcRenderer.invoke(PiChannel.GetWarmSessionOptions),
 
   /** Get the app's working directory (for session creation). */
   getCwd: (): string => process.cwd(),

@@ -3,6 +3,7 @@ import type {
   PiCommand,
   PiPush,
   GitBranchResult,
+  ModelInfo,
   ProjectSessionsChunk,
   ProjectStateResult,
   SessionListResult,
@@ -57,6 +58,7 @@ interface PiApi {
   // Utilities
   getCwd: () => string;
   openExternal: (url: string) => void;
+  getWarmSessionOptions: () => Promise<{ models: ModelInfo[]; thinkingLevels: string[] }>;
 
   // Keyboard shortcuts
   getShortcuts: () => Promise<ShortcutDefinition[]>;

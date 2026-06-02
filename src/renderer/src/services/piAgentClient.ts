@@ -248,3 +248,19 @@ export function onStreamBatch(
 ): () => void {
   return window.piApi.onStreamBatch(sessionPath, callback);
 }
+
+/** Get model options from the warm (pre-spawned) process. Returns empty if not ready. */
+export async function getWarmSessionOptions(): Promise<{
+  models: {
+    name: string;
+    provider: string;
+    id: string;
+    api: string;
+    contextWindow: number;
+    maxTokens: number;
+    reasoning: boolean;
+  }[];
+  thinkingLevels: string[];
+}> {
+  return window.piApi.getWarmSessionOptions();
+}

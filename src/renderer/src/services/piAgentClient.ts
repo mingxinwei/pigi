@@ -2,6 +2,7 @@
  * Pi agent client - renderer-side typed wrappers over window.piApi.
  *
  * Components use these instead of calling piApi directly.
+ * All session-scoped functions take `sessionPath` as the session identifier.
  */
 import type {
   AuthProviderInfo,
@@ -19,40 +20,39 @@ import type {
 
 type CommandResult<T = unknown> = { success: boolean; error?: string } & T;
 
-async function send<T = unknown>(sessionId: string, command: PiCommand): Promise<T> {
-  // piApi.send returns Promise<unknown>; the generic T is guaranteed by the IPC contract
-  return window.piApi.send(sessionId, command) as Promise<T>;
+async function send<T = unknown>(sessionPath: string, command: PiCommand): Promise<T> {
+  return window.piApi.send(sessionPath, command) as Promise<T>;
 }
 
 // =============================================================================
 // Session lifecycle
 // =============================================================================
 
-/** Create a new session. Resolves when port is received. */
+/** Create a new session. Resolves with sessionPath when port is received. */
 export async function createSession(cwd: string): Promise<string> {
   const result = await window.piApi.createSession(cwd);
-  if (!result.success || !result.sessionId) {
+  if (!result.success || !result.sessionPath) {
     throw new Error(result.error || 'failed to create session');
   }
-  return result.sessionId;
+  return result.sessionPath;
 }
 
-/** Resume an existing session by file path. */
+/** Resume an existing session by file path. Resolves with sessionPath when port is ready. */
 export async function resumeSession(sessionPath: string): Promise<string> {
   const result = await window.piApi.resumeSession(sessionPath);
-  if (!result.success || !result.sessionId) {
+  if (!result.success || !result.sessionPath) {
     throw new Error(result.error || 'failed to resume session');
   }
-  return result.sessionId;
+  return result.sessionPath;
 }
 
 /** Destroy a session. */
-export async function destroySession(sessionId: string): Promise<void> {
-  await window.piApi.destroySession(sessionId);
+export async function destroySession(sessionPath: string): Promise<void> {
+  await window.piApi.destroySession(sessionPath);
 }
 
-export async function touchSession(sessionId: string): Promise<void> {
-  await window.piApi.touchSession(sessionId);
+export async function touchSession(sessionPath: string): Promise<void> {
+  await window.piApi.touchSession(sessionPath);
 }
 
 export async function getProjects(): Promise<ProjectStateResult> {
@@ -112,22 +112,22 @@ export function onProjectSessionsChunk(
 // Session commands (via MessagePort)
 // =============================================================================
 
-export async function prompt(sessionId: string, message: string): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'prompt', message });
+export async function prompt(sessionPath: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'prompt', message });
   if (!result.success) {
     throw new Error(result.error || 'prompt failed');
   }
 }
 
-export async function steer(sessionId: string, message: string): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'steer', message });
+export async function steer(sessionPath: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'steer', message });
   if (!result.success) {
     throw new Error(result.error || 'steer failed');
   }
 }
 
-export async function followUp(sessionId: string, message: string): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'follow_up', message });
+export async function followUp(sessionPath: string, message: string): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'follow_up', message });
   if (!result.success) {
     throw new Error(result.error || 'follow_up failed');
   }
@@ -140,69 +140,69 @@ interface ClearQueueResult {
   error?: string;
 }
 
-export async function clearQueue(sessionId: string): Promise<ClearQueueResult> {
-  return send<ClearQueueResult>(sessionId, { type: 'clear_queue' });
+export async function clearQueue(sessionPath: string): Promise<ClearQueueResult> {
+  return send<ClearQueueResult>(sessionPath, { type: 'clear_queue' });
 }
 
-export async function abort(sessionId: string): Promise<void> {
-  await send(sessionId, { type: 'abort' });
+export async function abort(sessionPath: string): Promise<void> {
+  await send(sessionPath, { type: 'abort' });
 }
 
-export async function compact(sessionId: string): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'compact' });
+export async function compact(sessionPath: string): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'compact' });
   if (!result.success) {
     throw new Error(result.error || 'compact failed');
   }
 }
 
-export async function getState(sessionId: string): Promise<SessionState> {
-  return send<SessionState>(sessionId, { type: 'get_state' });
+export async function getState(sessionPath: string): Promise<SessionState> {
+  return send<SessionState>(sessionPath, { type: 'get_state' });
 }
 
-export async function getSessionOptions(sessionId: string): Promise<SessionOptions> {
-  return send<SessionOptions>(sessionId, { type: 'get_session_options' });
+export async function getSessionOptions(sessionPath: string): Promise<SessionOptions> {
+  return send<SessionOptions>(sessionPath, { type: 'get_session_options' });
 }
 
 export async function getMessages(
-  sessionId: string,
+  sessionPath: string,
 ): Promise<{ messages: unknown[]; compactionCount: number }> {
-  return send<{ messages: unknown[]; compactionCount: number }>(sessionId, {
+  return send<{ messages: unknown[]; compactionCount: number }>(sessionPath, {
     type: 'get_messages',
   });
 }
 
-export async function listSessions(sessionId: string, cwd?: string): Promise<unknown[]> {
-  return send<unknown[]>(sessionId, { type: 'list_sessions', cwd });
+export async function listSessions(sessionPath: string, cwd?: string): Promise<unknown[]> {
+  return send<unknown[]>(sessionPath, { type: 'list_sessions', cwd });
 }
 
-export async function cycleModel(sessionId: string): Promise<unknown> {
-  return send(sessionId, { type: 'cycle_model' });
+export async function cycleModel(sessionPath: string): Promise<unknown> {
+  return send(sessionPath, { type: 'cycle_model' });
 }
 
-export async function cycleThinkingLevel(sessionId: string): Promise<string | null> {
-  return send<string | null>(sessionId, { type: 'cycle_thinking_level' });
+export async function cycleThinkingLevel(sessionPath: string): Promise<string | null> {
+  return send<string | null>(sessionPath, { type: 'cycle_thinking_level' });
 }
 
 export async function setModel(
-  sessionId: string,
+  sessionPath: string,
   provider: string,
   modelId: string,
 ): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'set_model', provider, modelId });
+  const result = await send<CommandResult>(sessionPath, { type: 'set_model', provider, modelId });
   if (!result.success) {
     throw new Error(result.error || 'set_model failed');
   }
 }
 
-export async function setThinkingLevel(sessionId: string, level: ThinkingLevel): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'set_thinking_level', level });
+export async function setThinkingLevel(sessionPath: string, level: ThinkingLevel): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'set_thinking_level', level });
   if (!result.success) {
     throw new Error(result.error || 'set_thinking_level failed');
   }
 }
 
-export async function renameSession(sessionId: string, name: string): Promise<void> {
-  const result = await send<CommandResult>(sessionId, { type: 'rename_session', name });
+export async function renameSession(sessionPath: string, name: string): Promise<void> {
+  const result = await send<CommandResult>(sessionPath, { type: 'rename_session', name });
   if (!result.success) {
     throw new Error(result.error || 'rename_session failed');
   }
@@ -213,38 +213,38 @@ export async function renameSession(sessionId: string, name: string): Promise<vo
 // =============================================================================
 
 export async function getAuthProviders(
-  sessionId: string,
+  sessionPath: string,
 ): Promise<{ success: boolean; providers: AuthProviderInfo[] }> {
-  return send(sessionId, { type: 'get_auth_providers' });
+  return send(sessionPath, { type: 'get_auth_providers' });
 }
 
-export async function loginOAuth(sessionId: string, providerId: string): Promise<CommandResult> {
-  return send<CommandResult>(sessionId, { type: 'login_oauth', providerId });
+export async function loginOAuth(sessionPath: string, providerId: string): Promise<CommandResult> {
+  return send<CommandResult>(sessionPath, { type: 'login_oauth', providerId });
 }
 
 export async function loginApiKey(
-  sessionId: string,
+  sessionPath: string,
   providerId: string,
   apiKey: string,
 ): Promise<CommandResult> {
-  return send<CommandResult>(sessionId, { type: 'login_api_key', providerId, apiKey });
+  return send<CommandResult>(sessionPath, { type: 'login_api_key', providerId, apiKey });
 }
 
-export async function logout(sessionId: string, providerId: string): Promise<CommandResult> {
-  return send<CommandResult>(sessionId, { type: 'logout', providerId });
+export async function logout(sessionPath: string, providerId: string): Promise<CommandResult> {
+  return send<CommandResult>(sessionPath, { type: 'logout', providerId });
 }
 
 // =============================================================================
 // Subscriptions
 // =============================================================================
 
-export function onPush(sessionId: string, callback: (message: PiPush) => void): () => void {
-  return window.piApi.onPush(sessionId, callback);
+export function onPush(sessionPath: string, callback: (message: PiPush) => void): () => void {
+  return window.piApi.onPush(sessionPath, callback);
 }
 
 export function onStreamBatch(
-  sessionId: string,
+  sessionPath: string,
   callback: (batch: StreamBatch) => void,
 ): () => void {
-  return window.piApi.onStreamBatch(sessionId, callback);
+  return window.piApi.onStreamBatch(sessionPath, callback);
 }

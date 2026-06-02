@@ -3,7 +3,7 @@
  *
  * Each session gets its own utility process. Main manages:
  * 1. Spawning process per session
- * 2. Two-step handshake: create session → get real sessionId → distribute ports
+ * 2. Two-step handshake: create session → get sessionPath → distribute ports
  * 3. Process cleanup on destroy or crash
  *
  * After port handshake, main is NOT in the data path.
@@ -48,8 +48,8 @@ function sendToRenderer(channel: PiChannel, data: unknown): void {
   }
 }
 
-const processPool = new PiAgentProcessPool((sessionId, code) => {
-  sendToRenderer(PiChannel.ProcessExit, { sessionId, code });
+const processPool = new PiAgentProcessPool((sessionPath, code) => {
+  sendToRenderer(PiChannel.ProcessExit, { sessionPath, code });
 });
 
 function startSessionWorker(): void {
@@ -100,12 +100,10 @@ function startSessionWorker(): void {
   proc.on('exit', () => {
     if (sessionWorkerProcess === proc) {
       sessionWorkerProcess = null;
-      // Drain pending rename callbacks on crash
       for (const [id, callback] of pendingRenameCallbacks) {
         callback({ success: false, error: 'session worker process exited' });
         pendingRenameCallbacks.delete(id);
       }
-      // Drain pending read messages callbacks on crash
       for (const [id, callback] of pendingReadMessagesCallbacks) {
         callback({ success: false, error: 'session worker process exited' });
         pendingReadMessagesCallbacks.delete(id);
@@ -132,12 +130,12 @@ function listProjectSessions(cwds: string[]): SessionListResult {
 }
 
 /**
- * Spawn a utility process, send lifecycle command, wait for real sessionId,
+ * Spawn a utility process, send lifecycle command, wait for sessionPath,
  * then establish dedicated control/data MessagePorts between renderer and utility.
  */
 async function spawnSessionProcess(
   command: UtilityCommand,
-): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+): Promise<{ success: boolean; sessionPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const proc = processPool.claimSessionProcess();
     let resolved = false;
@@ -163,8 +161,14 @@ async function spawnSessionProcess(
           resolved = true;
           clearTimeout(timeout);
 
-          const sessionId = message.sessionId;
-          processPool.registerSessionProcess(sessionId, proc, message.sessionPath);
+          const sessionPath = message.sessionPath;
+          if (!sessionPath) {
+            proc.kill();
+            resolve({ success: false, error: 'session created without a path' });
+            break;
+          }
+
+          processPool.registerSessionProcess(sessionPath, proc);
 
           // Establish separate ports so high-volume stream output cannot delay controls.
           const controlChannel = new MessageChannelMain();
@@ -174,13 +178,13 @@ async function spawnSessionProcess(
 
           const win = getMainWindow();
           if (win && !win.isDestroyed()) {
-            win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [
+            win.webContents.postMessage(PiChannel.SessionPort, { sessionPath }, [
               controlChannel.port2,
               dataChannel.port2,
             ]);
           }
 
-          resolve({ success: true, sessionId });
+          resolve({ success: true, sessionPath });
           processPool.refillAfterSetup();
           break;
         }
@@ -230,26 +234,26 @@ export function registerIpcHandlers(): void {
       return { success: false, error: 'sessionPath must be a non-empty string' };
     }
     // Reuse existing process if this session is already open
-    const existing = processPool.findSessionByPath(sessionPath);
+    const existing = processPool.findBySessionPath(sessionPath);
     if (existing) {
-      processPool.touchSessionProcess(existing.sessionId);
-      return { success: true, sessionId: existing.sessionId };
+      processPool.touchSessionProcess(sessionPath);
+      return { success: true, sessionPath };
     }
     return spawnSessionProcess({ type: 'resume_session', sessionPath });
   });
 
-  ipcMain.handle(PiChannel.DestroySession, async (_e, sessionId: string) => {
-    if (!sessionId || typeof sessionId !== 'string') {
-      return { success: false, error: 'sessionId must be a non-empty string' };
+  ipcMain.handle(PiChannel.DestroySession, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string') {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
     }
-    return { success: processPool.destroySessionProcess(sessionId) };
+    return { success: processPool.destroySessionProcess(sessionPath) };
   });
 
-  ipcMain.handle(PiChannel.TouchSession, async (_e, sessionId: string) => {
-    if (!sessionId || typeof sessionId !== 'string') {
-      return { success: false, error: 'sessionId must be a non-empty string' };
+  ipcMain.handle(PiChannel.TouchSession, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string') {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
     }
-    return { success: processPool.touchSessionProcess(sessionId) };
+    return { success: processPool.touchSessionProcess(sessionPath) };
   });
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {

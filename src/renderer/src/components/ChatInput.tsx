@@ -138,7 +138,7 @@ export default function ChatInput({
     const textarea = textareaRef.current;
     if (!textarea) return;
     const prevId = prevSessionIdRef.current;
-    const currentId = session?.sessionId ?? null;
+    const currentId = session?.sessionPath ?? null;
 
     // Save previous session's draft
     if (prevId && prevId !== currentId) {
@@ -158,7 +158,7 @@ export default function ChatInput({
     }
 
     prevSessionIdRef.current = currentId;
-  }, [session?.sessionId]);
+  }, [session?.sessionPath]);
 
   // Restore text from abort/dequeue
   useEffect(() => {

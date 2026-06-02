@@ -127,19 +127,19 @@ export function SessionItem({
 interface SessionListProps {
   sessions: Map<string, SessionEntry>;
   projectSessions: PiSessionInfo[];
-  selectedSessionId: string | null;
+  selectedSessionPath: string | null;
   relativeTimeBase: number;
   isExpanded: boolean;
   visibleWhenCollapsedSessionIds?: Set<string>;
-  onSwitchSession: (sessionId: string) => void;
+  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
-  onRenameSession: (sessionId: string, name: string) => void;
+  onRenameSession: (sessionPath: string, name: string) => void;
 }
 
 export function SessionList({
   sessions,
   projectSessions,
-  selectedSessionId,
+  selectedSessionPath,
   relativeTimeBase,
   isExpanded,
   visibleWhenCollapsedSessionIds,
@@ -202,11 +202,11 @@ export function SessionList({
               <SessionItem
                 key={session.path || session.id}
                 session={session}
-                isActive={session.id === selectedSessionId}
-                isRunning={isSessionRunning(session.id, sessions)}
+                isActive={session.path === selectedSessionPath}
+                isRunning={isSessionRunning(session.path, sessions)}
                 relativeTimeBase={relativeTimeBase}
                 onSwitch={() => handleSessionSwitch(session)}
-                onRename={(name) => onRenameSession(session.id, name)}
+                onRename={(name) => onRenameSession(session.path, name)}
               />
             ))
           )}

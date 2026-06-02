@@ -3,22 +3,21 @@ import { type UtilityCommand } from '../../shared/ipcContract';
 
 interface SessionProcess {
   process: Electron.UtilityProcess;
-  sessionId: string;
+  sessionPath: string;
   lastUsedAt: number;
   isBusy: boolean;
 }
 
 const MAX_IDLE_SESSION_PROCESS_COUNT = 6;
-const WARM_SESSION_PROCESS_COUNT = 1;
+const WARM_SESSION_PROCESS_COUNT = 0;
 
 export class PiAgentProcessPool {
   private readonly sessionProcesses = new Map<string, SessionProcess>();
-  private readonly sessionPathToId = new Map<string, string>();
   private readonly warmSessionProcesses: Electron.UtilityProcess[] = [];
-  private activeSessionId: string | null = null;
+  private activeSessionPath: string | null = null;
   private warmSessionCwds: string[] = [];
 
-  constructor(private readonly onSessionProcessExit: (sessionId: string, code: number) => void) {}
+  constructor(private readonly onSessionProcessExit: (sessionPath: string, code: number) => void) {}
 
   ensureWarmSessionProcesses(cwds = this.warmSessionCwds): void {
     this.warmSessionCwds = [...new Set(cwds)];
@@ -42,46 +41,32 @@ export class PiAgentProcessPool {
     return proc;
   }
 
-  registerSessionProcess(
-    sessionId: string,
-    proc: Electron.UtilityProcess,
-    sessionPath?: string,
-  ): void {
-    // Kill old process if same sessionId was already registered (prevents leaks)
-    const existing = this.sessionProcesses.get(sessionId);
+  registerSessionProcess(sessionPath: string, proc: Electron.UtilityProcess): void {
+    // Kill old process if same sessionPath was already registered (prevents leaks)
+    const existing = this.sessionProcesses.get(sessionPath);
     if (existing && existing.process !== proc) {
       existing.process.kill();
     }
 
-    this.sessionProcesses.set(sessionId, {
+    this.sessionProcesses.set(sessionPath, {
       process: proc,
-      sessionId,
+      sessionPath,
       lastUsedAt: Date.now(),
       isBusy: false,
     });
-    this.activeSessionId = sessionId;
-
-    if (sessionPath) {
-      this.sessionPathToId.set(sessionPath, sessionId);
-    }
+    this.activeSessionPath = sessionPath;
 
     proc.on('exit', (code) => {
-      this.sessionProcesses.delete(sessionId);
-      if (sessionPath) {
-        this.sessionPathToId.delete(sessionPath);
+      this.sessionProcesses.delete(sessionPath);
+      if (this.activeSessionPath === sessionPath) {
+        this.activeSessionPath = null;
       }
-      if (this.activeSessionId === sessionId) {
-        this.activeSessionId = null;
-      }
-      this.onSessionProcessExit(sessionId, code);
+      this.onSessionProcessExit(sessionPath, code);
     });
   }
 
-  /** Find an existing session process by session file path. */
-  findSessionByPath(sessionPath: string): SessionProcess | undefined {
-    const sessionId = this.sessionPathToId.get(sessionPath);
-    if (!sessionId) return undefined;
-    return this.sessionProcesses.get(sessionId);
+  findBySessionPath(sessionPath: string): SessionProcess | undefined {
+    return this.sessionProcesses.get(sessionPath);
   }
 
   updateBusyState(proc: Electron.UtilityProcess, isBusy: boolean): void {
@@ -97,27 +82,27 @@ export class PiAgentProcessPool {
     }
   }
 
-  touchSessionProcess(sessionId: string): boolean {
-    const entry = this.sessionProcesses.get(sessionId);
+  touchSessionProcess(sessionPath: string): boolean {
+    const entry = this.sessionProcesses.get(sessionPath);
     if (!entry) {
       return false;
     }
 
     entry.lastUsedAt = Date.now();
-    this.activeSessionId = sessionId;
+    this.activeSessionPath = sessionPath;
     return true;
   }
 
-  destroySessionProcess(sessionId: string): boolean {
-    const entry = this.sessionProcesses.get(sessionId);
+  destroySessionProcess(sessionPath: string): boolean {
+    const entry = this.sessionProcesses.get(sessionPath);
     if (!entry) {
       return false;
     }
 
     entry.process.kill();
-    this.sessionProcesses.delete(sessionId);
-    if (this.activeSessionId === sessionId) {
-      this.activeSessionId = null;
+    this.sessionProcesses.delete(sessionPath);
+    if (this.activeSessionPath === sessionPath) {
+      this.activeSessionPath = null;
     }
     return true;
   }
@@ -132,7 +117,7 @@ export class PiAgentProcessPool {
       entry.process.kill();
     }
     this.sessionProcesses.clear();
-    this.activeSessionId = null;
+    this.activeSessionPath = null;
 
     for (const proc of this.warmSessionProcesses) {
       proc.kill();
@@ -183,7 +168,7 @@ export class PiAgentProcessPool {
       (entry) => !entry.isBusy,
     ).length;
     const idleEntries = Array.from(this.sessionProcesses.values())
-      .filter((entry) => entry.sessionId !== this.activeSessionId && !entry.isBusy)
+      .filter((entry) => entry.sessionPath !== this.activeSessionPath && !entry.isBusy)
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
 
     while (idleSessionCount > MAX_IDLE_SESSION_PROCESS_COUNT) {
@@ -191,7 +176,7 @@ export class PiAgentProcessPool {
       if (!entry) {
         return;
       }
-      this.sessionProcesses.delete(entry.sessionId);
+      this.sessionProcesses.delete(entry.sessionPath);
       idleSessionCount -= 1;
       entry.process.kill();
     }

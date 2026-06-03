@@ -23,3 +23,12 @@ jobs:
       - run: npm run build:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section for this version from CHANGELOG.md
+          NOTES=$(awk "/^## \\[$VERSION\\]/{found=1} /^## \\[/{if(found>1) exit; found++} found" CHANGELOG.md)
+          gh release edit "$GITHUB_REF_NAME" --draft=false --notes "$NOTES"

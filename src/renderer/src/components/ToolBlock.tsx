@@ -4,7 +4,8 @@ import { type ToolNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
 import DiffView from './DiffView';
-import type { EditEntry } from '../lib/diffUtils';
+import type { EditEntry, DiffLine } from '../lib/diffUtils';
+import { parseDiffString } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
 
 /** Max lines shown in collapsed write preview */
@@ -181,18 +182,12 @@ function getLanguageFromPath(path: string): string | null {
   return FILE_EXTENSION_LANGUAGE_OVERRIDE[extension] ?? extension;
 }
 
-function getEditEntries(node: ToolNode): EditEntry[] | null {
+/** Extract pre-computed DiffLines from tool result details (used by tagged-edit and similar tools) */
+function getEditDiffFromDetails(node: ToolNode): DiffLine[][] | null {
   if (node.name !== 'edit') return null;
-  const args = getToolArgs(node);
-  if (!args) return null;
-  // Array.isArray confirms shape; elements are validated below via filter
-  const edits = Array.isArray(args.edits)
-    ? (args.edits as Array<{ oldText?: string; newText?: string }>)
-    : undefined;
-  if (!edits || edits.length === 0) return null;
-  return edits
-    .filter((e) => typeof e.oldText === 'string' && typeof e.newText === 'string')
-    .map((e) => ({ oldText: e.oldText!, newText: e.newText! }));
+  if (!node.details?.diff) return null;
+  const parsed = parseDiffString(node.details.diff);
+  return parsed.length > 0 ? parsed : null;
 }
 
 function getWriteEntries(node: ToolNode): EditEntry[] | null {
@@ -254,7 +249,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
   const { className: statusClassName, style: statusStyle } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
-  const editEntries = getEditEntries(node);
+  const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
   const hasOutput = cleanedOutput.length > 0;
   const outputLanguage = getToolOutputLanguage(node);
@@ -339,10 +334,9 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
                 : undefined,
           }}
         >
-          {node.status !== 'running' &&
-            editEntries &&
-            editEntries.length > 0 &&
-            node.status !== 'error' && <DiffView edits={editEntries} />}
+          {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
+            <DiffView lines={editDiffFromDetails} />
+          )}
 
           {/* Write preview shown during running (streaming) unlike edit which waits for completion */}
           {writeEntries && writeEntries.length > 0 && node.status !== 'error' && (

@@ -256,6 +256,8 @@ export enum PiChannel {
   ReorderProjects = 'pi:reorder_projects',
   /** renderer → main: rename a persisted (non-running) session */
   RenamePersistedSession = 'pi:rename_persisted_session',
+  /** renderer → main: read messages from a session file without spawning a utility process */
+  ReadSessionMessages = 'pi:read_session_messages',
   /** renderer → main: open a URL in the system browser */
   OpenExternal = 'pi:open_external',
   /** renderer → main: get system accent color */
@@ -264,6 +266,8 @@ export enum PiChannel {
   GetShortcuts = 'pi:get_shortcuts',
   /** renderer → main: update a keyboard shortcut binding */
   SetShortcut = 'pi:set_shortcut',
+  /** renderer → main: get model options from warm (pre-spawned) process */
+  GetWarmSessionOptions = 'pi:get_warm_session_options',
 }
 
 // =============================================================================
@@ -298,11 +302,30 @@ export interface RenameSessionCommand {
   name: string;
 }
 
-export type SessionWorkerCommand = ListProjectSessionsCommand | RenameSessionCommand;
+export interface ReadSessionMessagesCommand {
+  type: 'read_session_messages';
+  requestId: string;
+  sessionPath: string;
+}
+
+export type SessionWorkerCommand =
+  | ListProjectSessionsCommand
+  | RenameSessionCommand
+  | ReadSessionMessagesCommand;
 
 export type SessionWorkerResponse =
   | ({ type: 'project_sessions_chunk' } & ProjectSessionsChunk)
-  | { type: 'rename_session_result'; requestId: string; success: boolean; error?: string };
+  | { type: 'rename_session_result'; requestId: string; success: boolean; error?: string }
+  | {
+      type: 'session_messages_result';
+      requestId: string;
+      success: boolean;
+      messages?: unknown[];
+      compactionCount?: number;
+      thinkingLevel?: string;
+      model?: { provider: string; modelId: string } | null;
+      error?: string;
+    };
 
 // =============================================================================
 // Internal: Main → Utility (parentPort, lifecycle only)
@@ -311,6 +334,7 @@ export type SessionWorkerResponse =
 export type UtilityCommand =
   | { type: 'create_session'; cwd: string }
   | { type: 'resume_session'; sessionPath: string }
+  | { type: 'warm_up'; cwds: string[] }
   | { type: 'prewarm_session_services'; cwds: string[] }
   | { type: 'attach_ports' };
 
@@ -319,6 +343,7 @@ export type UtilityCommand =
 // =============================================================================
 
 export type UtilityResponse =
-  | { type: 'session_created'; sessionId: string }
+  | { type: 'session_created'; sessionId: string; sessionPath: string }
   | { type: 'session_error'; error: string }
-  | { type: 'session_busy_changed'; isBusy: boolean };
+  | { type: 'session_busy_changed'; isBusy: boolean }
+  | { type: 'warm_ready'; models: ModelInfo[]; thinkingLevels: string[] };

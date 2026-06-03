@@ -514,6 +514,28 @@ export class TranscriptController {
     this.setState({ nodes: [...this._state.nodes, node] });
   }
 
+  /** Remove the last user message node (used when aborting a buffered prompt). */
+  removeLastUserMessage(): void {
+    const nodes = this._state.nodes;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      if (nodes[i].role === 'user') {
+        const text = (nodes[i] as UserNode).text;
+        const count = this._optimisticUserMessages.get(text);
+        if (count && count > 0) {
+          if (count === 1) {
+            this._optimisticUserMessages.delete(text);
+          } else {
+            this._optimisticUserMessages.set(text, count - 1);
+          }
+        }
+        const updated = [...nodes];
+        updated.splice(i, 1);
+        this.setState({ nodes: updated });
+        return;
+      }
+    }
+  }
+
   private _hasOptimisticUserMessage(text: string): boolean {
     const count = this._optimisticUserMessages.get(text);
     if (count && count > 0) {

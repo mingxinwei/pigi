@@ -25,16 +25,16 @@ interface ProjectItemProps {
   sessions: Map<string, SessionEntry>;
   projectSessions: PiSessionInfo[];
   visibleWhenCollapsedSessionIds: Set<string>;
-  selectedSessionId: string | null;
+  selectedSessionPath: string | null;
   relativeTimeBase: number;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onSelect: () => void;
   onNewSession: () => void;
-  onSwitchSession: (sessionId: string) => void;
+  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onRemove: () => void;
-  onRenameSession: (sessionId: string, name: string) => void;
+  onRenameSession: (sessionPath: string, name: string) => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragEnd: () => void;
@@ -47,7 +47,7 @@ function ProjectItem({
   sessions,
   projectSessions,
   visibleWhenCollapsedSessionIds,
-  selectedSessionId,
+  selectedSessionPath,
   relativeTimeBase,
   isExpanded,
   onToggleExpand,
@@ -122,7 +122,7 @@ function ProjectItem({
           <SessionList
             sessions={sessions}
             projectSessions={projectSessions}
-            selectedSessionId={selectedSessionId}
+            selectedSessionPath={selectedSessionPath}
             relativeTimeBase={relativeTimeBase}
             isExpanded={isExpanded}
             visibleWhenCollapsedSessionIds={visibleWhenCollapsedSessionIds}
@@ -145,26 +145,26 @@ function ProjectItem({
 interface ProjectListProps {
   sessions: Map<string, SessionEntry>;
   recentProjects: ProjectDirectory[];
-  selectedSessionId: string | null;
+  selectedSessionPath: string | null;
   relativeTimeBase: number;
   expandedProjects: Set<string>;
   visibleWhenCollapsedSessionIdsByPath: Record<string, Set<string>>;
   onToggleProjectExpand: (path: string) => void;
   onSelectProject: (path: string) => void;
   onNewSessionForProject: (path: string) => void;
-  onSwitchSession: (sessionId: string) => void;
+  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onOpenProject: () => void;
   onRemoveProject: (path: string) => void;
   onReorderProjects: (paths: string[]) => void;
-  onRenameSession: (sessionId: string, name: string) => void;
+  onRenameSession: (sessionPath: string, name: string) => void;
   getProjectSessions: (projectPath: string) => PiSessionInfo[];
 }
 
 export function ProjectList({
   sessions,
   recentProjects,
-  selectedSessionId,
+  selectedSessionPath,
   relativeTimeBase,
   expandedProjects,
   visibleWhenCollapsedSessionIdsByPath,
@@ -244,7 +244,7 @@ export function ProjectList({
           visibleWhenCollapsedSessionIds={
             visibleWhenCollapsedSessionIdsByPath[project.path] ?? new Set()
           }
-          selectedSessionId={selectedSessionId}
+          selectedSessionPath={selectedSessionPath}
           relativeTimeBase={relativeTimeBase}
           isExpanded={expandedProjects.has(project.path)}
           onToggleExpand={() => onToggleProjectExpand(project.path)}

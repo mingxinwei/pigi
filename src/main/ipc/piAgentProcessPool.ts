@@ -1,62 +1,116 @@
 import { createPiAgentProcess } from '../processes/createPiAgentProcess';
-import { type UtilityCommand } from '../../shared/ipcContract';
+import { type ModelInfo, type UtilityCommand } from '../../shared/ipcContract';
 
 interface SessionProcess {
   process: Electron.UtilityProcess;
-  sessionId: string;
+  sessionPath: string;
   lastUsedAt: number;
   isBusy: boolean;
 }
 
-const MAX_IDLE_SESSION_PROCESS_COUNT = 6;
-const WARM_SESSION_PROCESS_COUNT = 2;
+interface WarmProcess {
+  process: Electron.UtilityProcess;
+  ready: boolean;
+  models: ModelInfo[];
+  thinkingLevels: string[];
+}
+
+const MAX_IDLE_SESSION_PROCESS_COUNT = 3;
 
 export class PiAgentProcessPool {
   private readonly sessionProcesses = new Map<string, SessionProcess>();
-  private readonly warmSessionProcesses: Electron.UtilityProcess[] = [];
-  private activeSessionId: string | null = null;
-  private warmSessionCwds: string[] = [];
+  private warmProcess: WarmProcess | null = null;
+  private activeSessionPath: string | null = null;
+  private warmCwds: string[] = [];
 
-  constructor(private readonly onSessionProcessExit: (sessionId: string, code: number) => void) {}
+  constructor(private readonly onSessionProcessExit: (sessionPath: string, code: number) => void) {}
 
-  ensureWarmSessionProcesses(cwds = this.warmSessionCwds): void {
-    this.warmSessionCwds = [...new Set(cwds)];
+  // ===========================================================================
+  // Warm process management
+  // ===========================================================================
 
-    while (this.warmSessionProcesses.length < WARM_SESSION_PROCESS_COUNT) {
-      this.createWarmSessionProcess();
+  /**
+   * Ensure a warm process exists. Spawns one if not present.
+   * The warm process initializes services (model registry, extensions) but
+   * does NOT create a session file — it stays unbound until claimed.
+   */
+  ensureWarmProcess(cwds: string[] = this.warmCwds): void {
+    this.warmCwds = [...new Set(cwds)];
+    if (this.warmProcess) {
+      // Already have one — just prewarm any new cwds
+      this.prewarmWarmProcess();
+      return;
     }
-
-    for (const proc of this.warmSessionProcesses) {
-      this.prewarmProcess(proc);
-    }
+    this.spawnWarmProcess();
   }
 
-  claimSessionProcess(): Electron.UtilityProcess {
-    const proc = this.warmSessionProcesses.shift();
-    if (!proc) {
-      return createPiAgentProcess();
+  /** Get model/thinking options from the warm process (empty if not yet ready). */
+  getWarmSessionOptions(): { models: ModelInfo[]; thinkingLevels: string[] } {
+    if (!this.warmProcess || !this.warmProcess.ready) {
+      return { models: [], thinkingLevels: [] };
     }
+    return {
+      models: this.warmProcess.models,
+      thinkingLevels: this.warmProcess.thinkingLevels,
+    };
+  }
 
-    // A warmed process becomes a dedicated session process after setup succeeds.
+  /** Whether the warm process is initialized and ready to accept create_session. */
+  isWarmProcessReady(): boolean {
+    return this.warmProcess?.ready ?? false;
+  }
+
+  /**
+   * Claim the warm process for a real session. Returns the process and removes
+   * it from warm state. Immediately spawns a new warm process as replacement.
+   * Returns null if no warm process exists.
+   */
+  claimWarmProcess(): Electron.UtilityProcess | null {
+    if (!this.warmProcess || !this.warmProcess.ready) {
+      return null;
+    }
+    const proc = this.warmProcess.process;
+    this.warmProcess = null;
+    // Spawn replacement immediately
+    this.spawnWarmProcess();
     return proc;
   }
 
-  registerSessionProcess(sessionId: string, proc: Electron.UtilityProcess): void {
-    this.sessionProcesses.set(sessionId, {
+  // ===========================================================================
+  // Session process management
+  // ===========================================================================
+
+  /** Spawn a fresh process (no warm available). */
+  createFreshProcess(): Electron.UtilityProcess {
+    return createPiAgentProcess();
+  }
+
+  registerSessionProcess(sessionPath: string, proc: Electron.UtilityProcess): void {
+    // Kill old process if same sessionPath was already registered (prevents leaks)
+    const existing = this.sessionProcesses.get(sessionPath);
+    if (existing && existing.process !== proc) {
+      existing.process.kill();
+    }
+
+    this.sessionProcesses.set(sessionPath, {
       process: proc,
-      sessionId,
+      sessionPath,
       lastUsedAt: Date.now(),
       isBusy: false,
     });
-    this.activeSessionId = sessionId;
+    this.activeSessionPath = sessionPath;
 
     proc.on('exit', (code) => {
-      this.sessionProcesses.delete(sessionId);
-      if (this.activeSessionId === sessionId) {
-        this.activeSessionId = null;
+      this.sessionProcesses.delete(sessionPath);
+      if (this.activeSessionPath === sessionPath) {
+        this.activeSessionPath = null;
       }
-      this.onSessionProcessExit(sessionId, code);
+      this.onSessionProcessExit(sessionPath, code);
     });
+  }
+
+  findBySessionPath(sessionPath: string): SessionProcess | undefined {
+    return this.sessionProcesses.get(sessionPath);
   }
 
   updateBusyState(proc: Electron.UtilityProcess, isBusy: boolean): void {
@@ -72,34 +126,29 @@ export class PiAgentProcessPool {
     }
   }
 
-  touchSessionProcess(sessionId: string): boolean {
-    const entry = this.sessionProcesses.get(sessionId);
+  touchSessionProcess(sessionPath: string): boolean {
+    const entry = this.sessionProcesses.get(sessionPath);
     if (!entry) {
       return false;
     }
 
     entry.lastUsedAt = Date.now();
-    this.activeSessionId = sessionId;
+    this.activeSessionPath = sessionPath;
     return true;
   }
 
-  destroySessionProcess(sessionId: string): boolean {
-    const entry = this.sessionProcesses.get(sessionId);
+  destroySessionProcess(sessionPath: string): boolean {
+    const entry = this.sessionProcesses.get(sessionPath);
     if (!entry) {
       return false;
     }
 
     entry.process.kill();
-    this.sessionProcesses.delete(sessionId);
-    if (this.activeSessionId === sessionId) {
-      this.activeSessionId = null;
+    this.sessionProcesses.delete(sessionPath);
+    if (this.activeSessionPath === sessionPath) {
+      this.activeSessionPath = null;
     }
     return true;
-  }
-
-  refillAfterSetup(): void {
-    this.ensureWarmSessionProcesses();
-    this.pruneIdleSessionProcesses();
   }
 
   stopAllProcesses(): void {
@@ -107,41 +156,53 @@ export class PiAgentProcessPool {
       entry.process.kill();
     }
     this.sessionProcesses.clear();
-    this.activeSessionId = null;
+    this.activeSessionPath = null;
 
-    for (const proc of this.warmSessionProcesses) {
-      proc.kill();
-    }
-    this.warmSessionProcesses.length = 0;
-  }
-
-  private removeWarmSessionProcess(proc: Electron.UtilityProcess): void {
-    const index = this.warmSessionProcesses.indexOf(proc);
-    if (index >= 0) {
-      this.warmSessionProcesses.splice(index, 1);
+    if (this.warmProcess) {
+      this.warmProcess.process.kill();
+      this.warmProcess = null;
     }
   }
 
-  private prewarmProcess(proc: Electron.UtilityProcess): void {
-    if (this.warmSessionCwds.length === 0) {
-      return;
-    }
+  // ===========================================================================
+  // Private
+  // ===========================================================================
 
-    const command: UtilityCommand = {
-      type: 'prewarm_session_services',
-      cwds: this.warmSessionCwds,
+  private spawnWarmProcess(): void {
+    const proc = createPiAgentProcess();
+    this.warmProcess = {
+      process: proc,
+      ready: false,
+      models: [],
+      thinkingLevels: [],
     };
+    proc.on('exit', () => {
+      if (this.warmProcess?.process === proc) {
+        this.warmProcess = null;
+      }
+    });
+    // Listen for warm_ready response
+    proc.on(
+      'message',
+      (message: { type: string; models?: unknown[]; thinkingLevels?: string[] }) => {
+        if (message.type === 'warm_ready' && this.warmProcess?.process === proc) {
+          this.warmProcess.ready = true;
+          this.warmProcess.models = (message.models ?? []) as ModelInfo[];
+          this.warmProcess.thinkingLevels = (message.thinkingLevels ?? []) as string[];
+        }
+      },
+    );
+    // Send warm_up command to initialize services
+    const command: UtilityCommand = { type: 'warm_up', cwds: this.warmCwds };
     proc.postMessage(command);
   }
 
-  private createWarmSessionProcess(): Electron.UtilityProcess {
-    const proc = createPiAgentProcess();
-    this.warmSessionProcesses.push(proc);
-    proc.on('exit', () => {
-      this.removeWarmSessionProcess(proc);
-    });
-    this.prewarmProcess(proc);
-    return proc;
+  private prewarmWarmProcess(): void {
+    if (!this.warmProcess || this.warmCwds.length === 0) {
+      return;
+    }
+    const command: UtilityCommand = { type: 'prewarm_session_services', cwds: this.warmCwds };
+    this.warmProcess.process.postMessage(command);
   }
 
   private findSessionProcessByProcess(proc: Electron.UtilityProcess): SessionProcess | null {
@@ -158,7 +219,7 @@ export class PiAgentProcessPool {
       (entry) => !entry.isBusy,
     ).length;
     const idleEntries = Array.from(this.sessionProcesses.values())
-      .filter((entry) => entry.sessionId !== this.activeSessionId && !entry.isBusy)
+      .filter((entry) => entry.sessionPath !== this.activeSessionPath && !entry.isBusy)
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
 
     while (idleSessionCount > MAX_IDLE_SESSION_PROCESS_COUNT) {
@@ -166,7 +227,7 @@ export class PiAgentProcessPool {
       if (!entry) {
         return;
       }
-      this.sessionProcesses.delete(entry.sessionId);
+      this.sessionProcesses.delete(entry.sessionPath);
       idleSessionCount -= 1;
       entry.process.kill();
     }

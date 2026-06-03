@@ -83,5 +83,30 @@ process.parentPort?.on('message', async (messageEvent) => {
       }
       break;
     }
+    case 'read_session_messages': {
+      try {
+        const sessionManager = SessionManager.open(command.sessionPath);
+        const { messages, thinkingLevel, model } = sessionManager.buildSessionContext();
+        const entries = sessionManager.getEntries();
+        const compactionCount = entries.filter((entry) => entry.type === 'compaction').length;
+        sendToMain({
+          type: 'session_messages_result',
+          requestId: command.requestId,
+          success: true,
+          messages,
+          compactionCount,
+          thinkingLevel,
+          model,
+        });
+      } catch (error) {
+        sendToMain({
+          type: 'session_messages_result',
+          requestId: command.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      break;
+    }
   }
 });

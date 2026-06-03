@@ -1,7 +1,7 @@
 /**
  * useTranscript - React hook that manages a TranscriptController for the active session.
  *
- * - Keeps one controller per live session so inactive running sessions still collect stream output
+ * - Keeps one controller per session (keyed by sessionPath)
  * - Subscribes to push events and stream batches via MessagePort
  * - Hydrates transcript from getMessages on session_ready
  * - Exposes state plus the controller for optimistic user messages
@@ -22,39 +22,46 @@ const controllersBySession = new Map<string, TranscriptController>();
 const subscriptionsBySession = new Map<string, () => void>();
 const hydrationStartedSessions = new Set<string>();
 
-export function getTranscriptController(sessionId: string): TranscriptController {
-  const existing = controllersBySession.get(sessionId);
+export function getTranscriptController(sessionPath: string): TranscriptController {
+  const existing = controllersBySession.get(sessionPath);
   if (existing) {
     return existing;
   }
 
   const controller = new TranscriptController();
-  controllersBySession.set(sessionId, controller);
+  controllersBySession.set(sessionPath, controller);
   return controller;
 }
 
-export function ensureTranscriptSession(sessionId: string): TranscriptController {
-  const controller = getTranscriptController(sessionId);
-  ensureSessionSubscription(sessionId, controller);
-  ensureSessionHydration(sessionId, controller);
+export function ensureTranscriptSession(sessionPath: string): TranscriptController {
+  const controller = getTranscriptController(sessionPath);
+  ensureSessionSubscription(sessionPath, controller);
+  ensureSessionHydration(sessionPath, controller);
   return controller;
 }
 
-export function disposeTranscriptSession(sessionId: string): void {
-  subscriptionsBySession.get(sessionId)?.();
-  controllersBySession.delete(sessionId);
-  hydrationStartedSessions.delete(sessionId);
+export function disposeTranscriptSession(sessionPath: string): void {
+  subscriptionsBySession.get(sessionPath)?.();
+  controllersBySession.delete(sessionPath);
+  hydrationStartedSessions.delete(sessionPath);
 }
 
-function ensureSessionHydration(sessionId: string, controller: TranscriptController): void {
-  if (hydrationStartedSessions.has(sessionId)) {
+/**
+ * Mark a session as already hydrated so ensureSessionHydration skips the getMessages call.
+ * Used for sessions hydrated from file before the utility process is ready.
+ */
+export function markSessionHydrated(sessionPath: string): void {
+  hydrationStartedSessions.add(sessionPath);
+}
+
+function ensureSessionHydration(sessionPath: string, controller: TranscriptController): void {
+  if (hydrationStartedSessions.has(sessionPath)) {
     return;
   }
 
-  hydrationStartedSessions.add(sessionId);
-  void getMessages(sessionId)
+  hydrationStartedSessions.add(sessionPath);
+  void getMessages(sessionPath)
     .then(({ messages, compactionCount }) => {
-      // Do not overwrite live or optimistic content that may have arrived before hydration returns.
       if (controller.state.nodes.length === 0) {
         controller.hydrate(messages, compactionCount);
       } else {
@@ -63,15 +70,15 @@ function ensureSessionHydration(sessionId: string, controller: TranscriptControl
     })
     .catch((err) => {
       console.error('Failed to hydrate messages:', err);
-      hydrationStartedSessions.delete(sessionId);
+      hydrationStartedSessions.delete(sessionPath);
     });
 }
 
-function syncSessionState(sessionId: string, controller: TranscriptController): void {
-  void getState(sessionId)
+function syncSessionState(sessionPath: string, controller: TranscriptController): void {
+  void getState(sessionPath)
     .then((sessionState) => {
       controller.setStatus(sessionState.isStreaming ? 'streaming' : 'idle');
-      useAppStore.getState().updateSession(sessionId, {
+      useAppStore.getState().updateSession(sessionPath, {
         model: sessionState.model,
         thinkingLevel: sessionState.thinkingLevel,
         contextUsage: sessionState.contextUsage,
@@ -84,16 +91,15 @@ function syncSessionState(sessionId: string, controller: TranscriptController): 
     });
 }
 
-function ensureSessionSubscription(sessionId: string, controller: TranscriptController): void {
-  if (subscriptionsBySession.has(sessionId)) {
+function ensureSessionSubscription(sessionPath: string, controller: TranscriptController): void {
+  if (subscriptionsBySession.has(sessionPath)) {
     return;
   }
 
-  const unsubPush = onPush(sessionId, (pushMessage: PiPush) => {
+  const unsubPush = onPush(sessionPath, (pushMessage: PiPush) => {
     switch (pushMessage.type) {
       case 'session_ready':
-        // Update app store with metadata
-        useAppStore.getState().updateSession(sessionId, {
+        useAppStore.getState().updateSession(sessionPath, {
           model: pushMessage.model,
           thinkingLevel: pushMessage.thinkingLevel,
           contextUsage: pushMessage.contextUsage,
@@ -105,21 +111,21 @@ function ensureSessionSubscription(sessionId: string, controller: TranscriptCont
       case 'session_error':
         useAppStore
           .getState()
-          .updateSession(sessionId, { error: pushMessage.error, status: 'error' });
+          .updateSession(sessionPath, { error: pushMessage.error, status: 'error' });
         break;
 
       case 'status_sync':
         controller.setStatus(pushMessage.isStreaming ? 'streaming' : 'idle');
-        useAppStore.getState().updateSession(sessionId, { status: controller.state.status });
+        useAppStore.getState().updateSession(sessionPath, { status: controller.state.status });
         break;
 
       case 'event':
         controller.processEvent(pushMessage.event);
-        useAppStore.getState().updateSession(sessionId, { status: controller.state.status });
+        useAppStore.getState().updateSession(sessionPath, { status: controller.state.status });
         break;
 
       case 'error':
-        console.error(`[session ${sessionId}] error:`, pushMessage.error);
+        console.error(`[session ${sessionPath}] error:`, pushMessage.error);
         break;
 
       case 'login_open_url':
@@ -127,31 +133,29 @@ function ensureSessionSubscription(sessionId: string, controller: TranscriptCont
         break;
 
       case 'login_complete':
-        // Model list may have changed after login
         break;
 
       case 'login_progress':
       case 'login_error':
-        // TODO: surface these to the user if needed (currently handled via RPC response)
         break;
     }
   });
 
-  const unsubStream = onStreamBatch(sessionId, (batch: StreamBatch) => {
+  const unsubStream = onStreamBatch(sessionPath, (batch: StreamBatch) => {
     controller.applyStreamBatch(batch);
   });
 
-  subscriptionsBySession.set(sessionId, () => {
+  subscriptionsBySession.set(sessionPath, () => {
     unsubPush();
     unsubStream();
-    subscriptionsBySession.delete(sessionId);
+    subscriptionsBySession.delete(sessionPath);
   });
 }
 
-export function useTranscript(sessionId: string | null): UseTranscriptResult {
+export function useTranscript(sessionPath: string | null): UseTranscriptResult {
   const controller = useMemo(
-    () => (sessionId ? getTranscriptController(sessionId) : emptyController),
-    [sessionId],
+    () => (sessionPath ? getTranscriptController(sessionPath) : emptyController),
+    [sessionPath],
   );
   const controllerRef = useMemo<RefObject<TranscriptController>>(
     () => ({ current: controller }),
@@ -159,15 +163,14 @@ export function useTranscript(sessionId: string | null): UseTranscriptResult {
   );
 
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionPath) {
       return;
     }
 
-    ensureTranscriptSession(sessionId);
-    syncSessionState(sessionId, controller);
-  }, [controller, sessionId]);
+    ensureTranscriptSession(sessionPath);
+    syncSessionState(sessionPath, controller);
+  }, [controller, sessionPath]);
 
-  // Use useSyncExternalStore for React-compatible subscription
   const subscribe = useCallback(
     (onStoreChange: () => void) => controller.subscribe(onStoreChange),
     [controller],

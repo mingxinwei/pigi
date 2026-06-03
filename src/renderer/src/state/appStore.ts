@@ -11,9 +11,8 @@ import type { AgentStatus } from './transcriptController';
 export type { AgentStatus };
 
 export interface SessionEntry {
-  sessionId: string;
+  sessionPath: string;
   persistedSessionId: string;
-  sessionPath: string | null;
   status: AgentStatus;
   title: string;
   cwd: string;
@@ -27,19 +26,19 @@ export interface SessionEntry {
 }
 
 interface AppState {
-  // Sessions
+  // Sessions (keyed by sessionPath)
   sessions: Map<string, SessionEntry>;
-  activeSessionId: string | null;
+  activeSessionPath: string | null;
 
   recentProjects: ProjectDirectory[];
   activeProject: ProjectDirectory | null;
   projectSessions: Record<string, PiSessionInfo[]>;
 
-  addSession: (sessionId: string, cwd: string) => void;
+  addSession: (sessionPath: string, cwd: string) => void;
   addSessionEntry: (entry: SessionEntry) => void;
-  removeSession: (sessionId: string) => void;
-  setActiveSession: (sessionId: string | null) => void;
-  updateSession: (sessionId: string, updates: Partial<Omit<SessionEntry, 'sessionId'>>) => void;
+  removeSession: (sessionPath: string) => void;
+  setActiveSession: (sessionPath: string | null) => void;
+  updateSession: (sessionPath: string, updates: Partial<Omit<SessionEntry, 'sessionPath'>>) => void;
   setProjects: (recentProjects: ProjectDirectory[], activeProject: ProjectDirectory | null) => void;
   setProjectSessions: (sessionsByCwd: Record<string, PiSessionInfo[]>) => void;
   setProjectSessionList: (cwd: string, sessions: PiSessionInfo[]) => void;
@@ -55,19 +54,18 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   sessions: new Map(),
-  activeSessionId: null,
+  activeSessionPath: null,
 
   recentProjects: [],
   activeProject: null,
   projectSessions: {},
 
-  addSession: (sessionId, cwd) =>
+  addSession: (sessionPath, cwd) =>
     set((state) => {
       const sessions = new Map(state.sessions);
-      sessions.set(sessionId, {
-        sessionId,
-        persistedSessionId: sessionId,
-        sessionPath: null,
+      sessions.set(sessionPath, {
+        sessionPath,
+        persistedSessionId: '',
         status: 'idle',
         title: 'New chat',
         cwd,
@@ -85,26 +83,27 @@ export const useAppStore = create<AppState>((set) => ({
   addSessionEntry: (entry) =>
     set((state) => {
       const sessions = new Map(state.sessions);
-      sessions.set(entry.sessionId, entry);
+      sessions.set(entry.sessionPath, entry);
       return { sessions };
     }),
 
-  removeSession: (sessionId) =>
+  removeSession: (sessionPath) =>
     set((state) => {
       const sessions = new Map(state.sessions);
-      sessions.delete(sessionId);
-      const activeSessionId = state.activeSessionId === sessionId ? null : state.activeSessionId;
-      return { sessions, activeSessionId };
+      sessions.delete(sessionPath);
+      const activeSessionPath =
+        state.activeSessionPath === sessionPath ? null : state.activeSessionPath;
+      return { sessions, activeSessionPath };
     }),
 
-  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+  setActiveSession: (activeSessionPath) => set({ activeSessionPath }),
 
-  updateSession: (sessionId, updates) =>
+  updateSession: (sessionPath, updates) =>
     set((state) => {
       const sessions = new Map(state.sessions);
-      const existing = sessions.get(sessionId);
+      const existing = sessions.get(sessionPath);
       if (existing) {
-        sessions.set(sessionId, { ...existing, ...updates });
+        sessions.set(sessionPath, { ...existing, ...updates });
       }
       return { sessions };
     }),

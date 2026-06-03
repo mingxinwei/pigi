@@ -363,15 +363,15 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         </div>
 
         <div className="mb-2">
-        {isOverflowing && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="mt-1 text-left text-xs text-muted-foreground hover:text-foreground"
-          >
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
+          {isOverflowing && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1 text-left text-xs text-muted-foreground hover:text-foreground"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
         </div>
 
         <div

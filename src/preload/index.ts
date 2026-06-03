@@ -14,6 +14,7 @@ import {
   type ControlPortMessage,
   type DataPortMessage,
   type GitBranchResult,
+  type ModelInfo,
   type PiCommand,
   type PiPush,
   type PiRequest,
@@ -26,7 +27,7 @@ import {
 } from '../shared/ipcContract';
 
 // =============================================================================
-// Per-session port management
+// Per-session port management (keyed by sessionPath)
 // =============================================================================
 
 interface PendingCommand {
@@ -59,8 +60,8 @@ const pendingPushHandlers = new Map<string, Set<(message: PiPush) => void>>();
 const pendingStreamHandlers = new Map<string, Set<(batch: StreamBatch) => void>>();
 const pendingPortWaiters = new Map<string, Set<PendingPortWaiter>>();
 
-function cleanupPendingPortWaiters(sessionId: string, error: Error): void {
-  const waiters = pendingPortWaiters.get(sessionId);
+function cleanupPendingPortWaiters(sessionPath: string, error: Error): void {
+  const waiters = pendingPortWaiters.get(sessionPath);
   if (!waiters) {
     return;
   }
@@ -69,35 +70,35 @@ function cleanupPendingPortWaiters(sessionId: string, error: Error): void {
     clearTimeout(waiter.timeoutId);
     waiter.reject(error);
   }
-  pendingPortWaiters.delete(sessionId);
+  pendingPortWaiters.delete(sessionPath);
 }
 
-function waitForPort(sessionId: string): Promise<void> {
-  if (sessionPorts.has(sessionId)) {
+function waitForPort(sessionPath: string): Promise<void> {
+  if (sessionPorts.has(sessionPath)) {
     return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      const waiters = pendingPortWaiters.get(sessionId);
+      const waiters = pendingPortWaiters.get(sessionPath);
       if (waiters) {
         waiters.delete(waiter);
         if (waiters.size === 0) {
-          pendingPortWaiters.delete(sessionId);
+          pendingPortWaiters.delete(sessionPath);
         }
       }
-      reject(new Error(`port for session ${sessionId} did not arrive`));
+      reject(new Error(`port for session ${sessionPath} did not arrive`));
     }, PORT_READY_TIMEOUT_MS);
 
     const waiter: PendingPortWaiter = { resolve, reject, timeoutId };
-    const waiters = pendingPortWaiters.get(sessionId) ?? new Set<PendingPortWaiter>();
+    const waiters = pendingPortWaiters.get(sessionPath) ?? new Set<PendingPortWaiter>();
     waiters.add(waiter);
-    pendingPortWaiters.set(sessionId, waiters);
+    pendingPortWaiters.set(sessionPath, waiters);
   });
 }
 
-function resolvePendingPortWaiters(sessionId: string): void {
-  const waiters = pendingPortWaiters.get(sessionId);
+function resolvePendingPortWaiters(sessionPath: string): void {
+  const waiters = pendingPortWaiters.get(sessionPath);
   if (!waiters) {
     return;
   }
@@ -106,11 +107,11 @@ function resolvePendingPortWaiters(sessionId: string): void {
     clearTimeout(waiter.timeoutId);
     waiter.resolve();
   }
-  pendingPortWaiters.delete(sessionId);
+  pendingPortWaiters.delete(sessionPath);
 }
 
-function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): void {
-  const session = sessionPorts.get(sessionId);
+function cleanupSessionPort(sessionPath: string, clearPendingHandlers = true): void {
+  const session = sessionPorts.get(sessionPath);
   if (session) {
     for (const pendingCommand of session.pending.values()) {
       clearTimeout(pendingCommand.timeoutId);
@@ -121,18 +122,18 @@ function cleanupSessionPort(sessionId: string, clearPendingHandlers = true): voi
     session.streamHandlers.clear();
     session.controlPort.close();
     session.dataPort.close();
-    sessionPorts.delete(sessionId);
+    sessionPorts.delete(sessionPath);
   }
 
   if (clearPendingHandlers) {
-    pendingPushHandlers.delete(sessionId);
-    pendingStreamHandlers.delete(sessionId);
-    cleanupPendingPortWaiters(sessionId, new Error(SESSION_PORT_CLOSED_ERROR));
+    pendingPushHandlers.delete(sessionPath);
+    pendingStreamHandlers.delete(sessionPath);
+    cleanupPendingPortWaiters(sessionPath, new Error(SESSION_PORT_CLOSED_ERROR));
   }
 }
 
-function setupPort(sessionId: string, controlPort: MessagePort, dataPort: MessagePort): void {
-  cleanupSessionPort(sessionId, false);
+function setupPort(sessionPath: string, controlPort: MessagePort, dataPort: MessagePort): void {
+  cleanupSessionPort(sessionPath, false);
 
   const session: SessionPort = {
     controlPort,
@@ -156,7 +157,6 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     }
   };
 
-  // Push event queue: all push events are delivered immediately.
   function deliverPush(message: PiPush): void {
     for (const handler of session.pushHandlers) {
       handler(message);
@@ -178,30 +178,30 @@ function setupPort(sessionId: string, controlPort: MessagePort, dataPort: Messag
     }
   };
 
-  sessionPorts.set(sessionId, session);
+  sessionPorts.set(sessionPath, session);
 
-  // Drain pending handlers registered before port arrived before starting delivery.
-  const queuedPushHandlers = pendingPushHandlers.get(sessionId);
+  // Drain pending handlers registered before port arrived.
+  const queuedPushHandlers = pendingPushHandlers.get(sessionPath);
   if (queuedPushHandlers) {
     for (const callback of queuedPushHandlers) session.pushHandlers.add(callback);
-    pendingPushHandlers.delete(sessionId);
+    pendingPushHandlers.delete(sessionPath);
   }
-  const queuedStreamHandlers = pendingStreamHandlers.get(sessionId);
+  const queuedStreamHandlers = pendingStreamHandlers.get(sessionPath);
   if (queuedStreamHandlers) {
     for (const callback of queuedStreamHandlers) session.streamHandlers.add(callback);
-    pendingStreamHandlers.delete(sessionId);
+    pendingStreamHandlers.delete(sessionPath);
   }
 
   controlPort.start();
   dataPort.start();
-  resolvePendingPortWaiters(sessionId);
+  resolvePendingPortWaiters(sessionPath);
 }
 
 // Receive session ports from main. ports[0] is low-volume control, ports[1] is data stream.
-ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionId: string }) => {
+ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionPath: string }) => {
   const [controlPort, dataPort] = event.ports;
-  if (!controlPort || !dataPort || !data?.sessionId) return;
-  setupPort(data.sessionId, controlPort, dataPort);
+  if (!controlPort || !dataPort || !data?.sessionPath) return;
+  setupPort(data.sessionPath, controlPort, dataPort);
 });
 
 // =============================================================================
@@ -212,11 +212,11 @@ const piApi = {
   /** Create a new session. Resolves after the renderer-side ports are registered. */
   createSession: async (
     cwd: string,
-  ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-    const result: { success: boolean; sessionId?: string; error?: string } =
+  ): Promise<{ success: boolean; sessionPath?: string; error?: string }> => {
+    const result: { success: boolean; sessionPath?: string; error?: string } =
       await ipcRenderer.invoke(PiChannel.CreateSession, cwd);
-    if (result.success && result.sessionId) {
-      await waitForPort(result.sessionId);
+    if (result.success && result.sessionPath) {
+      await waitForPort(result.sessionPath);
     }
     return result;
   },
@@ -224,22 +224,22 @@ const piApi = {
   /** Resume an existing session by file path. Resolves after renderer-side ports are registered. */
   resumeSession: async (
     sessionPath: string,
-  ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-    const result: { success: boolean; sessionId?: string; error?: string } =
+  ): Promise<{ success: boolean; sessionPath?: string; error?: string }> => {
+    const result: { success: boolean; sessionPath?: string; error?: string } =
       await ipcRenderer.invoke(PiChannel.ResumeSession, sessionPath);
-    if (result.success && result.sessionId) {
-      await waitForPort(result.sessionId);
+    if (result.success && result.sessionPath) {
+      await waitForPort(result.sessionPath);
     }
     return result;
   },
 
-  /** Destroy a session. */
-  destroySession: (sessionId: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke(PiChannel.DestroySession, sessionId),
+  /** Destroy a session by its file path. */
+  destroySession: (sessionPath: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(PiChannel.DestroySession, sessionPath),
 
   /** Mark a session as recently selected. */
-  touchSession: (sessionId: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke(PiChannel.TouchSession, sessionId),
+  touchSession: (sessionPath: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(PiChannel.TouchSession, sessionPath),
 
   /** Get persisted project directory state from main process. */
   getProjects: (): Promise<ProjectStateResult> => ipcRenderer.invoke(PiChannel.GetProjects),
@@ -271,6 +271,18 @@ const piApi = {
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(PiChannel.RenamePersistedSession, sessionPath, name),
 
+  /** Read messages from a session file without spawning a utility process. */
+  readSessionMessages: (
+    sessionPath: string,
+  ): Promise<{
+    success: boolean;
+    messages?: unknown[];
+    compactionCount?: number;
+    thinkingLevel?: string;
+    model?: { provider: string; modelId: string } | null;
+    error?: string;
+  }> => ipcRenderer.invoke(PiChannel.ReadSessionMessages, sessionPath),
+
   /** List persisted pi sessions for project directories. */
   listProjectSessions: (cwds: string[]): Promise<SessionListResult> =>
     ipcRenderer.invoke(PiChannel.ListProjectSessions, cwds),
@@ -284,12 +296,12 @@ const piApi = {
     return () => ipcRenderer.removeListener(PiChannel.ProjectSessionsChunk, handler);
   },
 
-  /** Send a command to a session (via control MessagePort). Returns result. */
-  send: (sessionId: string, command: PiCommand): Promise<unknown> => {
-    const session = sessionPorts.get(sessionId);
+  /** Send a command to a session (via control MessagePort). */
+  send: (sessionPath: string, command: PiCommand): Promise<unknown> => {
+    const session = sessionPorts.get(sessionPath);
     if (!session)
       return Promise.reject(
-        new Error(`no port for session ${sessionId} (port may not have arrived yet)`),
+        new Error(`no port for session ${sessionPath} (port may not have arrived yet)`),
       );
     const requestId = `req-${++session.requestId}`;
     return new Promise((resolve, reject) => {
@@ -305,55 +317,58 @@ const piApi = {
     });
   },
 
-  /** Subscribe to push events for a session (session_ready, event, error). */
-  onPush: (sessionId: string, callback: (message: PiPush) => void): (() => void) => {
-    const session = sessionPorts.get(sessionId);
+  /** Subscribe to push events for a session. */
+  onPush: (sessionPath: string, callback: (message: PiPush) => void): (() => void) => {
+    const session = sessionPorts.get(sessionPath);
     if (session) {
       session.pushHandlers.add(callback);
     } else {
-      // Port not yet arrived -- queue
-      if (!pendingPushHandlers.has(sessionId)) {
-        pendingPushHandlers.set(sessionId, new Set());
+      if (!pendingPushHandlers.has(sessionPath)) {
+        pendingPushHandlers.set(sessionPath, new Set());
       }
-      pendingPushHandlers.get(sessionId)!.add(callback);
+      pendingPushHandlers.get(sessionPath)!.add(callback);
     }
     return () => {
-      const current = sessionPorts.get(sessionId);
+      const current = sessionPorts.get(sessionPath);
       if (current) current.pushHandlers.delete(callback);
-      pendingPushHandlers.get(sessionId)?.delete(callback);
+      pendingPushHandlers.get(sessionPath)?.delete(callback);
     };
   },
 
   /** Subscribe to stream batches for a session. */
-  onStreamBatch: (sessionId: string, callback: (batch: StreamBatch) => void): (() => void) => {
-    const session = sessionPorts.get(sessionId);
+  onStreamBatch: (sessionPath: string, callback: (batch: StreamBatch) => void): (() => void) => {
+    const session = sessionPorts.get(sessionPath);
     if (session) {
       session.streamHandlers.add(callback);
     } else {
-      if (!pendingStreamHandlers.has(sessionId)) {
-        pendingStreamHandlers.set(sessionId, new Set());
+      if (!pendingStreamHandlers.has(sessionPath)) {
+        pendingStreamHandlers.set(sessionPath, new Set());
       }
-      pendingStreamHandlers.get(sessionId)!.add(callback);
+      pendingStreamHandlers.get(sessionPath)!.add(callback);
     }
     return () => {
-      const current = sessionPorts.get(sessionId);
+      const current = sessionPorts.get(sessionPath);
       if (current) current.streamHandlers.delete(callback);
-      pendingStreamHandlers.get(sessionId)?.delete(callback);
+      pendingStreamHandlers.get(sessionPath)?.delete(callback);
     };
   },
 
   /** Listen for process exit (main → renderer). */
-  onProcessExit: (callback: (data: { sessionId: string; code: number }) => void) => {
+  onProcessExit: (callback: (data: { sessionPath: string; code: number }) => void) => {
     const handler = (
       _: Electron.IpcRendererEvent,
-      data: { sessionId: string; code: number },
+      data: { sessionPath: string; code: number },
     ): void => {
-      cleanupSessionPort(data.sessionId);
+      cleanupSessionPort(data.sessionPath);
       callback(data);
     };
     ipcRenderer.on(PiChannel.ProcessExit, handler);
     return () => ipcRenderer.removeListener(PiChannel.ProcessExit, handler);
   },
+
+  /** Get model options from the warm (pre-spawned) process. */
+  getWarmSessionOptions: (): Promise<{ models: ModelInfo[]; thinkingLevels: string[] }> =>
+    ipcRenderer.invoke(PiChannel.GetWarmSessionOptions),
 
   /** Get the app's working directory (for session creation). */
   getCwd: (): string => process.cwd(),

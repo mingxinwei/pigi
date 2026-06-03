@@ -645,6 +645,24 @@ function prewarmSessionServices(cwds: string[]): void {
   }
 }
 
+async function warmUp(cwds: string[]): Promise<void> {
+  try {
+    // Prewarm services for the given cwds so model info is available quickly.
+    const cwd = cwds[0] || process.cwd();
+    const services = await getServices(cwd);
+    // Report available models and thinking levels back to main.
+    services.modelRegistry.refresh();
+    const available = services.modelRegistry.getAvailable();
+    const models = available.map(toModelInfo);
+    // Use a default session to get thinking levels (they're global, not session-specific)
+    const thinkingLevels = ['off', 'low', 'medium', 'high'];
+    sendToMain({ type: 'warm_ready', models, thinkingLevels });
+  } catch {
+    // Still report ready with empty models so the process is usable
+    sendToMain({ type: 'warm_ready', models: [], thinkingLevels: [] });
+  }
+}
+
 async function createSession(cwd: string): Promise<void> {
   try {
     await setSessionProcessCwd(cwd);
@@ -654,7 +672,15 @@ async function createSession(cwd: string): Promise<void> {
       sessionManager: SessionManager.create(cwd),
     });
     await runtime.session.bindExtensions({});
-    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId });
+    const sessionPath = runtime.session.sessionManager.getSessionFile();
+    if (!sessionPath) {
+      throw new Error('session created without a file path');
+    }
+    sendToMain({
+      type: 'session_created',
+      sessionId: runtime.session.sessionId,
+      sessionPath,
+    });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });
   }
@@ -671,7 +697,11 @@ async function resumeSession(sessionPath: string): Promise<void> {
       sessionManager,
     });
     await runtime.session.bindExtensions({});
-    sendToMain({ type: 'session_created', sessionId: runtime.session.sessionId });
+    sendToMain({
+      type: 'session_created',
+      sessionId: runtime.session.sessionId,
+      sessionPath,
+    });
   } catch (err) {
     sendToMain({ type: 'session_error', error: err instanceof Error ? err.message : String(err) });
   }
@@ -752,6 +782,9 @@ process.parentPort?.on('message', async (messageEvent) => {
       break;
     case 'resume_session':
       await resumeSession(utilityCommand.sessionPath);
+      break;
+    case 'warm_up':
+      await warmUp(utilityCommand.cwds);
       break;
     case 'prewarm_session_services':
       prewarmSessionServices(utilityCommand.cwds);

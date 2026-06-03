@@ -55,13 +55,9 @@ export function getSessionTitle(session: PiSessionInfo): string {
  * Check if a session is currently running (not idle).
  */
 export function isSessionRunning(
-  sessionId: string,
-  sessions: Map<string, { persistedSessionId: string; status: string }>,
+  sessionPath: string,
+  sessions: Map<string, { status: string }>,
 ): boolean {
-  for (const entry of sessions.values()) {
-    if (entry.persistedSessionId === sessionId && entry.status !== 'idle') {
-      return true;
-    }
-  }
-  return false;
+  const entry = sessions.get(sessionPath);
+  return entry !== undefined && entry.status !== 'idle';
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- New chat opens instantly with no delay — a warm background process is pre-spawned so model info and settings are available immediately.
+
+### Changed
+
+- Switching to a previous session is now near-instant — messages appear immediately without waiting for the background process.
+- New chat shows the last-used model and thinking level by default (seeded from the most recent session on first launch).
+
 ## [0.2.8] - 2026-05-31
 
 ### Added

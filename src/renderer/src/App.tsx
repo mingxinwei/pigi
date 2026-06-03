@@ -1,13 +1,16 @@
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
-import { useAppStore } from './state/appStore';
+import { useAppStore, type SessionEntry } from './state/appStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { detectPlatform } from './lib/platform';
 import {
   disposeTranscriptSession,
   ensureTranscriptSession,
+  getTranscriptController,
+  markSessionHydrated,
   useTranscript,
 } from './hooks/useTranscript';
+import { TranscriptController } from './state/transcriptController';
 import {
   resumeSession,
   createSession,
@@ -35,6 +38,8 @@ import {
   removeProject,
   reorderProjects,
   renameSession,
+  readSessionMessages,
+  getWarmSessionOptions,
 } from './services/piAgentClient';
 import type {
   AuthProviderInfo,
@@ -57,9 +62,9 @@ const WELCOME_TITLE = 'Welcome to pigi';
 function App(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(244);
   // Used only for immediate sidebar feedback while a persisted session is resuming.
-  const [pendingSelectedSessionId, setPendingSelectedSessionId] = useState<string | null>(null);
+  const [pendingSelectedPath, setPendingSelectedPath] = useState<string | null>(null);
   const {
-    activeSessionId,
+    activeSessionPath,
     sessions,
     addSession,
     addSessionEntry,
@@ -71,20 +76,71 @@ function App(): React.JSX.Element {
     setProjectSessionList,
   } = useAppStore();
 
-  const activeSession = activeSessionId ? (sessions.get(activeSessionId) ?? null) : null;
+  const activeSession = activeSessionPath ? (sessions.get(activeSessionPath) ?? null) : null;
   const activeCwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelInfo[]>([]);
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillSlashCommand[]>([]);
-  // Keep transcript loading tied to activeSessionId; pending selection only affects sidebar highlight.
-  const selectedSessionId = pendingSelectedSessionId ?? activeSession?.persistedSessionId ?? null;
-  const { state: transcript, controller: transcriptControllerRef } = useTranscript(activeSessionId);
+  const selectedSessionPath = pendingSelectedPath ?? activeSessionPath ?? null;
+  const { state: transcript, controller: transcriptControllerRef } =
+    useTranscript(activeSessionPath);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
   const [restoreText, setRestoreText] = useState<string | null>(null);
   const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
   const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
+  // State mirrors of refs for render access (updated alongside refs).
+  const [lastModelSnapshot, setLastModelSnapshot] = useState<{
+    provider: string;
+    id: string;
+  } | null>(null);
+  const [lastThinkingLevelSnapshot, setLastThinkingLevelSnapshot] = useState<ThinkingLevel | null>(
+    null,
+  );
+
+  // Draft chat: shown immediately on "new", no process/session until first message.
+  const [isDraftChat, setIsDraftChat] = useState(false);
+  const draftControllerRef = useRef(new TranscriptController());
+  // True while the draft's createSession is in-flight (prevents duplicate spawns).
+  const [isDraftSpawning, setIsDraftSpawning] = useState(false);
+  const isDraftSpawningRef = useRef(false);
+  const draftSubscribe = useCallback(
+    (onStoreChange: () => void) => draftControllerRef.current.subscribe(onStoreChange),
+    [],
+  );
+  const draftGetSnapshot = useCallback(() => draftControllerRef.current.state, []);
+  const draftState = useSyncExternalStore(draftSubscribe, draftGetSnapshot);
+
+  // Synthetic session entry for draft mode — provides model/thinking display.
+  const draftSession = useMemo((): SessionEntry | null => {
+    if (!isDraftChat) return null;
+    const resolvedModel =
+      lastModelSnapshot && modelOptions.length > 0
+        ? (modelOptions.find(
+            (m) => m.id === lastModelSnapshot.id && m.provider === lastModelSnapshot.provider,
+          ) ?? null)
+        : null;
+    return {
+      sessionPath: '',
+      persistedSessionId: '',
+      status: 'idle' as const,
+      title: '',
+      cwd: activeCwd,
+      createdAt: '',
+      model: resolvedModel,
+      thinkingLevel: lastThinkingLevelSnapshot,
+      contextUsage: null,
+      autoCompactionEnabled: false,
+      messageCount: 0,
+      error: null,
+    };
+  }, [isDraftChat, modelOptions, activeCwd, lastModelSnapshot, lastThinkingLevelSnapshot]);
+
+  // Pending prompt buffer: holds messages sent before the utility process is ready.
+  const pendingPromptsRef = useRef<Map<string, string[]>>(new Map());
+  // Tracks sessions whose utility process is still spawning.
+  const pendingResumesRef = useRef<Set<string>>(new Set());
 
   const refreshSessionState = useCallback(async (sessionId: string): Promise<void> => {
     try {
@@ -96,6 +152,18 @@ function App(): React.JSX.Element {
         autoCompactionEnabled: sessionState.autoCompactionEnabled,
         messageCount: sessionState.messageCount,
       });
+      // Track last-used model/thinking for draft mode fallback
+      if (sessionState.model) {
+        lastModelRef.current = {
+          provider: sessionState.model.provider,
+          id: sessionState.model.id,
+        };
+        setLastModelSnapshot({ provider: sessionState.model.provider, id: sessionState.model.id });
+      }
+      if (sessionState.thinkingLevel) {
+        lastThinkingLevelRef.current = sessionState.thinkingLevel as ThinkingLevel;
+        setLastThinkingLevelSnapshot(sessionState.thinkingLevel as ThinkingLevel);
+      }
     } catch (err) {
       console.error('Failed to refresh session state:', err);
     }
@@ -152,6 +220,27 @@ function App(): React.JSX.Element {
     return onProjectSessionsChunk((chunk) => {
       if (chunk.success) {
         setProjectSessionList(chunk.cwd, chunk.sessions ?? []);
+        // Seed lastModel/thinkingLevel from the first available session on first load.
+        if (!lastModelRef.current && chunk.sessions && chunk.sessions.length > 0) {
+          void readSessionMessages(chunk.sessions[0].path)
+            .then((result) => {
+              if (result.model && !lastModelRef.current) {
+                lastModelRef.current = {
+                  provider: result.model.provider,
+                  id: result.model.modelId,
+                };
+                setLastModelSnapshot({
+                  provider: result.model.provider,
+                  id: result.model.modelId,
+                });
+              }
+              if (result.thinkingLevel && !lastThinkingLevelRef.current) {
+                lastThinkingLevelRef.current = result.thinkingLevel as ThinkingLevel;
+                setLastThinkingLevelSnapshot(result.thinkingLevel as ThinkingLevel);
+              }
+            })
+            .catch(() => {});
+        }
       }
     });
   }, [setProjectSessionList]);
@@ -166,20 +255,20 @@ function App(): React.JSX.Element {
   }, [refreshProjectSessions]);
 
   useEffect(() => {
-    if (!activeSessionId) {
+    if (!activeSessionPath) {
       return;
     }
-    useAppStore.getState().updateSession(activeSessionId, { status: transcript.status });
-    void refreshSessionState(activeSessionId);
-  }, [activeSessionId, refreshSessionState, transcript.status]);
+    useAppStore.getState().updateSession(activeSessionPath, { status: transcript.status });
+    void refreshSessionState(activeSessionPath);
+  }, [activeSessionPath, refreshSessionState, transcript.status]);
 
   useEffect(() => {
-    if (!activeSessionId) {
+    if (!activeSessionPath) {
       return;
     }
 
     let cancelled = false;
-    void getSessionOptions(activeSessionId)
+    void getSessionOptions(activeSessionPath)
       .then((options) => {
         if (cancelled) {
           return;
@@ -201,7 +290,7 @@ function App(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId]);
+  }, [activeSessionPath]);
 
   const refreshGitBranch = useCallback(async () => {
     const result = await getGitBranch(activeCwd);
@@ -225,25 +314,25 @@ function App(): React.JSX.Element {
   }, [activeCwd, isIdle]);
 
   useEffect(() => {
-    return window.piApi.onProcessExit(({ sessionId }) => {
-      disposeTranscriptSession(sessionId);
-      removeSession(sessionId);
+    return window.piApi.onProcessExit(({ sessionPath }) => {
+      disposeTranscriptSession(sessionPath);
+      removeSession(sessionPath);
     });
   }, [removeSession]);
 
   useEffect(() => {
-    if (!activeSessionId) {
+    if (!activeSessionPath) {
       return;
     }
-    void touchSession(activeSessionId);
-  }, [activeSessionId]);
+    void touchSession(activeSessionPath);
+  }, [activeSessionPath]);
 
   // Register a callback so the controller can replay compaction-queued messages
   // on the correct session, even if the user switches sessions mid-compaction.
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionPath) return;
     transcriptControllerRef.current?.setCompactionReplayCallback(
-      activeSessionId,
+      activeSessionPath,
       (sessionId, queue) => {
         void (async () => {
           const first = queue[0];
@@ -261,32 +350,100 @@ function App(): React.JSX.Element {
         })();
       },
     );
-  }, [activeSessionId, transcriptControllerRef]);
+  }, [activeSessionPath, transcriptControllerRef]);
 
   async function handleSend(message: string): Promise<void> {
     const cwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
-    let sessionId = activeSessionId;
-    if (!sessionId) {
-      sessionId = await createSession(cwd);
-      addSession(sessionId, cwd);
-      setActiveSession(sessionId);
 
-      // Apply last-used model and thinking level to the new session
-      if (lastModelRef.current) {
-        void setModel(sessionId, lastModelRef.current.provider, lastModelRef.current.id).catch(
-          () => {},
-        );
+    // Draft chat: first message triggers session creation in background.
+    if (isDraftChat || !activeSessionPath) {
+      // Show optimistic user message on the draft controller
+      draftControllerRef.current.addUserMessage(message);
+
+      // If already spawning (user typed multiple messages fast), just buffer
+      if (isDraftSpawningRef.current) {
+        return;
       }
-      if (lastThinkingLevelRef.current) {
-        void setThinkingLevel(sessionId, lastThinkingLevelRef.current).catch(() => {});
+      isDraftSpawningRef.current = true;
+      setIsDraftSpawning(true);
+      setIsDraftChat(true);
+
+      try {
+        const sessionPath = await createSession(cwd);
+        addSession(sessionPath, cwd);
+        useAppStore.getState().updateSession(sessionPath, { title: message.slice(0, 48) });
+
+        // Transfer draft controller content to the real session.
+        // Draft only contains UserNodes (optimistic messages), so we just add them.
+        const controller = getTranscriptController(sessionPath);
+        const draftNodes = draftControllerRef.current.state.nodes;
+        for (const node of draftNodes) {
+          if (node.role === 'user') {
+            controller.addUserMessage(node.text);
+          }
+        }
+        markSessionHydrated(sessionPath);
+        ensureTranscriptSession(sessionPath);
+
+        // Apply last-used model and thinking level
+        if (lastModelRef.current) {
+          void setModel(sessionPath, lastModelRef.current.provider, lastModelRef.current.id).catch(
+            () => {},
+          );
+        }
+        if (lastThinkingLevelRef.current) {
+          void setThinkingLevel(sessionPath, lastThinkingLevelRef.current).catch(() => {});
+        }
+
+        // Transition out of draft
+        setIsDraftChat(false);
+        isDraftSpawningRef.current = false;
+        setIsDraftSpawning(false);
+        // Mark status as streaming immediately so UI doesn't flash idle
+        controller.setStatus('streaming');
+        setActiveSession(sessionPath);
+
+        // Send the prompt (and any additional messages typed while spawning)
+        const messages = draftNodes
+          .filter(
+            (n): n is { id: string; role: 'user'; text: string; sentAt: number } =>
+              n.role === 'user',
+          )
+          .map((n) => n.text);
+
+        if (messages.length > 0) {
+          await prompt(sessionPath, messages[0]);
+          for (let i = 1; i < messages.length; i++) {
+            await steer(sessionPath, messages[i]);
+          }
+        }
+        void listProjectSessions([cwd]);
+      } catch (err) {
+        console.error('Failed to create session from draft:', err);
+        isDraftSpawningRef.current = false;
+        setIsDraftSpawning(false);
+        toast.error('Failed to create session. Please try again.');
       }
+      return;
     }
-    const existing = useAppStore.getState().sessions.get(sessionId);
+
+    // Normal session flow (session already exists)
+    const sessionPath = activeSessionPath;
+    const existing = useAppStore.getState().sessions.get(sessionPath);
     if (existing?.title === 'New chat') {
-      useAppStore.getState().updateSession(sessionId, { title: message.slice(0, 48) });
+      useAppStore.getState().updateSession(sessionPath, { title: message.slice(0, 48) });
     }
 
-    // Queue locally during compaction — messages are replayed after compaction ends.
+    // If the session is still pending (utility process not ready), buffer the prompt
+    if (pendingResumesRef.current.has(sessionPath)) {
+      const queue = pendingPromptsRef.current.get(sessionPath) ?? [];
+      queue.push(message);
+      pendingPromptsRef.current.set(sessionPath, queue);
+      getTranscriptController(sessionPath).addUserMessage(message);
+      return;
+    }
+
+    // Queue locally during compaction
     if (transcript.isCompacting) {
       transcriptControllerRef.current?.addCompactionMessage(message, 'steer');
       void listProjectSessions([cwd]);
@@ -295,20 +452,19 @@ function App(): React.JSX.Element {
 
     // If the session is already streaming, steer instead of prompting
     if (transcript.status !== 'idle') {
-      await steer(sessionId, message);
+      await steer(sessionPath, message);
     } else {
-      // Skill commands: skip optimistic message — SDK echoes back the expanded version
       if (!message.startsWith('/skill:')) {
-        ensureTranscriptSession(sessionId).addUserMessage(message);
+        ensureTranscriptSession(sessionPath).addUserMessage(message);
       }
-      await prompt(sessionId, message);
+      await prompt(sessionPath, message);
     }
     void listProjectSessions([cwd]);
   }
 
   const handleFollowUp = useCallback(
     async (message: string): Promise<void> => {
-      const sessionId = activeSessionId;
+      const sessionId = activeSessionPath;
       if (!sessionId) return;
 
       // Queue locally during compaction.
@@ -324,36 +480,49 @@ function App(): React.JSX.Element {
         await prompt(sessionId, message);
       }
     },
-    [activeSessionId, transcript.status, transcript.isCompacting, transcriptControllerRef],
+    [activeSessionPath, transcript.status, transcript.isCompacting, transcriptControllerRef],
   );
 
   const handleAbort = useCallback(async () => {
-    if (!activeSessionId) {
+    if (!activeSessionPath) {
+      return;
+    }
+    // If session is still pending (process not ready), just clear the buffered prompts
+    if (pendingResumesRef.current.has(activeSessionPath)) {
+      const bufferedMessages = pendingPromptsRef.current.get(activeSessionPath);
+      pendingPromptsRef.current.delete(activeSessionPath);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        // Remove all optimistic user messages
+        for (let i = 0; i < bufferedMessages.length; i++) {
+          getTranscriptController(activeSessionPath).removeLastUserMessage();
+        }
+        setRestoreText(bufferedMessages.join('\n\n'));
+      }
       return;
     }
     // Clear local queue state to prevent false delivery detection
     transcriptControllerRef.current?.clearLocalQueue();
     // Clear queued messages and restore them to input
-    const result = await clearQueue(activeSessionId);
+    const result = await clearQueue(activeSessionPath);
     let queued = [...(result.steering ?? []), ...(result.followUp ?? [])];
     // Fallback: use local transcript state if clearQueue returned nothing
     if (queued.length === 0) {
-      const ts = ensureTranscriptSession(activeSessionId).state;
+      const ts = ensureTranscriptSession(activeSessionPath).state;
       queued = [...ts.queuedSteering, ...ts.queuedFollowUp];
     }
-    await abort(activeSessionId);
+    await abort(activeSessionPath);
     if (queued.length > 0) {
       setRestoreText(queued.join('\n\n'));
     }
-  }, [activeSessionId, transcriptControllerRef]);
+  }, [activeSessionPath, transcriptControllerRef]);
 
   const handleEditQueuedMessage = useCallback(
     async (type: 'steer' | 'followUp', index: number) => {
-      if (!activeSessionId) return;
+      if (!activeSessionPath) return;
       // Clear local queue state to prevent false delivery detection
       transcriptControllerRef.current?.clearLocalQueue();
       try {
-        const result = await clearQueue(activeSessionId);
+        const result = await clearQueue(activeSessionPath);
         const steeringMessages = [...(result.steering ?? [])];
         const followUpMessages = [...(result.followUp ?? [])];
         const editedMessage =
@@ -361,15 +530,15 @@ function App(): React.JSX.Element {
             ? steeringMessages.splice(index, 1)[0]
             : followUpMessages.splice(index, 1)[0];
         // Re-queue remaining
-        for (const message of steeringMessages) await steer(activeSessionId, message);
-        for (const message of followUpMessages) await followUp(activeSessionId, message);
+        for (const message of steeringMessages) await steer(activeSessionPath, message);
+        for (const message of followUpMessages) await followUp(activeSessionPath, message);
         // Restore edited message to input
         if (editedMessage) setRestoreText(editedMessage);
       } catch (err) {
         console.error('Failed to edit queued message:', err);
       }
     },
-    [activeSessionId, transcriptControllerRef],
+    [activeSessionPath, transcriptControllerRef],
   );
 
   const handleRestoredText = useCallback(() => setRestoreText(null), []);
@@ -385,103 +554,157 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleAbort, transcript.status]);
 
-  const createAndActivateSession = useCallback(
-    async (cwd: string): Promise<void> => {
-      const sessionId = await createSession(cwd);
-      addSession(sessionId, cwd);
+  /** Enter draft chat mode — instant, no process spawned. */
+  const handleNewSession = useCallback((): void => {
+    // If already in draft mode, do nothing.
+    if (isDraftChat && !activeSessionPath) return;
+    // Reset draft controller for a fresh chat.
+    draftControllerRef.current.reset();
+    isDraftSpawningRef.current = false;
+    setIsDraftSpawning(false);
+    setActiveSession(null);
+    setIsDraftChat(true);
+    setPendingSelectedPath(null);
+    // Fetch model info from warm process (retry if not ready yet, max 10 attempts)
+    let warmRetryCount = 0;
+    const fetchWarmOptions = (): void => {
+      void getWarmSessionOptions().then((options) => {
+        if (options.models.length > 0) {
+          setModelOptions(options.models);
+        }
+        if (options.thinkingLevels.length > 0) {
+          // warm_ready returns string[] but they're always valid ThinkingLevel values
+          setThinkingLevelOptions(options.thinkingLevels as ThinkingLevel[]);
+        }
+        // If empty, warm process isn't ready yet — retry after a short delay
+        if (options.models.length === 0 && warmRetryCount < 10) {
+          warmRetryCount++;
+          setTimeout(fetchWarmOptions, 500);
+        }
+      });
+    };
+    fetchWarmOptions();
+  }, [isDraftChat, activeSessionPath, setActiveSession]);
 
-      // Apply last-used model and thinking level to the new session
-      if (lastModelRef.current) {
-        void setModel(sessionId, lastModelRef.current.provider, lastModelRef.current.id).catch(
-          () => {},
-        );
+  function handleNewSessionForProject(path: string): void {
+    const result = setActiveProject(path);
+    void result.then((r) => {
+      if (r.success) {
+        useAppStore.getState().setProjects(r.recentProjects, r.activeProject);
       }
-      if (lastThinkingLevelRef.current) {
-        void setThinkingLevel(sessionId, lastThinkingLevelRef.current).catch(() => {});
-      }
-
-      setPendingSelectedSessionId(null);
-      setActiveSession(sessionId);
-      void listProjectSessions([cwd]);
-    },
-    [addSession, setActiveSession],
-  );
-
-  const createSessionIfNoDuplicate = useCallback(
-    async (cwd: string): Promise<void> => {
-      const existingEmptySession = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.cwd === cwd && entry.messageCount === 0,
-      );
-      if (existingEmptySession) {
-        setActiveSession(existingEmptySession.sessionId);
-        return;
-      }
-      await createAndActivateSession(cwd);
-    },
-    [createAndActivateSession, setActiveSession],
-  );
-
-  const handleNewSession = useCallback(async (): Promise<void> => {
-    try {
-      await createSessionIfNoDuplicate(activeCwd);
-    } catch (err) {
-      console.error('Failed to create session:', err);
-    }
-  }, [activeCwd, createSessionIfNoDuplicate]);
-
-  async function handleNewSessionForProject(path: string): Promise<void> {
-    try {
-      const result = await setActiveProject(path);
-      if (result.success) {
-        useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
-      }
-
-      await createSessionIfNoDuplicate(path);
-    } catch (err) {
-      console.error('Failed to create project session:', err);
-    }
+    });
+    handleNewSession();
   }
 
   async function handleResumeSession(session: PiSessionInfo): Promise<void> {
-    setPendingSelectedSessionId(session.id);
+    setIsDraftChat(false);
+    setPendingSelectedPath(session.path);
     const existing = Array.from(useAppStore.getState().sessions.values()).find(
       (entry) => entry.persistedSessionId === session.id || entry.sessionPath === session.path,
     );
     if (existing) {
-      setPendingSelectedSessionId(null);
-      setActiveSession(existing.sessionId);
+      setPendingSelectedPath(null);
+      setActiveSession(existing.sessionPath);
       return;
     }
 
+    const sessionPath = session.path;
+
+    addSessionEntry({
+      sessionPath,
+      persistedSessionId: session.id,
+      status: 'idle',
+      title: session.name ?? session.firstMessage,
+      cwd: session.cwd,
+      createdAt: session.created,
+      model: null,
+      thinkingLevel: null,
+      contextUsage: null,
+      autoCompactionEnabled: false,
+      messageCount: session.messageCount,
+      error: null,
+    });
+    // Mark as hydrated so useTranscript doesn't try getMessages via port
+    markSessionHydrated(sessionPath);
+    pendingResumesRef.current.add(sessionPath);
+
+    // Hydrate transcript from session file (fast path, no utility process needed)
     try {
-      const sessionId = await resumeSession(session.path);
-      addSessionEntry({
-        sessionId,
-        persistedSessionId: session.id,
-        sessionPath: session.path,
-        status: 'idle',
-        title: session.name ?? session.firstMessage,
-        cwd: session.cwd,
-        createdAt: session.created,
-        model: null,
-        thinkingLevel: null,
-        contextUsage: null,
-        autoCompactionEnabled: false,
-        messageCount: session.messageCount,
-        error: null,
-      });
-      setActiveSession(sessionId);
+      const { messages, compactionCount, thinkingLevel, model } =
+        await readSessionMessages(sessionPath);
+      const controller = getTranscriptController(sessionPath);
+      controller.hydrate(messages, compactionCount);
+      if (model) {
+        const matchedModel = modelOptions.find(
+          (m) => m.id === model.modelId && m.provider === model.provider,
+        );
+        useAppStore.getState().updateSession(sessionPath, {
+          thinkingLevel,
+          ...(matchedModel ? { model: matchedModel } : {}),
+        });
+      } else {
+        useAppStore.getState().updateSession(sessionPath, { thinkingLevel });
+      }
     } catch (err) {
-      console.error('Failed to resume session:', err);
-    } finally {
-      setPendingSelectedSessionId(null);
+      console.error('Failed to hydrate session from file:', err);
+    }
+
+    // Show the session — messages and metadata are ready
+    setActiveSession(sessionPath);
+    setPendingSelectedPath(null);
+
+    // Spawn utility process in background
+    try {
+      await resumeSession(sessionPath);
+      pendingResumesRef.current.delete(sessionPath);
+
+      // Wire up live subscriptions (port is now available under sessionPath)
+      ensureTranscriptSession(sessionPath);
+
+      // Fetch session options and state from the process
+      void refreshSessionState(sessionPath);
+      void getSessionOptions(sessionPath)
+        .then((options) => {
+          setModelOptions(options.models);
+          setThinkingLevelOptions(options.thinkingLevels);
+          setSkillOptions(options.skills);
+        })
+        .catch(() => {});
+      void touchSession(sessionPath);
+
+      // Flush any pending prompts
+      const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        pendingPromptsRef.current.delete(sessionPath);
+        await prompt(sessionPath, bufferedMessages[0]);
+        for (let i = 1; i < bufferedMessages.length; i++) {
+          await steer(sessionPath, bufferedMessages[i]);
+        }
+        void listProjectSessions([session.cwd]);
+      }
+    } catch (err) {
+      console.error('Failed to resume session process:', err);
+      const store = useAppStore.getState();
+      store.removeSession(sessionPath);
+      disposeTranscriptSession(sessionPath);
+      if (store.activeSessionPath === sessionPath) {
+        store.setActiveSession(null);
+      }
+      const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
+      if (bufferedMessages && bufferedMessages.length > 0) {
+        setRestoreText(bufferedMessages.join('\n\n'));
+      }
+      pendingPromptsRef.current.delete(sessionPath);
+      pendingResumesRef.current.delete(sessionPath);
+      toast.error('Failed to resume session. Please try again.');
     }
   }
 
   const handleSwitchSession = useCallback(
-    (sessionId: string) => {
-      setPendingSelectedSessionId(null);
-      setActiveSession(sessionId);
+    (sessionPath: string) => {
+      setPendingSelectedPath(null);
+      setIsDraftChat(false);
+      setActiveSession(sessionPath);
     },
     [setActiveSession],
   );
@@ -491,7 +714,7 @@ function App(): React.JSX.Element {
     if (result.success) {
       useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
       await refreshProjectSessions(result.recentProjects);
-      setPendingSelectedSessionId(null);
+      setPendingSelectedPath(null);
       setActiveSession(null);
     }
   }, [refreshProjectSessions, setActiveSession]);
@@ -531,74 +754,78 @@ function App(): React.JSX.Element {
   }, []);
 
   const handleLogin = useCallback(async () => {
-    let sessionId = activeSessionId;
-    if (!sessionId) {
-      await handleNewSession();
-      sessionId = useAppStore.getState().activeSessionId;
+    let sessionPath = activeSessionPath;
+    if (!sessionPath) {
+      // Need a real session for auth — create one immediately
+      const cwd = activeProject?.path ?? window.piApi.getCwd();
+      try {
+        sessionPath = await createSession(cwd);
+        addSession(sessionPath, cwd);
+        setIsDraftChat(false);
+        setActiveSession(sessionPath);
+      } catch {
+        return;
+      }
     }
-    if (!sessionId) return;
-    const result = await getAuthProviders(sessionId);
+    const result = await getAuthProviders(sessionPath);
     if (result.success) {
       setAuthProviders(result.providers);
     }
     setLoginDialogOpen(true);
-  }, [activeSessionId, handleNewSession]);
+  }, [activeSessionPath, activeProject, addSession, setActiveSession]);
 
   const handleRenameSession = useCallback(
-    async (sessionId: string, name: string) => {
-      // Find the running session that matches this persisted session ID
-      const entry = Array.from(sessions.values()).find((s) => s.persistedSessionId === sessionId);
+    async (sessionPath: string, name: string) => {
+      // Find the running session by path
+      const entry = Array.from(sessions.values()).find((s) => s.sessionPath === sessionPath);
       if (entry) {
         // Session is running, rename via SDK
         try {
-          await renameSession(entry.sessionId, name);
-          useAppStore.getState().updateSession(entry.sessionId, { title: name });
+          await renameSession(entry.sessionPath, name);
+          useAppStore.getState().updateSession(entry.sessionPath, { title: name });
         } catch (err) {
           console.error('Failed to rename session:', err);
         }
       } else {
         // Session is not running; rename directly via persisted session file
-        const sessionInfo = Object.values(projectSessions)
-          .flat()
-          .find((s) => s.id === sessionId);
-        if (sessionInfo) {
-          const result = await window.piApi.renamePersistedSession(sessionInfo.path, name);
-          if (!result.success) {
-            console.error('Failed to rename persisted session:', result.error);
-          }
+        const result = await window.piApi.renamePersistedSession(sessionPath, name);
+        if (!result.success) {
+          console.error('Failed to rename persisted session:', result.error);
         }
       }
       // Refresh session list to reflect new name
       const activeCwdNow = activeProject?.path ?? window.piApi.getCwd();
       void listProjectSessions([activeCwdNow]);
     },
-    [sessions, activeProject, projectSessions],
+    [sessions, activeProject],
   );
 
   const handleSelectModel = useCallback(
     async (model: ModelInfo) => {
-      if (!activeSessionId) {
+      if (!activeSessionPath) {
         return;
       }
-      await setModel(activeSessionId, model.provider, model.id);
+      await setModel(activeSessionPath, model.provider, model.id);
       lastModelRef.current = { provider: model.provider, id: model.id };
-      await refreshSessionState(activeSessionId);
-      await refreshSessionOptions(activeSessionId);
+      setLastModelSnapshot({ provider: model.provider, id: model.id });
+      await refreshSessionState(activeSessionPath);
+      await refreshSessionOptions(activeSessionPath);
     },
-    [activeSessionId, refreshSessionOptions, refreshSessionState],
+    [activeSessionPath, refreshSessionOptions, refreshSessionState],
   );
 
   const handleSelectThinkingLevel = useCallback(
     async (thinkingLevel: ThinkingLevel) => {
-      if (!activeSessionId) {
+      if (!activeSessionPath) {
         return;
       }
-      await setThinkingLevel(activeSessionId, thinkingLevel);
+      await setThinkingLevel(activeSessionPath, thinkingLevel);
       lastThinkingLevelRef.current = thinkingLevel;
-      await refreshSessionState(activeSessionId);
-      await refreshSessionOptions(activeSessionId);
+      setLastThinkingLevelSnapshot(thinkingLevel);
+      await refreshSessionState(activeSessionPath);
+      await refreshSessionOptions(activeSessionPath);
     },
-    [activeSessionId, refreshSessionOptions, refreshSessionState],
+    [activeSessionPath, refreshSessionOptions, refreshSessionState],
   );
 
   const handleSlashCommand = useCallback(
@@ -606,30 +833,37 @@ function App(): React.JSX.Element {
       try {
         switch (command) {
           case 'compact': {
-            if (!activeSessionId) return;
-            await compact(activeSessionId);
+            if (!activeSessionPath) return;
+            await compact(activeSessionPath);
             break;
           }
 
           case 'name': {
-            if (!activeSessionId || !arg) return;
+            if (!activeSessionPath || !arg) return;
             try {
-              await renameSession(activeSessionId, arg);
+              await renameSession(activeSessionPath, arg);
             } catch {
               // Fallback: update local state only
             }
-            useAppStore.getState().updateSession(activeSessionId, { title: arg });
+            useAppStore.getState().updateSession(activeSessionPath, { title: arg });
             break;
           }
           case 'new': {
-            await handleNewSession();
+            handleNewSession();
             break;
           }
           case 'login': {
-            let sessionId = activeSessionId;
+            let sessionId = activeSessionPath;
             if (!sessionId) {
-              await handleNewSession();
-              sessionId = useAppStore.getState().activeSessionId;
+              const cwd = activeProject?.path ?? window.piApi.getCwd();
+              try {
+                sessionId = await createSession(cwd);
+                addSession(sessionId, cwd);
+                setIsDraftChat(false);
+                setActiveSession(sessionId);
+              } catch {
+                return;
+              }
             }
             if (!sessionId) return;
             if (arg) {
@@ -652,9 +886,9 @@ function App(): React.JSX.Element {
             break;
           }
           case 'logout': {
-            if (!activeSessionId || !arg) return;
-            await logout(activeSessionId, arg);
-            await refreshSessionOptions(activeSessionId);
+            if (!activeSessionPath || !arg) return;
+            await logout(activeSessionPath, arg);
+            await refreshSessionOptions(activeSessionPath);
             break;
           }
         }
@@ -662,7 +896,14 @@ function App(): React.JSX.Element {
         console.error(`[slash command /${command}] failed:`, err);
       }
     },
-    [activeSessionId, handleNewSession, refreshSessionOptions],
+    [
+      activeSessionPath,
+      activeProject,
+      addSession,
+      handleNewSession,
+      refreshSessionOptions,
+      setActiveSession,
+    ],
   );
 
   return (
@@ -674,7 +915,7 @@ function App(): React.JSX.Element {
       <div className="relative flex h-full shrink-0">
         <Sidebar
           sessions={sessions}
-          selectedSessionId={selectedSessionId}
+          selectedSessionPath={selectedSessionPath}
           recentProjects={recentProjects}
           projectSessions={projectSessions}
           shortcutBindings={shortcutBindings}
@@ -719,9 +960,30 @@ function App(): React.JSX.Element {
               onRestoredText={handleRestoredText}
               onRefreshGitBranch={refreshGitBranch}
               session={activeSession}
-              modelOptions={activeSessionId ? modelOptions : []}
-              thinkingLevelOptions={activeSessionId ? thinkingLevelOptions : []}
-              skillOptions={activeSessionId ? skillOptions : []}
+              modelOptions={activeSessionPath ? modelOptions : []}
+              thinkingLevelOptions={activeSessionPath ? thinkingLevelOptions : []}
+              skillOptions={activeSessionPath ? skillOptions : []}
+              onSelectModel={handleSelectModel}
+              onSelectThinkingLevel={handleSelectThinkingLevel}
+            />
+          </>
+        ) : isDraftChat ? (
+          <>
+            <MessageList nodes={draftState.nodes} />
+            <ChatInput
+              onSend={handleSend}
+              onFollowUp={handleFollowUp}
+              onAbort={handleAbort}
+              onSlashCommand={handleSlashCommand}
+              isStreaming={isDraftSpawning}
+              gitBranch={gitBranch}
+              restoreText={restoreText}
+              onRestoredText={handleRestoredText}
+              onRefreshGitBranch={refreshGitBranch}
+              session={draftSession}
+              modelOptions={modelOptions}
+              thinkingLevelOptions={thinkingLevelOptions}
+              skillOptions={skillOptions}
               onSelectModel={handleSelectModel}
               onSelectThinkingLevel={handleSelectThinkingLevel}
             />
@@ -758,27 +1020,27 @@ function App(): React.JSX.Element {
         onOpenChange={setLoginDialogOpen}
         providers={authProviders}
         onLoginOAuth={async (providerId) => {
-          if (!activeSessionId) return;
-          const result = await loginOAuth(activeSessionId, providerId);
+          if (!activeSessionPath) return;
+          const result = await loginOAuth(activeSessionPath, providerId);
           if (!result.success) throw new Error(result.error || 'Login failed');
-          await refreshSessionOptions(activeSessionId);
-          const updated = await getAuthProviders(activeSessionId);
+          await refreshSessionOptions(activeSessionPath);
+          const updated = await getAuthProviders(activeSessionPath);
           if (updated.success) setAuthProviders(updated.providers);
         }}
         onLoginApiKey={async (providerId, apiKey) => {
-          if (!activeSessionId) return;
-          const result = await loginApiKey(activeSessionId, providerId, apiKey);
+          if (!activeSessionPath) return;
+          const result = await loginApiKey(activeSessionPath, providerId, apiKey);
           if (!result.success) throw new Error(result.error || 'Failed to save API key');
-          await refreshSessionOptions(activeSessionId);
-          const updated = await getAuthProviders(activeSessionId);
+          await refreshSessionOptions(activeSessionPath);
+          const updated = await getAuthProviders(activeSessionPath);
           if (updated.success) setAuthProviders(updated.providers);
         }}
         onLogout={async (providerId) => {
-          if (!activeSessionId) return;
-          await logout(activeSessionId, providerId);
-          await refreshSessionOptions(activeSessionId);
+          if (!activeSessionPath) return;
+          await logout(activeSessionPath, providerId);
+          await refreshSessionOptions(activeSessionPath);
           // Refresh provider list
-          const result = await getAuthProviders(activeSessionId);
+          const result = await getAuthProviders(activeSessionPath);
           if (result.success) setAuthProviders(result.providers);
         }}
       />

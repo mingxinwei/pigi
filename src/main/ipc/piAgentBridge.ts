@@ -2,8 +2,8 @@
  * Pi Agent Bridge - main process bridge for session lifecycle.
  *
  * Each session gets its own utility process. Main manages:
- * 1. Spawning process per session
- * 2. Two-step handshake: create session → get real sessionId → distribute ports
+ * 1. Spawning process per session (with warm process optimization)
+ * 2. Two-step handshake: create session → get sessionPath → distribute ports
  * 3. Process cleanup on destroy or crash
  *
  * After port handshake, main is NOT in the data path.
@@ -15,6 +15,7 @@ import { PiAgentProcessPool } from './piAgentProcessPool';
 import {
   PiChannel,
   type ListProjectSessionsCommand,
+  type ReadSessionMessagesCommand,
   type RenameSessionCommand,
   type SessionWorkerResponse,
   type SessionListResult,
@@ -28,6 +29,17 @@ const pendingRenameCallbacks = new Map<
   string,
   (result: { success: boolean; error?: string }) => void
 >();
+const pendingReadMessagesCallbacks = new Map<
+  string,
+  (result: {
+    success: boolean;
+    messages?: unknown[];
+    compactionCount?: number;
+    thinkingLevel?: string;
+    model?: { provider: string; modelId: string } | null;
+    error?: string;
+  }) => void
+>();
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
   const win = getMainWindow();
@@ -36,8 +48,8 @@ function sendToRenderer(channel: PiChannel, data: unknown): void {
   }
 }
 
-const processPool = new PiAgentProcessPool((sessionId, code) => {
-  sendToRenderer(PiChannel.ProcessExit, { sessionId, code });
+const processPool = new PiAgentProcessPool((sessionPath, code) => {
+  sendToRenderer(PiChannel.ProcessExit, { sessionPath, code });
 });
 
 function startSessionWorker(): void {
@@ -67,16 +79,34 @@ function startSessionWorker(): void {
         }
         break;
       }
+      case 'session_messages_result': {
+        const callback = pendingReadMessagesCallbacks.get(message.requestId);
+        if (callback) {
+          pendingReadMessagesCallbacks.delete(message.requestId);
+          callback({
+            success: message.success,
+            messages: message.messages,
+            compactionCount: message.compactionCount,
+            thinkingLevel: message.thinkingLevel,
+            model: message.model,
+            error: message.error,
+          });
+        }
+        break;
+      }
     }
   });
 
   proc.on('exit', () => {
     if (sessionWorkerProcess === proc) {
       sessionWorkerProcess = null;
-      // Drain pending rename callbacks on crash
       for (const [id, callback] of pendingRenameCallbacks) {
         callback({ success: false, error: 'session worker process exited' });
         pendingRenameCallbacks.delete(id);
+      }
+      for (const [id, callback] of pendingReadMessagesCallbacks) {
+        callback({ success: false, error: 'session worker process exited' });
+        pendingReadMessagesCallbacks.delete(id);
       }
     }
   });
@@ -95,19 +125,21 @@ function listProjectSessions(cwds: string[]): SessionListResult {
     cwds: [...new Set(cwds)],
   };
   sessionWorkerProcess.postMessage(command);
-  processPool.ensureWarmSessionProcesses(cwds);
+  // Prewarm services in the warm process for these cwds
+  processPool.ensureWarmProcess(cwds);
   return { success: true, requestId };
 }
 
 /**
- * Spawn a utility process, send lifecycle command, wait for real sessionId,
- * then establish dedicated control/data MessagePorts between renderer and utility.
+ * Spawn a utility process (or claim the warm one), send lifecycle command,
+ * wait for sessionPath, then establish dedicated control/data MessagePorts.
  */
 async function spawnSessionProcess(
   command: UtilityCommand,
-): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+): Promise<{ success: boolean; sessionPath?: string; error?: string }> {
   return new Promise((resolve) => {
-    const proc = processPool.claimSessionProcess();
+    // Try to claim the warm process first; fall back to spawning fresh.
+    const proc = processPool.claimWarmProcess() ?? processPool.createFreshProcess();
     let resolved = false;
 
     const timeout = setTimeout(() => {
@@ -118,9 +150,15 @@ async function spawnSessionProcess(
       }
     }, 30000);
 
-    proc.on('message', (message: UtilityResponse) => {
+    const messageHandler = (message: UtilityResponse): void => {
+      // Always handle busy state changes
       if (message.type === 'session_busy_changed') {
         processPool.updateBusyState(proc, message.isBusy);
+        return;
+      }
+
+      // Ignore warm_ready during session setup (it's from the warm phase)
+      if (message.type === 'warm_ready') {
         return;
       }
 
@@ -131,10 +169,16 @@ async function spawnSessionProcess(
           resolved = true;
           clearTimeout(timeout);
 
-          const sessionId = message.sessionId;
-          processPool.registerSessionProcess(sessionId, proc);
+          const sessionPath = message.sessionPath;
+          if (!sessionPath) {
+            proc.kill();
+            resolve({ success: false, error: 'session created without a path' });
+            break;
+          }
 
-          // Establish separate ports so high-volume stream output cannot delay controls.
+          processPool.registerSessionProcess(sessionPath, proc);
+
+          // Establish control/data MessagePorts
           const controlChannel = new MessageChannelMain();
           const dataChannel = new MessageChannelMain();
           const attachCommand: UtilityCommand = { type: 'attach_ports' };
@@ -142,26 +186,26 @@ async function spawnSessionProcess(
 
           const win = getMainWindow();
           if (win && !win.isDestroyed()) {
-            win.webContents.postMessage(PiChannel.SessionPort, { sessionId }, [
+            win.webContents.postMessage(PiChannel.SessionPort, { sessionPath }, [
               controlChannel.port2,
               dataChannel.port2,
             ]);
           }
 
-          resolve({ success: true, sessionId });
-          processPool.refillAfterSetup();
+          resolve({ success: true, sessionPath });
           break;
         }
         case 'session_error': {
           resolved = true;
           clearTimeout(timeout);
           proc.kill();
-          processPool.ensureWarmSessionProcesses();
           resolve({ success: false, error: message.error });
           break;
         }
       }
-    });
+    };
+
+    proc.on('message', messageHandler);
 
     proc.on('exit', (code) => {
       if (!resolved) {
@@ -171,7 +215,7 @@ async function spawnSessionProcess(
       }
     });
 
-    // Send the lifecycle command to start session creation
+    // Send the lifecycle command
     proc.postMessage(command);
   });
 }
@@ -184,7 +228,8 @@ export function stopAllProcesses(): void {
 
 export function registerIpcHandlers(): void {
   startSessionWorker();
-  processPool.ensureWarmSessionProcesses();
+  // Spawn the initial warm process
+  processPool.ensureWarmProcess();
 
   ipcMain.handle(PiChannel.CreateSession, async (_e, cwd: string) => {
     if (!cwd || typeof cwd !== 'string') {
@@ -197,21 +242,31 @@ export function registerIpcHandlers(): void {
     if (!sessionPath || typeof sessionPath !== 'string' || sessionPath.trim().length === 0) {
       return { success: false, error: 'sessionPath must be a non-empty string' };
     }
+    // Reuse existing process if this session is already open
+    const existing = processPool.findBySessionPath(sessionPath);
+    if (existing) {
+      processPool.touchSessionProcess(sessionPath);
+      return { success: true, sessionPath };
+    }
     return spawnSessionProcess({ type: 'resume_session', sessionPath });
   });
 
-  ipcMain.handle(PiChannel.DestroySession, async (_e, sessionId: string) => {
-    if (!sessionId || typeof sessionId !== 'string') {
-      return { success: false, error: 'sessionId must be a non-empty string' };
+  ipcMain.handle(PiChannel.DestroySession, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string') {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
     }
-    return { success: processPool.destroySessionProcess(sessionId) };
+    return { success: processPool.destroySessionProcess(sessionPath) };
   });
 
-  ipcMain.handle(PiChannel.TouchSession, async (_e, sessionId: string) => {
-    if (!sessionId || typeof sessionId !== 'string') {
-      return { success: false, error: 'sessionId must be a non-empty string' };
+  ipcMain.handle(PiChannel.TouchSession, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string') {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
     }
-    return { success: processPool.touchSessionProcess(sessionId) };
+    return { success: processPool.touchSessionProcess(sessionPath) };
+  });
+
+  ipcMain.handle(PiChannel.GetWarmSessionOptions, async () => {
+    return processPool.getWarmSessionOptions();
   });
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {
@@ -255,4 +310,39 @@ export function registerIpcHandlers(): void {
       });
     },
   );
+
+  ipcMain.handle(PiChannel.ReadSessionMessages, async (_e, sessionPath: string) => {
+    if (!sessionPath || typeof sessionPath !== 'string' || sessionPath.trim().length === 0) {
+      return { success: false, error: 'sessionPath must be a non-empty string' };
+    }
+    startSessionWorker();
+    if (!sessionWorkerProcess) {
+      return { success: false, error: 'session worker process not available' };
+    }
+    const requestId = `read-messages-${++sessionWorkerRequestId}`;
+    const proc = sessionWorkerProcess;
+    return new Promise<{
+      success: boolean;
+      messages?: unknown[];
+      compactionCount?: number;
+      thinkingLevel?: string;
+      model?: { provider: string; modelId: string } | null;
+      error?: string;
+    }>((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingReadMessagesCallbacks.delete(requestId);
+        resolve({ success: false, error: 'read session messages timed out' });
+      }, 10000);
+      pendingReadMessagesCallbacks.set(requestId, (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+      const readCmd: ReadSessionMessagesCommand = {
+        type: 'read_session_messages',
+        requestId,
+        sessionPath,
+      };
+      proc.postMessage(readCmd);
+    });
+  });
 }

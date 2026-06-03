@@ -26,7 +26,7 @@ import { ProjectList } from './projectList';
 
 export default function Sidebar({
   sessions,
-  selectedSessionId,
+  selectedSessionPath,
   recentProjects,
   projectSessions,
   shortcutBindings,
@@ -183,7 +183,7 @@ export default function Sidebar({
               <ProjectList
                 sessions={sessions}
                 recentProjects={recentProjects}
-                selectedSessionId={selectedSessionId}
+                selectedSessionPath={selectedSessionPath}
                 relativeTimeBase={relativeTimeBase}
                 expandedProjects={expandedProjects}
                 visibleWhenCollapsedSessionIdsByPath={visibleWhenCollapsedSessionIds}

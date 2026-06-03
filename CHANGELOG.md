@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] - 2026-06-03
 
 ### Added
 
@@ -10,6 +10,10 @@
 
 - Switching to a previous session is now near-instant — messages appear immediately without waiting for the background process.
 - New chat shows the last-used model and thinking level by default (seeded from the most recent session on first launch).
+
+### Fixed
+
+- Alt+Enter follow-up message now works correctly during streaming.
 
 ## [0.2.8] - 2026-05-31
 

@@ -6,6 +6,12 @@
 
 - Edit tool diffs now render using the server-computed diff from tool result details, instead of recomputing client-side from tool arguments. This enables diff display for custom edit tools (e.g. tagged-edit) that don't use oldText/newText arguments.
 
+### Fixed
+
+- Compaction errors now display as a separate error message below the "Compaction failed" marker, instead of cramming the full error into the marker line.
+- Clicking a recently created session in the sidebar no longer switches to a different session.
+
+
 ## [0.3.1] - 2026-06-03
 
 ### Fixed

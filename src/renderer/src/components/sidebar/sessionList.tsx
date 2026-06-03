@@ -131,7 +131,6 @@ interface SessionListProps {
   relativeTimeBase: number;
   isExpanded: boolean;
   visibleWhenCollapsedSessionIds?: Set<string>;
-  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onRenameSession: (sessionPath: string, name: string) => void;
 }
@@ -143,7 +142,6 @@ export function SessionList({
   relativeTimeBase,
   isExpanded,
   visibleWhenCollapsedSessionIds,
-  onSwitchSession,
   onResumeSession,
   onRenameSession,
 }: SessionListProps): React.JSX.Element {
@@ -168,11 +166,7 @@ export function SessionList({
   const hiddenCount = sessionsToRender.length - visibleSessions.length;
 
   function handleSessionSwitch(session: PiSessionInfo): void {
-    if (session.path) {
-      onResumeSession(session);
-    } else {
-      onSwitchSession(session.id);
-    }
+    onResumeSession(session);
   }
 
   const showList = isExpanded || isCollapsedWithPinned;
@@ -200,7 +194,7 @@ export function SessionList({
           ) : (
             visibleSessions.map((session) => (
               <SessionItem
-                key={session.path || session.id}
+                key={session.path}
                 session={session}
                 isActive={session.path === selectedSessionPath}
                 isRunning={isSessionRunning(session.path, sessions)}

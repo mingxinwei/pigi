@@ -281,12 +281,12 @@ export default function ChatInput({
 
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        handleSend();
-      }
-      // Alt+Enter queues a follow-up message during streaming
-      if (e.key === 'Enter' && e.altKey && isStreaming) {
-        e.preventDefault();
-        handleFollowUpSend();
+        // Alt+Enter queues a follow-up message during streaming
+        if (e.altKey && isStreaming) {
+          handleFollowUpSend();
+        } else {
+          handleSend();
+        }
       }
     },
     [

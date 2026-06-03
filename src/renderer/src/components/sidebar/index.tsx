@@ -32,7 +32,6 @@ export default function Sidebar({
   shortcutBindings,
   onNewSession,
   onNewSessionForProject,
-  onSwitchSession,
   onResumeSession,
   onOpenProject,
   onSelectProject,
@@ -57,15 +56,9 @@ export default function Sidebar({
   const getProjectSessions = useCallback(
     (projectPath: string): PiSessionInfo[] => {
       const listedSessions = projectSessions[projectPath] ?? [];
-      const listedIds = new Set(listedSessions.map((session) => session.id));
       const listedPaths = new Set(listedSessions.map((session) => session.path));
       const runningSessions = Array.from(sessions.values())
-        .filter(
-          (session) =>
-            session.cwd === projectPath &&
-            !listedIds.has(session.persistedSessionId) &&
-            !listedPaths.has(session.sessionPath),
-        )
+        .filter((session) => session.cwd === projectPath && !listedPaths.has(session.sessionPath))
         .map<PiSessionInfo>((session) => ({
           path: session.sessionPath ?? '',
           id: session.persistedSessionId,
@@ -194,7 +187,6 @@ export default function Sidebar({
                 onToggleProjectExpand={toggleProjectExpand}
                 onSelectProject={onSelectProject}
                 onNewSessionForProject={handleNewSessionForProject}
-                onSwitchSession={onSwitchSession}
                 onResumeSession={onResumeSession}
                 onOpenProject={onOpenProject}
                 onRemoveProject={onRemoveProject}

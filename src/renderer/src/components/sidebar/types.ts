@@ -10,7 +10,6 @@ export interface SidebarProps {
   shortcutBindings: Map<string, ShortcutBinding> | null;
   onNewSession: () => void;
   onNewSessionForProject: (path: string) => void;
-  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onOpenProject: () => void;
   onSelectProject: (path: string) => void;

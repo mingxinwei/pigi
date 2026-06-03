@@ -31,7 +31,6 @@ interface ProjectItemProps {
   onToggleExpand: () => void;
   onSelect: () => void;
   onNewSession: () => void;
-  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onRemove: () => void;
   onRenameSession: (sessionPath: string, name: string) => void;
@@ -53,7 +52,6 @@ function ProjectItem({
   onToggleExpand,
   onSelect,
   onNewSession,
-  onSwitchSession,
   onResumeSession,
   onRemove,
   onRenameSession,
@@ -126,7 +124,6 @@ function ProjectItem({
             relativeTimeBase={relativeTimeBase}
             isExpanded={isExpanded}
             visibleWhenCollapsedSessionIds={visibleWhenCollapsedSessionIds}
-            onSwitchSession={onSwitchSession}
             onResumeSession={onResumeSession}
             onRenameSession={onRenameSession}
           />
@@ -152,7 +149,6 @@ interface ProjectListProps {
   onToggleProjectExpand: (path: string) => void;
   onSelectProject: (path: string) => void;
   onNewSessionForProject: (path: string) => void;
-  onSwitchSession: (sessionPath: string) => void;
   onResumeSession: (session: PiSessionInfo) => void;
   onOpenProject: () => void;
   onRemoveProject: (path: string) => void;
@@ -171,7 +167,6 @@ export function ProjectList({
   onToggleProjectExpand,
   onSelectProject,
   onNewSessionForProject,
-  onSwitchSession,
   onResumeSession,
   onOpenProject,
   onRemoveProject,
@@ -250,7 +245,6 @@ export function ProjectList({
           onToggleExpand={() => onToggleProjectExpand(project.path)}
           onSelect={() => onSelectProject(project.path)}
           onNewSession={() => onNewSessionForProject(project.path)}
-          onSwitchSession={onSwitchSession}
           onResumeSession={onResumeSession}
           onRemove={() => onRemoveProject(project.path)}
           onRenameSession={onRenameSession}

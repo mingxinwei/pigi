@@ -1021,11 +1021,25 @@ export class TranscriptController {
         const text = aborted
           ? 'Compaction cancelled'
           : errorMessage
-            ? `Compaction failed: ${errorMessage}`
+            ? 'Compaction failed'
             : 'Context compacted';
         const updated = { ...n, text, isLoading: false };
         const newNodes = [...nodes];
         newNodes[i] = updated;
+
+        // Add a separate error node with the detailed message
+        if (errorMessage && !aborted) {
+          const errorNode: AssistantNode = {
+            id: `compaction-error-${Date.now()}`,
+            role: 'assistant',
+            text: '',
+            thinking: '',
+            errorMessage,
+            isStreaming: false,
+          };
+          newNodes.splice(i + 1, 0, errorNode);
+        }
+
         this.setState({ nodes: newNodes });
         return;
       }

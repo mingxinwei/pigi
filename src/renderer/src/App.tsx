@@ -600,7 +600,7 @@ function App(): React.JSX.Element {
     setIsDraftChat(false);
     setPendingSelectedPath(session.path);
     const existing = Array.from(useAppStore.getState().sessions.values()).find(
-      (entry) => entry.persistedSessionId === session.id || entry.sessionPath === session.path,
+      (entry) => entry.sessionPath === session.path,
     );
     if (existing) {
       setPendingSelectedPath(null);
@@ -699,15 +699,6 @@ function App(): React.JSX.Element {
       toast.error('Failed to resume session. Please try again.');
     }
   }
-
-  const handleSwitchSession = useCallback(
-    (sessionPath: string) => {
-      setPendingSelectedPath(null);
-      setIsDraftChat(false);
-      setActiveSession(sessionPath);
-    },
-    [setActiveSession],
-  );
 
   const handleOpenProject = useCallback(async () => {
     const result = await openProjectDirectory();
@@ -921,7 +912,6 @@ function App(): React.JSX.Element {
           shortcutBindings={shortcutBindings}
           onNewSession={handleNewSession}
           onNewSessionForProject={handleNewSessionForProject}
-          onSwitchSession={handleSwitchSession}
           onResumeSession={handleResumeSession}
           onOpenProject={handleOpenProject}
           onSelectProject={handleSelectProject}

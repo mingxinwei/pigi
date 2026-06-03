@@ -201,3 +201,50 @@ export function collapseContext(lines: DiffLine[]): (DiffLine | 'separator')[] {
 
   return result;
 }
+
+/**
+ * Parse a pre-computed diff string (from EditToolDetails.diff) into DiffLine arrays.
+ * Format: each line starts with '+', '-', or ' ' followed by a line number and content.
+ * Lines like " ... " (with only dots) are separators between hunks.
+ */
+export function parseDiffString(diff: string): DiffLine[][] {
+  if (!diff) return [];
+  const rawLines = diff.split('\n');
+  const result: DiffLine[] = [];
+
+  for (const raw of rawLines) {
+    if (raw.length === 0) continue;
+    const prefix = raw[0];
+    // Rest is: line_number + space + content
+    const rest = raw.slice(1);
+    // Match optional line number (may be spaces for separator lines like "    ...")
+    const match = rest.match(/^(\s*\d+|\s+) (.*)$/);
+    if (!match) continue;
+
+    const lineNumStr = match[1].trim();
+    const content = match[2];
+
+    // Detect collapsed context separator ("...")
+    if (content === '...' && prefix === ' ') {
+      // Skip — these are context collapse markers; DiffView handles its own collapsing
+      continue;
+    }
+
+    const lineNum = lineNumStr ? parseInt(lineNumStr, 10) : null;
+
+    if (prefix === '+') {
+      result.push({ type: 'add', content, lineNumber: lineNum, oldLineNumber: null });
+    } else if (prefix === '-') {
+      result.push({ type: 'remove', content, lineNumber: null, oldLineNumber: lineNum });
+    } else {
+      result.push({ type: 'context', content, lineNumber: lineNum, oldLineNumber: lineNum });
+    }
+  }
+
+  if (result.length === 0) return [];
+
+  // Add intra-line diffs for better highlighting
+  addIntraLineDiffs(result);
+
+  return [result];
+}

@@ -1,3 +1,4 @@
+import type { EditToolDetails } from '@earendil-works/pi-coding-agent';
 import type { StreamBatch } from '../../../shared/ipcContract';
 
 /**
@@ -48,6 +49,7 @@ export interface ToolNode {
   isError: boolean;
   startedAt?: number;
   durationMs?: number;
+  details?: EditToolDetails;
 }
 
 export interface SystemNode {
@@ -416,6 +418,7 @@ export class TranscriptController {
             content?: unknown[];
             isError?: boolean;
             timestamp?: number | string;
+            details?: EditToolDetails;
           };
           const call = toolMessage.toolCallId ? toolCalls.get(toolMessage.toolCallId) : undefined;
           const completedAt = tryNormalizeTimestamp(toolMessage.timestamp);
@@ -431,6 +434,7 @@ export class TranscriptController {
             isError: toolMessage.isError || false,
             startedAt: call?.startedAt,
             durationMs: getElapsedMs(call?.startedAt, completedAt),
+            details: toolMessage.details,
           });
           break;
         }
@@ -985,12 +989,14 @@ export class TranscriptController {
       if (!isToolNode(n) || n.toolCallId !== event.toolCallId) return n;
       const text = extractToolResultText(event.result);
       const status: ToolNode['status'] = event.isError ? 'error' : 'success';
+      const details = extractToolResultDetails(event.result);
       return {
         ...n,
         status,
         isError: event.isError,
         output: text || n.output,
         durationMs: getElapsedMs(n.startedAt, endedAt),
+        details,
       };
     });
 
@@ -1150,6 +1156,12 @@ function extractToolResultText(result: unknown): string {
       .join('\n');
   }
   return '';
+}
+
+function extractToolResultDetails(result: unknown): EditToolDetails | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+  const r = result as { details?: EditToolDetails };
+  return r.details;
 }
 
 function getElapsedMs(

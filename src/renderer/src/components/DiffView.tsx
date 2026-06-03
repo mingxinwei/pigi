@@ -1,15 +1,9 @@
 import { useMemo } from 'react';
-import {
-  computeEditDiffLines,
-  collapseContext,
-  type EditEntry,
-  type DiffLine,
-  type IntraLineSegment,
-} from '../lib/diffUtils';
+import { collapseContext, type DiffLine, type IntraLineSegment } from '../lib/diffUtils';
 import { cn } from '../lib/utils';
 
 interface DiffViewProps {
-  edits: EditEntry[];
+  lines: DiffLine[][];
 }
 
 const LINE_STYLES = {
@@ -49,11 +43,10 @@ function renderContent(line: DiffLine): React.JSX.Element {
   );
 }
 
-export default function DiffView({ edits }: DiffViewProps): React.JSX.Element {
+export default function DiffView({ lines }: DiffViewProps): React.JSX.Element {
   const sections = useMemo(() => {
-    const allDiffLines = computeEditDiffLines(edits);
-    return allDiffLines.map((lines) => collapseContext(lines));
-  }, [edits]);
+    return lines.map((section) => collapseContext(section));
+  }, [lines]);
 
   return (
     <div className="overflow-hidden rounded font-mono text-[13px] leading-5">

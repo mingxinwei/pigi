@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] - 2026-06-03
+
+### Fixed
+
+- New chat no longer appears twice in the sidebar.
+
 ## [0.3.0] - 2026-06-03
 
 ### Added

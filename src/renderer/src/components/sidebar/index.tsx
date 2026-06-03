@@ -58,9 +58,13 @@ export default function Sidebar({
     (projectPath: string): PiSessionInfo[] => {
       const listedSessions = projectSessions[projectPath] ?? [];
       const listedIds = new Set(listedSessions.map((session) => session.id));
+      const listedPaths = new Set(listedSessions.map((session) => session.path));
       const runningSessions = Array.from(sessions.values())
         .filter(
-          (session) => session.cwd === projectPath && !listedIds.has(session.persistedSessionId),
+          (session) =>
+            session.cwd === projectPath &&
+            !listedIds.has(session.persistedSessionId) &&
+            !listedPaths.has(session.sessionPath),
         )
         .map<PiSessionInfo>((session) => ({
           path: session.sessionPath ?? '',
@@ -87,7 +91,7 @@ export default function Sidebar({
           next.delete(projectPath);
           const runningIds = new Set(
             getProjectSessions(projectPath)
-              .filter((s) => isSessionRunning(s.id, sessions))
+              .filter((s) => isSessionRunning(s.path, sessions))
               .map((s) => s.id),
           );
           if (runningIds.size > 0) {

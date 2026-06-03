@@ -399,6 +399,8 @@ function App(): React.JSX.Element {
         setIsDraftChat(false);
         isDraftSpawningRef.current = false;
         setIsDraftSpawning(false);
+        // Mark status as streaming immediately so UI doesn't flash idle
+        controller.setStatus('streaming');
         setActiveSession(sessionPath);
 
         // Send the prompt (and any additional messages typed while spawning)

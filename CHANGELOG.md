@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- User message minimap on the right side of the chat — hover to see a list of your messages, click to jump to any one.
+
 ## [0.3.2] - 2026-06-03
 
 ### Changed
@@ -10,7 +16,6 @@
 
 - Compaction errors now display as a separate error message below the "Compaction failed" marker, instead of cramming the full error into the marker line.
 - Clicking a recently created session in the sidebar no longer switches to a different session.
-
 
 ## [0.3.1] - 2026-06-03
 

@@ -13,9 +13,15 @@ import ToolBlock from './ToolBlock';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import UserMessageMiniMap from './userMessageMiniMap';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
+}
+
+function isRenderableNode(node: TranscriptNode): boolean {
+  if (node.role !== 'assistant') return true;
+  return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
 const MESSAGE_ROW_GAP = 16;
@@ -37,6 +43,7 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
   const autoScrollRef = useRef(true);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes]);
 
   const getItemKey = useCallback(
@@ -102,8 +109,10 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
         if (pendingRaf) cancelAnimationFrame(pendingRaf);
         pendingRaf = requestAnimationFrame(scrollToBottom);
       }
+      setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
+    setContainerWidth(container.clientWidth);
 
     function handleWheel(event: WheelEvent): void {
       if (event.deltaY < 0) {
@@ -145,6 +154,14 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
     setShowScrollButton(false);
   }
 
+  const handleScrollToIndex = useCallback(
+    (index: number) => {
+      autoScrollRef.current = false;
+      rowVirtualizer.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
+    },
+    [rowVirtualizer],
+  );
+
   return (
     <div className="relative min-h-0 flex-1">
       <div
@@ -180,6 +197,11 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
           </div>
         </div>
       </div>
+      <UserMessageMiniMap
+        nodes={displayNodes}
+        containerWidth={containerWidth}
+        onScrollToIndex={handleScrollToIndex}
+      />
       {/* Bottom gradient fade */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent" />
       {showScrollButton && (
@@ -275,14 +297,6 @@ function estimateToolCommandLineCount(node: ToolNode): number {
         : String(JSON.stringify(args ?? {}) ?? '');
 
   return Math.min(2, Math.max(1, Math.ceil(command.length / 80)));
-}
-
-function isRenderableNode(node: TranscriptNode): boolean {
-  if (node.role !== 'assistant') {
-    return true;
-  }
-
-  return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
 function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {

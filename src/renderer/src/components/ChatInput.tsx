@@ -296,6 +296,7 @@ export default function ChatInput({
       hasSlashMatches,
       flatSlashMatches,
       selectedSlashIndex,
+      onSlashCommand,
     ],
   );
 
@@ -773,7 +774,7 @@ function SlashCommandItem({
       type="button"
       className={cn(
         'flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm',
-        isSelected && 'bg-[var(--system-accent)] text-white',
+        isSelected && 'bg-foreground/7',
       )}
       onMouseDown={(e) => {
         e.preventDefault();
@@ -781,12 +782,13 @@ function SlashCommandItem({
       }}
       onMouseEnter={onHover}
     >
-      <span className={cn('shrink-0 font-mono', isSelected ? 'text-white' : 'text-foreground')}>
-        /{slashCommand.name}
-      </span>
+      <span className="shrink-0 font-mono text-foreground">/{slashCommand.name}</span>
       {slashCommand.source !== 'skill' && (
         <span
-          className={cn('min-w-0 truncate', isSelected ? 'text-white' : 'text-muted-foreground')}
+          className={cn(
+            'min-w-0 truncate',
+            isSelected ? 'text-foreground' : 'text-muted-foreground',
+          )}
         >
           {slashCommand.description}
         </span>

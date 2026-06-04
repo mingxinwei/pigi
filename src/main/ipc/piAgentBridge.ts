@@ -246,6 +246,21 @@ export function registerIpcHandlers(): void {
     const existing = processPool.findBySessionPath(sessionPath);
     if (existing) {
       processPool.touchSessionProcess(sessionPath);
+
+      // Re-establish MessagePorts (renderer may have reloaded)
+      const controlChannel = new MessageChannelMain();
+      const dataChannel = new MessageChannelMain();
+      const attachCommand: UtilityCommand = { type: 'attach_ports' };
+      existing.process.postMessage(attachCommand, [controlChannel.port1, dataChannel.port1]);
+
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.postMessage(PiChannel.SessionPort, { sessionPath }, [
+          controlChannel.port2,
+          dataChannel.port2,
+        ]);
+      }
+
       return { success: true, sessionPath };
     }
     return spawnSessionProcess({ type: 'resume_session', sessionPath });

@@ -6,6 +6,11 @@
 
 - User message minimap on the right side of the chat — hover to see a list of your messages, click to jump to any one.
 
+### Fixed
+
+- Refreshing the app (Cmd+R) no longer breaks session resume — the session reconnects seamlessly.
+- Opening a session no longer briefly logs errors about missing ports.
+
 ## [0.3.2] - 2026-06-03
 
 ### Changed

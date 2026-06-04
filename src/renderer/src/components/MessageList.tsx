@@ -157,7 +157,7 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
   const handleScrollToIndex = useCallback(
     (index: number) => {
       autoScrollRef.current = false;
-      rowVirtualizer.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
+      rowVirtualizer.scrollToIndex(index, { align: 'start', behavior: 'auto' });
     },
     [rowVirtualizer],
   );

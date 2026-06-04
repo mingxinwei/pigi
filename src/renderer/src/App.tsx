@@ -259,7 +259,11 @@ function App(): React.JSX.Element {
       return;
     }
     useAppStore.getState().updateSession(activeSessionPath, { status: transcript.status });
-    void refreshSessionState(activeSessionPath);
+    // Defer to next frame to avoid cascading renders from the async setState chain
+    const frame = requestAnimationFrame(() => {
+      void refreshSessionState(activeSessionPath);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [activeSessionPath, refreshSessionState, transcript.status]);
 
   useEffect(() => {

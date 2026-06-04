@@ -296,13 +296,18 @@ const piApi = {
     return () => ipcRenderer.removeListener(PiChannel.ProjectSessionsChunk, handler);
   },
 
-  /** Send a command to a session (via control MessagePort). */
-  send: (sessionPath: string, command: PiCommand): Promise<unknown> => {
-    const session = sessionPorts.get(sessionPath);
-    if (!session)
-      return Promise.reject(
-        new Error(`no port for session ${sessionPath} (port may not have arrived yet)`),
-      );
+  /** Send a command to a session (via control MessagePort). Waits for port if not yet available. */
+  send: async (sessionPath: string, command: PiCommand): Promise<unknown> => {
+    let session = sessionPorts.get(sessionPath);
+    if (!session) {
+      await waitForPort(sessionPath);
+      session = sessionPorts.get(sessionPath);
+      if (!session) {
+        return Promise.reject(
+          new Error(`no port for session ${sessionPath} (port did not arrive)`),
+        );
+      }
+    }
     const requestId = `req-${++session.requestId}`;
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {

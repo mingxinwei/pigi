@@ -29,6 +29,9 @@ interface AppState {
   // Sessions (keyed by sessionPath)
   sessions: Map<string, SessionEntry>;
   activeSessionPath: string | null;
+  // Remembered scroll positions per session (sessionPath -> scrollTop)
+  scrollPositions: Map<string, number>;
+  setScrollPosition: (sessionPath: string, scrollTop: number) => void;
 
   recentProjects: ProjectDirectory[];
   activeProject: ProjectDirectory | null;
@@ -55,6 +58,13 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   sessions: new Map(),
   activeSessionPath: null,
+  scrollPositions: new Map(),
+  setScrollPosition: (sessionPath, scrollTop) =>
+    set((state) => {
+      const scrollPositions = new Map(state.scrollPositions);
+      scrollPositions.set(sessionPath, scrollTop);
+      return { scrollPositions };
+    }),
 
   recentProjects: [],
   activeProject: null,

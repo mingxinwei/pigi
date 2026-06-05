@@ -4,6 +4,7 @@
 
 ### Added
 
+- Session message lists remember scroll position — switching between sessions restores where you left off. New sessions open scrolled to the latest message.
 - User message minimap on the right side of the chat — hover to see a list of your messages, click to jump to any one.
 
 ### Fixed

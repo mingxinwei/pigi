@@ -6,11 +6,8 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <true/>
-    <!-- Required for ad-hoc signed Electron macOS builds with hardened runtime.
-         Without this entitlement, macOS can reject Electron Framework at launch with:
-         "mapping process and mapped file (non-platform) have different Team IDs". -->
+    <!-- Required for Electron apps with hardened runtime.
+         Native modules and helper binaries may not share the same code signature. -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
   </dict>

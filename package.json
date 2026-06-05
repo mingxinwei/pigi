@@ -18,13 +18,13 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
-    "postinstall": "electron-builder install-app-deps && node scripts/disableCookieEncryptionFuse.cjs",
-    "build:unpack": "npm run build && electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir -c.mac.notarize=false",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
     "deploy": "pkill -f 'pigi.app/Contents/MacOS' || true; sleep 2; rm -rf ~/Applications/pigi.app && cp -R dist/mac-arm64/pigi.app ~/Applications/",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "build:test": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never"
+    "build:mac:dev": "electron-vite build && electron-builder --mac --dir -c.mac.notarize=false",
+    "build:mac:dist": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
@@ -59,7 +59,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "electron": "^42.2.0",
+    "electron": "^41.7.1",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",

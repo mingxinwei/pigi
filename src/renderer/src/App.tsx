@@ -936,7 +936,7 @@ function App(): React.JSX.Element {
         />
         {activeSession ? (
           <>
-            <MessageList nodes={transcript.nodes} />
+            <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
             <StreamingQueue
               isStreaming={transcript.status !== 'idle'}
               queuedSteering={transcript.queuedSteering}
@@ -963,7 +963,7 @@ function App(): React.JSX.Element {
           </>
         ) : isDraftChat ? (
           <>
-            <MessageList nodes={draftState.nodes} />
+            <MessageList nodes={draftState.nodes} sessionPath="" />
             <ChatInput
               onSend={handleSend}
               onFollowUp={handleFollowUp}

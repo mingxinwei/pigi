@@ -1,4 +1,5 @@
 import React, { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
+import { useAppStore } from '../state/appStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconArrowDown, IconCopy, IconCheck, IconSparkles } from '@tabler/icons-react';
 import {
@@ -17,6 +18,7 @@ import UserMessageMiniMap from './userMessageMiniMap';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
+  sessionPath: string;
 }
 
 function isRenderableNode(node: TranscriptNode): boolean {
@@ -38,7 +40,10 @@ const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
 /** Max height (px) for user bubble content before showing expand button */
 const USER_MESSAGE_MAX_HEIGHT = 360;
 
-export default React.memo(function MessageList({ nodes }: MessageListProps): React.JSX.Element {
+export default React.memo(function MessageList({
+  nodes,
+  sessionPath,
+}: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   const lastNodeIdRef = useRef<string | null>(null);
@@ -143,6 +148,43 @@ export default React.memo(function MessageList({ nodes }: MessageListProps): Rea
       container.removeEventListener('scroll', handleScroll);
     };
   }, []);
+
+  // Save scroll position to store on every scroll event
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !sessionPath) return;
+
+    function savePosition(): void {
+      useAppStore.getState().setScrollPosition(sessionPath, container!.scrollTop);
+    }
+
+    container.addEventListener('scroll', savePosition, { passive: true });
+    return () => container.removeEventListener('scroll', savePosition);
+  }, [sessionPath]);
+
+  // Restore saved scroll position on session change, or auto-scroll to bottom
+  useEffect(() => {
+    let cancelled = false;
+
+    const savedPosition = sessionPath
+      ? useAppStore.getState().scrollPositions.get(sessionPath)
+      : undefined;
+
+    if (savedPosition !== undefined) {
+      autoScrollRef.current = false;
+      requestAnimationFrame(() => {
+        if (!cancelled && containerRef.current) {
+          containerRef.current.scrollTop = savedPosition;
+        }
+      });
+    } else {
+      autoScrollRef.current = true;
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionPath]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 

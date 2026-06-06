@@ -83,6 +83,7 @@ function App(): React.JSX.Element {
   } = useAppStore();
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherAutoPreselect, setSwitcherAutoPreselect] = useState(false);
 
   const activeSession = activeSessionPath ? (sessions.get(activeSessionPath) ?? null) : null;
   const activeCwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
@@ -755,6 +756,12 @@ function App(): React.JSX.Element {
         handleOpenProject();
       },
       'navigation.openSwitcher': () => {
+        setSwitcherAutoPreselect(false);
+        setSwitcherOpen(true);
+      },
+      'navigation.closeOrSelectSwitcher': () => {
+        // Ctrl+Tab: preselect previous session so immediate release switches
+        setSwitcherAutoPreselect(true);
         setSwitcherOpen(true);
       },
       'navigation.prev': () => {
@@ -1075,6 +1082,7 @@ function App(): React.JSX.Element {
         }}
         open={switcherOpen}
         onOpenChange={setSwitcherOpen}
+        autoSelectPrevious={switcherAutoPreselect}
       />
 
       <LoginDialog

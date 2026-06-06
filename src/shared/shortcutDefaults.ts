@@ -27,6 +27,11 @@ export const SHORTCUT_DEFAULTS: ShortcutEntry[] = [
     defaultBinding: { key: 'r', ctrl: true },
   },
   {
+    id: 'navigation.closeOrSelectSwitcher',
+    label: 'Session switcher (Ctrl+Tab)',
+    defaultBinding: { key: 'Tab', ctrl: true },
+  },
+  {
     id: 'navigation.prev',
     label: 'Previous session',
     defaultBinding: { key: '[', meta: true },

@@ -30,6 +30,8 @@ interface SessionSwitcherProps {
   onSwitch: (sessionPath: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** If true, preselect the second item (previous session) on open */
+  autoSelectPrevious?: boolean;
 }
 
 function getProjectName(cwd: string): string {
@@ -55,12 +57,13 @@ export default function SessionSwitcher({
   onSwitch,
   open,
   onOpenChange,
+  autoSelectPrevious = false,
 }: SessionSwitcherProps): React.JSX.Element {
   const [query, setQuery] = useState('');
+  const [selectedValue, setSelectedValue] = useState('');
   const commandListRef = useRef<HTMLDivElement>(null);
   const [relativeTimeBase] = useState(() => Date.now());
 
-  // Flatten and sort all sessions
   const allSessions = useMemo((): FlattenedSession[] => {
     const historyOrder = new Map<string, number>();
     const historySet = new Set<string>();
@@ -93,10 +96,8 @@ export default function SessionSwitcher({
     }
 
     flattened.sort((a, b) => {
-      // Active session always first
       if (a.isActive) return -1;
       if (b.isActive) return 1;
-
       const aHistoryRank = historyOrder.get(a.path);
       const bHistoryRank = historyOrder.get(b.path);
       if (aHistoryRank !== undefined && bHistoryRank !== undefined) {
@@ -161,16 +162,44 @@ export default function SessionSwitcher({
     [onOpenChange],
   );
 
-  // Reset scroll position when query is cleared
-  useEffect(() => {
-    if (!query) {
-      requestAnimationFrame(() => {
-        if (commandListRef.current) {
-          commandListRef.current.scrollTop = 0;
+  // Ctrl+Tab navigation: move selection down within the filtered list
+  const handleCommandKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === 'Tab' && event.ctrlKey) {
+        event.preventDefault();
+        const currentIndex = filteredSessions.findIndex((s) => s.path === selectedValue);
+        const nextIndex = event.shiftKey
+          ? (currentIndex - 1 + filteredSessions.length) % filteredSessions.length
+          : (currentIndex + 1) % filteredSessions.length;
+        const nextPath = filteredSessions[nextIndex]?.path;
+        if (nextPath) {
+          setSelectedValue(nextPath);
         }
-      });
+      }
+    },
+    [filteredSessions, selectedValue],
+  );
+
+  // When opened via Ctrl+Tab, preselect the second item (previous session)
+  useEffect(() => {
+    if (!open || !autoSelectPrevious) return;
+    const secondPath = filteredSessions[1]?.path;
+    if (secondPath) {
+      requestAnimationFrame(() => setSelectedValue(secondPath));
     }
-  }, [query]);
+  }, [open, autoSelectPrevious, filteredSessions]);
+
+  // Select highlighted item when Ctrl is released (Ctrl+Tab only)
+  useEffect(() => {
+    if (!open || !autoSelectPrevious) return;
+    const handleKeyUp = (event: KeyboardEvent): void => {
+      if (event.key === 'Control' && selectedValue) {
+        handleSelect(selectedValue);
+      }
+    };
+    window.addEventListener('keyup', handleKeyUp);
+    return () => window.removeEventListener('keyup', handleKeyUp);
+  }, [open, autoSelectPrevious, selectedValue, handleSelect]);
 
   return (
     <CommandDialog
@@ -182,7 +211,10 @@ export default function SessionSwitcher({
       showOverlay={false}
     >
       <Command
+        value={selectedValue}
+        onValueChange={setSelectedValue}
         shouldFilter={false}
+        onKeyDown={handleCommandKeyDown}
         className={cn(OVERLAY_BG, `[&_[data-selected=true]]:${FLOATING_ITEM_HOVER}`)}
       >
         <CommandInput

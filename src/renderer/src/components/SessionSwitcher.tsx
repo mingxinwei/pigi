@@ -39,7 +39,7 @@ function getProjectName(cwd: string): string {
 
 function highlightResult(result: Fuzzysort.Result, fallback: string): React.ReactNode {
   const highlighted = result.highlight((match, index) => (
-    <span key={index} className="font-semibold text-foreground underline underline-offset-2">
+    <span key={index} className="bg-ring/25 rounded-sm px-0.5">
       {match}
     </span>
   ));
@@ -139,6 +139,11 @@ export default function SessionSwitcher({
     return { filteredSessions: sessions, highlightMap: map };
   }, [query, allSessions]);
 
+  // cmdk does not auto-scroll to top when filtering is external (shouldFilter=false)
+  useEffect(() => {
+    commandListRef.current?.scrollTo(0, 0);
+  }, [filteredSessions]);
+
   const handleSelect = useCallback(
     (path: string) => {
       onSwitch(path);
@@ -187,7 +192,7 @@ export default function SessionSwitcher({
           autoFocus
           inputGroupClassName="h-[44px]"
         />
-        <CommandList ref={commandListRef} className="max-h-96">
+        <CommandList ref={commandListRef} className="max-h-96 pt-1">
           {filteredSessions.length === 0 ? (
             <CommandEmpty>
               {allSessions.length === 0 ? 'No sessions yet, create a session first.' : 'No results'}

@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 
-import { cn, OVERLAY_CONTENT } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { VIBRANCY_OVERLAY_CONTENT } from '@/lib/layoutConstants';
 import { Button } from '@/components/ui/button';
 import { IconX } from '@tabler/icons-react';
 
@@ -55,7 +56,7 @@ function DialogContent({
         onOpenAutoFocus={(event) => event.preventDefault()}
         className={cn(
           'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 sm:max-w-[550px] outline-none',
-          OVERLAY_CONTENT,
+          VIBRANCY_OVERLAY_CONTENT,
           className,
         )}
         {...props}

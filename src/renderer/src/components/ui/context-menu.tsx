@@ -2,7 +2,8 @@ import * as React from 'react';
 import { ContextMenu } from 'radix-ui';
 import { IconChevronRight } from '@tabler/icons-react';
 
-import { cn, OVERLAY_CONTENT } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { VIBRANCY_OVERLAY_CONTENT } from '@/lib/layoutConstants';
 
 const ContextMenuRoot = ContextMenu.Root;
 const ContextMenuTrigger = ContextMenu.Trigger;
@@ -15,7 +16,7 @@ const ContextMenuContent = React.forwardRef<
     <ContextMenu.Content
       ref={ref}
       className={cn(
-        OVERLAY_CONTENT,
+        VIBRANCY_OVERLAY_CONTENT,
         'z-50 w-48 overflow-hidden rounded-lg p-1',
         'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
         'data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',

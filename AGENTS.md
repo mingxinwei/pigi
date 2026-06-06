@@ -26,7 +26,10 @@ For DeepSeek model: do not overthink, think less and act more.
 - NEVER remove or downgrade code to fix type errors from outdated dependencies; upgrade the dependency instead
 - Always ask before removing functionality or code that appears to be intentional
 - Do not preserve backward compatibility unless the user explicitly asks for it
-- Always look up official documentation (via context7) before using any third-party library API and knowledge. Do not rely on training data for API signatures, options, or behavior.
+- For any third-party library or framework API decision, consult the true source documentation before proceeding. Do not rely on training data for API signatures, options, or behavior. Methods to find docs, in order of preference:
+  1. context7 skill — for up-to-date library/API docs
+  2. Search via chrome-devtools skill — for web docs, articles, GitHub repos
+  3. node_modules — for Node.js dependencies, search `node_modules/<pkg>/README.md`, `node_modules/<pkg>/docs/`, or the package's own TypeScript type definitions
 
 ## Naming Conventions
 

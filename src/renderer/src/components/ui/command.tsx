@@ -61,11 +61,19 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  inputGroupClassName,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+  inputGroupClassName?: string;
+}) {
   return (
     <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+      <InputGroup
+        className={cn(
+          'rounded-lg! border-input/30 bg-input/50 shadow-none! *:data-[slot=input-group-addon]:pl-2!',
+          inputGroupClassName,
+        )}
+      >
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
@@ -144,8 +152,11 @@ function CommandSeparator({
 function CommandItem({
   className,
   children,
+  showCheckIcon = true,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: React.ComponentProps<typeof CommandPrimitive.Item> & {
+  showCheckIcon?: boolean;
+}) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
@@ -156,7 +167,9 @@ function CommandItem({
       {...props}
     >
       {children}
-      <IconCheck className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      {showCheckIcon && (
+        <IconCheck className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      )}
     </CommandPrimitive.Item>
   );
 }

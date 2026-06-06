@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { IconLoader2, IconPencil } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
@@ -151,6 +151,24 @@ export function SessionList({
 
   const isCollapsedWithPinned =
     !isExpanded && visibleWhenCollapsedSessionIds && visibleWhenCollapsedSessionIds.size > 0;
+
+  // Auto-expand "show more" when selected session is among hidden ones
+  useEffect(() => {
+    if (!selectedSessionPath || showAll) return;
+    const fullSessions = isCollapsedWithPinned
+      ? projectSessions.filter((s) => visibleWhenCollapsedSessionIds!.has(s.id))
+      : projectSessions;
+    const hidden = fullSessions.slice(visibleSessionCount);
+    if (hidden.some((s) => s.path === selectedSessionPath)) {
+      requestAnimationFrame(() => setShowAll(true));
+    }
+  }, [
+    selectedSessionPath,
+    showAll,
+    projectSessions,
+    isCollapsedWithPinned,
+    visibleWhenCollapsedSessionIds,
+  ]);
 
   // When collapsed with pinned sessions, show only those.
   // When expanded, show all with pagination.

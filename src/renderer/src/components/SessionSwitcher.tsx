@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import dayjs from 'dayjs';
 import type { PiSessionInfo } from '../../../shared/ipcContract';
 import fuzzysort from 'fuzzysort';
+import { cn, formatRelativeTime } from '../lib/utils';
+import { OVERLAY_BG, FLOATING_ITEM_HOVER } from '../lib/layoutConstants';
 import {
   Command,
   CommandDialog,
@@ -36,10 +37,6 @@ function getProjectName(cwd: string): string {
   return parts[parts.length - 1] || cwd;
 }
 
-function formatTime(isoString: string): string {
-  return dayjs(isoString).format('HH:mm');
-}
-
 function highlightResult(result: Fuzzysort.Result, fallback: string): React.ReactNode {
   const highlighted = result.highlight((match, index) => (
     <span key={index} className="font-semibold text-foreground underline underline-offset-2">
@@ -61,6 +58,7 @@ export default function SessionSwitcher({
 }: SessionSwitcherProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const commandListRef = useRef<HTMLDivElement>(null);
+  const [relativeTimeBase] = useState(() => Date.now());
 
   // Flatten and sort all sessions
   const allSessions = useMemo((): FlattenedSession[] => {
@@ -175,17 +173,21 @@ export default function SessionSwitcher({
       onOpenChange={handleOpenChange}
       title="Session switcher"
       description="Search and switch sessions"
-      className="top-4 left-[calc(50%+8rem)] translate-y-0"
+      className={cn('top-4 left-[calc(50%+8rem)] translate-y-0 backdrop-blur-xs', OVERLAY_BG)}
       showOverlay={false}
     >
-      <Command shouldFilter={false}>
+      <Command
+        shouldFilter={false}
+        className={cn(OVERLAY_BG, `[&_[data-selected=true]]:${FLOATING_ITEM_HOVER}`)}
+      >
         <CommandInput
           placeholder="Search sessions..."
           value={query}
           onValueChange={setQuery}
           autoFocus
+          inputGroupClassName="h-[44px]"
         />
-        <CommandList ref={commandListRef}>
+        <CommandList ref={commandListRef} className="max-h-96">
           {filteredSessions.length === 0 ? (
             <CommandEmpty>
               {allSessions.length === 0 ? 'No sessions yet, create a session first.' : 'No results'}
@@ -199,18 +201,22 @@ export default function SessionSwitcher({
                     key={session.path}
                     value={session.path}
                     onSelect={() => handleSelect(session.path)}
+                    showCheckIcon={false}
+                    className="px-2 py-1.5"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="min-w-0 max-w-[90%] flex-1 truncate text-sm">
-                        {results ? highlightResult(results[0], session.title) : session.title}
-                      </span>
-                      <span className="shrink-0 ml-auto text-sm text-muted-foreground">
-                        {results
-                          ? highlightResult(results[1], session.projectName)
-                          : session.projectName}
-                      </span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0">
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {results ? highlightResult(results[0], session.title) : session.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {results
+                            ? highlightResult(results[1], session.projectName)
+                            : session.projectName}
+                        </span>
+                      </div>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatTime(session.modified)}
+                        {formatRelativeTime(session.modified, relativeTimeBase)}
                       </span>
                     </div>
                   </CommandItem>

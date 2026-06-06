@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TranscriptNode, UserNode } from '../state/transcriptController';
+import { OVERLAY_BG } from '../lib/layoutConstants';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { MESSAGE_LIST_HORIZONTAL_PADDING, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants';
 
@@ -125,7 +126,7 @@ export default React.memo(function UserMessageMiniMap({
       <PopoverContent
         side="left"
         align="center"
-        className="max-h-[50vh] w-64 overflow-hidden bg-popover/40 p-0 backdrop-blur-md"
+        className={`max-h-[50vh] w-64 overflow-hidden ${OVERLAY_BG} p-0 backdrop-blur-md`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onOpenAutoFocus={(event) => event.preventDefault()}
@@ -136,6 +137,7 @@ export default React.memo(function UserMessageMiniMap({
             <button
               key={node.id}
               type="button"
+              // FLOATING_ITEM_HOVER
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-foreground/7"
               onClick={() => {
                 onScrollToIndex(index);

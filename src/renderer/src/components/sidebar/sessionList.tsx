@@ -10,7 +10,8 @@ import {
   ContextMenuItem,
 } from '../ui/context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { formatRelativeTime, formatDateTime, getSessionTitle, isSessionRunning } from './utils';
+import { formatRelativeTime } from '../../lib/utils';
+import { formatDateTime, getSessionTitle, isSessionRunning } from './utils';
 
 interface SessionItemProps {
   session: PiSessionInfo;

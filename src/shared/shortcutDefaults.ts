@@ -21,4 +21,19 @@ export const SHORTCUT_DEFAULTS: ShortcutEntry[] = [
     label: 'Open project',
     defaultBinding: { key: 'o', meta: true },
   },
+  {
+    id: 'navigation.openSwitcher',
+    label: 'Session switcher',
+    defaultBinding: { key: 'r', ctrl: true },
+  },
+  {
+    id: 'navigation.prev',
+    label: 'Previous session',
+    defaultBinding: { key: '[', meta: true },
+  },
+  {
+    id: 'navigation.next',
+    label: 'Next session',
+    defaultBinding: { key: ']', meta: true },
+  },
 ];

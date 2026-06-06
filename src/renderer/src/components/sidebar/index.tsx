@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { IconFolderPlus, IconPlus, IconSettings, IconLogin2 } from '@tabler/icons-react';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import { formatShortcutLabel } from '../../shortcuts/formatShortcutLabel';
@@ -45,6 +45,7 @@ export default function Sidebar({
     Record<string, Set<string>>
   >({});
   const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now());
+  const previousSelectedSessionPathRef = useRef<string | null>(selectedSessionPath);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -52,6 +53,45 @@ export default function Sidebar({
     }, 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Auto-expand project and scroll to session when selection changes externally
+  useEffect(() => {
+    if (!selectedSessionPath || selectedSessionPath === previousSelectedSessionPathRef.current) {
+      previousSelectedSessionPathRef.current = selectedSessionPath;
+      return;
+    }
+    previousSelectedSessionPathRef.current = selectedSessionPath;
+
+    // Find which project contains this session
+    let targetProjectPath: string | null = null;
+    for (const cwd of Object.keys(projectSessions)) {
+      const sessions = projectSessions[cwd];
+      if (sessions?.some((s) => s.path === selectedSessionPath)) {
+        targetProjectPath = cwd;
+        break;
+      }
+    }
+    if (!targetProjectPath) return;
+
+    // Deferred: expand project then scroll to session after DOM paints
+    if (targetProjectPath) {
+      const projectPath = targetProjectPath;
+      requestAnimationFrame(() => {
+        setExpandedProjects((prev) => {
+          if (prev.has(projectPath)) return prev;
+          const next = new Set(prev);
+          next.add(projectPath);
+          return next;
+        });
+        requestAnimationFrame(() => {
+          const el = document.querySelector(
+            `[data-session-path="${CSS.escape(selectedSessionPath)}"]`,
+          );
+          el?.scrollIntoView({ block: 'nearest' });
+        });
+      });
+    }
+  }, [selectedSessionPath, projectSessions]);
 
   const getProjectSessions = useCallback(
     (projectPath: string): PiSessionInfo[] => {

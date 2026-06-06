@@ -53,6 +53,19 @@ interface AppState {
   // Platform
   platform: Platform;
   setPlatform: (platform: Platform) => void;
+
+  // Navigation history (sessionPath[] stacks for back/forward)
+  navigationBackStack: string[];
+  navigationForwardStack: string[];
+
+  /** Call BEFORE changing activeSessionPath to record the current session in history */
+  pushNavigationHistory: (sessionPath: string) => void;
+  /** Returns target sessionPath or null, updates stacks and activeSessionPath internally */
+  navigateBack: () => string | null;
+  /** Returns target sessionPath or null, updates stacks and activeSessionPath internally */
+  navigateForward: () => string | null;
+  /** Remove a session path from all history stacks */
+  removeFromNavigationHistory: (sessionPath: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -135,4 +148,65 @@ export const useAppStore = create<AppState>((set) => ({
   // Platform
   platform: 'unknown',
   setPlatform: (platform) => set({ platform }),
+
+  // Navigation history
+  navigationBackStack: [],
+  navigationForwardStack: [],
+
+  pushNavigationHistory: (sessionPath) =>
+    set((state) => {
+      if (sessionPath === state.activeSessionPath) return {};
+      const backStack = [...state.navigationBackStack];
+      if (state.activeSessionPath) {
+        backStack.push(state.activeSessionPath);
+      }
+      return {
+        navigationBackStack: backStack,
+        navigationForwardStack: [],
+      };
+    }),
+
+  navigateBack: () => {
+    let targetPath: string | null = null;
+    set((state) => {
+      if (state.navigationBackStack.length === 0) return {};
+      const nextBackStack = [...state.navigationBackStack];
+      targetPath = nextBackStack.pop()!;
+      const nextForwardStack = [...state.navigationForwardStack];
+      if (state.activeSessionPath) {
+        nextForwardStack.push(state.activeSessionPath);
+      }
+      return {
+        navigationBackStack: nextBackStack,
+        navigationForwardStack: nextForwardStack,
+        activeSessionPath: targetPath,
+      };
+    });
+    return targetPath;
+  },
+
+  navigateForward: () => {
+    let targetPath: string | null = null;
+    set((state) => {
+      if (state.navigationForwardStack.length === 0) return {};
+      const nextForwardStack = [...state.navigationForwardStack];
+      targetPath = nextForwardStack.pop()!;
+      const nextBackStack = [...state.navigationBackStack];
+      if (state.activeSessionPath) {
+        nextBackStack.push(state.activeSessionPath);
+      }
+      return {
+        navigationBackStack: nextBackStack,
+        navigationForwardStack: nextForwardStack,
+        activeSessionPath: targetPath,
+      };
+    });
+    return targetPath;
+  },
+
+  removeFromNavigationHistory: (sessionPath) =>
+    set((state) => ({
+      navigationBackStack: state.navigationBackStack.filter((p) => p !== sessionPath),
+      navigationForwardStack: state.navigationForwardStack.filter((p) => p !== sessionPath),
+    })),
 }));

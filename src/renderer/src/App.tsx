@@ -54,6 +54,7 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
+import SessionSwitcher from './components/SessionSwitcher';
 import { SidebarProvider } from './components/ui/sidebar';
 import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
 
@@ -74,7 +75,14 @@ function App(): React.JSX.Element {
     recentProjects,
     projectSessions,
     setProjectSessionList,
+    navigationBackStack,
+    navigationForwardStack,
+    pushNavigationHistory,
+    navigateBack,
+    removeFromNavigationHistory,
   } = useAppStore();
+
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const activeSession = activeSessionPath ? (sessions.get(activeSessionPath) ?? null) : null;
   const activeCwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
@@ -320,10 +328,18 @@ function App(): React.JSX.Element {
   useEffect(() => {
     return window.piApi.onProcessExit(({ sessionPath }) => {
       disposeTranscriptSession(sessionPath);
+      removeFromNavigationHistory(sessionPath);
       removeSession(sessionPath);
+      // Auto-switch to last session in back stack
+      const targetPath = navigateBack();
+      if (targetPath) {
+        const sessions = useAppStore.getState().sessions;
+        if (sessions.has(targetPath)) {
+          useAppStore.getState().setActiveSession(targetPath);
+        }
+      }
     });
-  }, [removeSession]);
-
+  }, [removeSession, removeFromNavigationHistory, navigateBack]);
   useEffect(() => {
     if (!activeSessionPath) {
       return;
@@ -403,8 +419,8 @@ function App(): React.JSX.Element {
         setIsDraftChat(false);
         isDraftSpawningRef.current = false;
         setIsDraftSpawning(false);
-        // Mark status as streaming immediately so UI doesn't flash idle
         controller.setStatus('streaming');
+        pushNavigationHistory(sessionPath);
         setActiveSession(sessionPath);
 
         // Send the prompt (and any additional messages typed while spawning)
@@ -600,109 +616,114 @@ function App(): React.JSX.Element {
     handleNewSession();
   }
 
-  async function handleResumeSession(session: PiSessionInfo): Promise<void> {
-    setIsDraftChat(false);
-    setPendingSelectedPath(session.path);
-    const existing = Array.from(useAppStore.getState().sessions.values()).find(
-      (entry) => entry.sessionPath === session.path,
-    );
-    if (existing) {
-      setPendingSelectedPath(null);
-      setActiveSession(existing.sessionPath);
-      return;
-    }
-
-    const sessionPath = session.path;
-
-    addSessionEntry({
-      sessionPath,
-      persistedSessionId: session.id,
-      status: 'idle',
-      title: session.name ?? session.firstMessage,
-      cwd: session.cwd,
-      createdAt: session.created,
-      model: null,
-      thinkingLevel: null,
-      contextUsage: null,
-      autoCompactionEnabled: false,
-      messageCount: session.messageCount,
-      error: null,
-    });
-    // Mark as hydrated so useTranscript doesn't try getMessages via port
-    markSessionHydrated(sessionPath);
-    pendingResumesRef.current.add(sessionPath);
-
-    // Hydrate transcript from session file (fast path, no utility process needed)
-    try {
-      const { messages, compactionCount, thinkingLevel, model } =
-        await readSessionMessages(sessionPath);
-      const controller = getTranscriptController(sessionPath);
-      controller.hydrate(messages, compactionCount);
-      if (model) {
-        const matchedModel = modelOptions.find(
-          (m) => m.id === model.modelId && m.provider === model.provider,
-        );
-        useAppStore.getState().updateSession(sessionPath, {
-          thinkingLevel,
-          ...(matchedModel ? { model: matchedModel } : {}),
-        });
-      } else {
-        useAppStore.getState().updateSession(sessionPath, { thinkingLevel });
+  const handleResumeSession = useCallback(
+    async (session: PiSessionInfo): Promise<void> => {
+      setIsDraftChat(false);
+      setPendingSelectedPath(session.path);
+      const existing = Array.from(useAppStore.getState().sessions.values()).find(
+        (entry) => entry.sessionPath === session.path,
+      );
+      if (existing) {
+        pushNavigationHistory(existing.sessionPath);
+        setPendingSelectedPath(null);
+        setActiveSession(existing.sessionPath);
+        return;
       }
-    } catch (err) {
-      console.error('Failed to hydrate session from file:', err);
-    }
 
-    // Show the session — messages and metadata are ready
-    setActiveSession(sessionPath);
-    setPendingSelectedPath(null);
+      const sessionPath = session.path;
 
-    // Spawn utility process in background
-    try {
-      await resumeSession(sessionPath);
-      pendingResumesRef.current.delete(sessionPath);
+      addSessionEntry({
+        sessionPath,
+        persistedSessionId: session.id,
+        status: 'idle',
+        title: session.name ?? session.firstMessage,
+        cwd: session.cwd,
+        createdAt: session.created,
+        model: null,
+        thinkingLevel: null,
+        contextUsage: null,
+        autoCompactionEnabled: false,
+        messageCount: session.messageCount,
+        error: null,
+      });
+      // Mark as hydrated so useTranscript doesn't try getMessages via port
+      markSessionHydrated(sessionPath);
+      pendingResumesRef.current.add(sessionPath);
 
-      // Wire up live subscriptions (port is now available under sessionPath)
-      ensureTranscriptSession(sessionPath);
-
-      // Fetch session options and state from the process
-      void refreshSessionState(sessionPath);
-      void getSessionOptions(sessionPath)
-        .then((options) => {
-          setModelOptions(options.models);
-          setThinkingLevelOptions(options.thinkingLevels);
-          setSkillOptions(options.skills);
-        })
-        .catch(() => {});
-      void touchSession(sessionPath);
-
-      // Flush any pending prompts
-      const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
-      if (bufferedMessages && bufferedMessages.length > 0) {
-        pendingPromptsRef.current.delete(sessionPath);
-        await prompt(sessionPath, bufferedMessages[0]);
-        for (let i = 1; i < bufferedMessages.length; i++) {
-          await steer(sessionPath, bufferedMessages[i]);
+      // Hydrate transcript from session file (fast path, no utility process needed)
+      try {
+        const { messages, compactionCount, thinkingLevel, model } =
+          await readSessionMessages(sessionPath);
+        const controller = getTranscriptController(sessionPath);
+        controller.hydrate(messages, compactionCount);
+        if (model) {
+          const matchedModel = modelOptions.find(
+            (m) => m.id === model.modelId && m.provider === model.provider,
+          );
+          useAppStore.getState().updateSession(sessionPath, {
+            thinkingLevel,
+            ...(matchedModel ? { model: matchedModel } : {}),
+          });
+        } else {
+          useAppStore.getState().updateSession(sessionPath, { thinkingLevel });
         }
-        void listProjectSessions([session.cwd]);
+      } catch (err) {
+        console.error('Failed to hydrate session from file:', err);
       }
-    } catch (err) {
-      console.error('Failed to resume session process:', err);
-      const store = useAppStore.getState();
-      store.removeSession(sessionPath);
-      disposeTranscriptSession(sessionPath);
-      if (store.activeSessionPath === sessionPath) {
-        store.setActiveSession(null);
+
+      // Show the session — messages and metadata are ready
+      pushNavigationHistory(sessionPath);
+      setActiveSession(sessionPath);
+      setPendingSelectedPath(null);
+
+      // Spawn utility process in background
+      try {
+        await resumeSession(sessionPath);
+        pendingResumesRef.current.delete(sessionPath);
+
+        // Wire up live subscriptions (port is now available under sessionPath)
+        ensureTranscriptSession(sessionPath);
+
+        // Fetch session options and state from the process
+        void refreshSessionState(sessionPath);
+        void getSessionOptions(sessionPath)
+          .then((options) => {
+            setModelOptions(options.models);
+            setThinkingLevelOptions(options.thinkingLevels);
+            setSkillOptions(options.skills);
+          })
+          .catch(() => {});
+        void touchSession(sessionPath);
+
+        // Flush any pending prompts
+        const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
+        if (bufferedMessages && bufferedMessages.length > 0) {
+          pendingPromptsRef.current.delete(sessionPath);
+          await prompt(sessionPath, bufferedMessages[0]);
+          for (let i = 1; i < bufferedMessages.length; i++) {
+            await steer(sessionPath, bufferedMessages[i]);
+          }
+          void listProjectSessions([session.cwd]);
+        }
+      } catch (err) {
+        console.error('Failed to resume session process:', err);
+        const store = useAppStore.getState();
+        store.removeSession(sessionPath);
+        disposeTranscriptSession(sessionPath);
+        if (store.activeSessionPath === sessionPath) {
+          store.setActiveSession(null);
+        }
+        const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
+        if (bufferedMessages && bufferedMessages.length > 0) {
+          setRestoreText(bufferedMessages.join('\n\n'));
+        }
+        pendingPromptsRef.current.delete(sessionPath);
+        pendingResumesRef.current.delete(sessionPath);
+        toast.error('Failed to resume session. Please try again.');
       }
-      const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
-      if (bufferedMessages && bufferedMessages.length > 0) {
-        setRestoreText(bufferedMessages.join('\n\n'));
-      }
-      pendingPromptsRef.current.delete(sessionPath);
-      pendingResumesRef.current.delete(sessionPath);
-      toast.error('Failed to resume session. Please try again.');
-    }
-  }
+    },
+    [modelOptions, addSessionEntry, pushNavigationHistory, refreshSessionState, setActiveSession],
+  );
 
   const handleOpenProject = useCallback(async () => {
     const result = await openProjectDirectory();
@@ -714,6 +735,17 @@ function App(): React.JSX.Element {
     }
   }, [refreshProjectSessions, setActiveSession]);
 
+  const findSessionByPath = useCallback(
+    (path: string): PiSessionInfo | undefined => {
+      for (const cwd of Object.keys(projectSessions)) {
+        const found = projectSessions[cwd].find((s) => s.path === path);
+        if (found) return found;
+      }
+      return undefined;
+    },
+    [projectSessions],
+  );
+
   const shortcutActions = useMemo(
     () => ({
       'sidebar.newChat': () => {
@@ -722,8 +754,29 @@ function App(): React.JSX.Element {
       'sidebar.openProject': () => {
         handleOpenProject();
       },
+      'navigation.openSwitcher': () => {
+        setSwitcherOpen(true);
+      },
+      'navigation.prev': () => {
+        const targetPath = useAppStore.getState().navigateBack();
+        if (targetPath) {
+          const session = findSessionByPath(targetPath);
+          if (session) {
+            void handleResumeSession(session);
+          }
+        }
+      },
+      'navigation.next': () => {
+        const targetPath = useAppStore.getState().navigateForward();
+        if (targetPath) {
+          const session = findSessionByPath(targetPath);
+          if (session) {
+            void handleResumeSession(session);
+          }
+        }
+      },
     }),
-    [handleNewSession, handleOpenProject],
+    [handleNewSession, handleOpenProject, handleResumeSession, findSessionByPath],
   );
   const shortcutBindings = useKeyboardShortcuts(shortcutActions);
 
@@ -1008,6 +1061,21 @@ function App(): React.JSX.Element {
           </Empty>
         )}
       </main>
+
+      <SessionSwitcher
+        projectSessions={projectSessions}
+        navigationBackStack={navigationBackStack}
+        navigationForwardStack={navigationForwardStack}
+        activeSessionPath={activeSessionPath}
+        onSwitch={(sessionPath) => {
+          const session = findSessionByPath(sessionPath);
+          if (session) {
+            void handleResumeSession(session);
+          }
+        }}
+        open={switcherOpen}
+        onOpenChange={setSwitcherOpen}
+      />
 
       <LoginDialog
         open={loginDialogOpen}

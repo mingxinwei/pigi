@@ -4,13 +4,21 @@
 
 ### Added
 
-- Session message lists remember scroll position — switching between sessions restores where you left off. New sessions open scrolled to the latest message.
+- Session session message lists remember scroll position — switching between sessions restores where you left off. New sessions open scrolled to the latest message.
 - User message minimap on the right side of the chat — hover to see a list of your messages, click to jump to any one.
+- Session switcher (Ctrl+R): search and switch to any session across all projects.
+- Navigate session history with Cmd+[ (back) and Cmd+] (forward), browser-style.
+- Switching sessions now auto-expands the project and scrolls to the session in the sidebar.
+
+### Changed
+
+- Dialog and command palette now use 550px width by default.
 
 ### Fixed
 
 - Refreshing the app (Cmd+R) no longer breaks session resume — the session reconnects seamlessly.
 - Opening a session no longer briefly logs errors about missing ports.
+- Renamed sessions now show their updated name in the session switcher.
 
 ## [0.3.2] - 2026-06-03
 

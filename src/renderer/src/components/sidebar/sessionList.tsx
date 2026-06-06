@@ -60,7 +60,7 @@ export function SessionItem({
 
   if (isEditing) {
     return (
-      <SidebarMenuSubItem>
+      <SidebarMenuSubItem data-session-path={session.path}>
         <SidebarMenuSubButton
           asChild
           isActive={isActive}
@@ -85,7 +85,7 @@ export function SessionItem({
   return (
     <ContextMenuRoot>
       <ContextMenuTrigger asChild>
-        <SidebarMenuSubItem>
+        <SidebarMenuSubItem data-session-path={session.path}>
           <SidebarMenuSubButton
             asChild
             isActive={isActive}

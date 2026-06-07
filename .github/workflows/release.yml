@@ -20,6 +20,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Write Apple notary API key to file
+        env:
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+        run: |
+          echo "$APPLE_NOTARY_API_KEY" > "$RUNNER_TEMP/notary-key.p8"
+
       - name: Import Apple Developer Certificate
         env:
           APPLE_DEVELOPER_CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12 }}
@@ -38,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_API_KEY: ${{ runner.temp }}/notary-key.p8
           APPLE_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
 

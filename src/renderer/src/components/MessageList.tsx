@@ -14,7 +14,7 @@ import ToolBlock from './ToolBlock';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import UserMessageMiniMap from './userMessageMiniMap';
+import UserMessageMiniMap from './UserMessageMiniMap';
 
 interface MessageListProps {
   nodes: TranscriptNode[];

@@ -182,7 +182,6 @@ export const useAppStore = create<AppState>((set) => ({
       return {
         navigationBackStack: nextBackStack,
         navigationForwardStack: nextForwardStack,
-        activeSessionPath: targetPath,
       };
     });
     return targetPath;
@@ -201,7 +200,6 @@ export const useAppStore = create<AppState>((set) => ({
       return {
         navigationBackStack: nextBackStack,
         navigationForwardStack: nextForwardStack,
-        activeSessionPath: targetPath,
       };
     });
     return targetPath;

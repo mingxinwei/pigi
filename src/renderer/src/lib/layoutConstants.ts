@@ -10,6 +10,3 @@ export const VIBRANCY_OVERLAY_CONTENT =
 
 /** Background color used by transparent floating panels. */
 export const OVERLAY_BG = 'bg-popover/40';
-
-/** Row height for command palette items and input. */
-export const COMMAND_ROW_HEIGHT = 'h-[44px]';

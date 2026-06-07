@@ -73,24 +73,28 @@ export default function Sidebar({
     }
     if (!targetProjectPath) return;
 
-    // Deferred: expand project then scroll to session after DOM paints
-    if (targetProjectPath) {
-      const projectPath = targetProjectPath;
-      requestAnimationFrame(() => {
-        setExpandedProjects((prev) => {
-          if (prev.has(projectPath)) return prev;
-          const next = new Set(prev);
-          next.add(projectPath);
-          return next;
-        });
-        requestAnimationFrame(() => {
-          const el = document.querySelector(
-            `[data-session-path="${CSS.escape(selectedSessionPath)}"]`,
-          );
-          el?.scrollIntoView({ block: 'nearest' });
-        });
+    // Capture path in local variable to avoid stale closure
+    const scrollToPath = selectedSessionPath;
+    const projectPath = targetProjectPath;
+    let cancelled = false;
+    requestAnimationFrame(() => {
+      if (cancelled) return;
+      setExpandedProjects((prev) => {
+        if (prev.has(projectPath)) return prev;
+        const next = new Set(prev);
+        next.add(projectPath);
+        return next;
       });
-    }
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const el = document.querySelector(`[data-session-path="${CSS.escape(scrollToPath)}"]`);
+        el?.scrollIntoView({ block: 'nearest' });
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedSessionPath, projectSessions]);
 
   const getProjectSessions = useCallback(

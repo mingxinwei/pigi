@@ -332,12 +332,10 @@ function App(): React.JSX.Element {
       removeFromNavigationHistory(sessionPath);
       removeSession(sessionPath);
       // Auto-switch to last session in back stack
-      const targetPath = navigateBack();
-      if (targetPath) {
-        const sessions = useAppStore.getState().sessions;
-        if (sessions.has(targetPath)) {
-          useAppStore.getState().setActiveSession(targetPath);
-        }
+      const states = useAppStore.getState();
+      const targetPath = states.navigateBack();
+      if (targetPath && states.sessions.has(targetPath)) {
+        states.setActiveSession(targetPath);
       }
     });
   }, [removeSession, removeFromNavigationHistory, navigateBack]);
@@ -618,14 +616,14 @@ function App(): React.JSX.Element {
   }
 
   const handleResumeSession = useCallback(
-    async (session: PiSessionInfo): Promise<void> => {
+    async (session: PiSessionInfo, options?: { skipHistory?: boolean }): Promise<void> => {
       setIsDraftChat(false);
       setPendingSelectedPath(session.path);
-      const existing = Array.from(useAppStore.getState().sessions.values()).find(
-        (entry) => entry.sessionPath === session.path,
-      );
+      const existing = useAppStore.getState().sessions.get(session.path);
       if (existing) {
-        pushNavigationHistory(existing.sessionPath);
+        if (!options?.skipHistory) {
+          pushNavigationHistory(existing.sessionPath);
+        }
         setPendingSelectedPath(null);
         setActiveSession(existing.sessionPath);
         return;
@@ -769,7 +767,7 @@ function App(): React.JSX.Element {
         if (targetPath) {
           const session = findSessionByPath(targetPath);
           if (session) {
-            void handleResumeSession(session);
+            void handleResumeSession(session, { skipHistory: true });
           }
         }
       },
@@ -778,7 +776,7 @@ function App(): React.JSX.Element {
         if (targetPath) {
           const session = findSessionByPath(targetPath);
           if (session) {
-            void handleResumeSession(session);
+            void handleResumeSession(session, { skipHistory: true });
           }
         }
       },

@@ -78,7 +78,6 @@ function App(): React.JSX.Element {
     navigationBackStack,
     navigationForwardStack,
     pushNavigationHistory,
-    navigateBack,
     removeFromNavigationHistory,
   } = useAppStore();
 
@@ -331,14 +330,8 @@ function App(): React.JSX.Element {
       disposeTranscriptSession(sessionPath);
       removeFromNavigationHistory(sessionPath);
       removeSession(sessionPath);
-      // Auto-switch to last session in back stack
-      const states = useAppStore.getState();
-      const targetPath = states.navigateBack();
-      if (targetPath && states.sessions.has(targetPath)) {
-        states.setActiveSession(targetPath);
-      }
     });
-  }, [removeSession, removeFromNavigationHistory, navigateBack]);
+  }, [removeSession, removeFromNavigationHistory]);
   useEffect(() => {
     if (!activeSessionPath) {
       return;

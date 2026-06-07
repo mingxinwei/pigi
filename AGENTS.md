@@ -8,6 +8,7 @@ For DeepSeek model: do not overthink, think less and act more.
 - Never use `sed` for code edits; always use `read` + `edit` tools so you understand the semantic context around the change
 - Never use `sed`/`cat`/`head`/`tail` to read files; use the `read` tool (supports offset/limit for specific lines)
 - Run `npm run check` after any significant code change to catch type errors, lint issues, and formatting problems before committing. Read the full output — do not pipe through `rg` or `grep`.
+- ripgrep (`rg`): use `--type ts` for both `.ts` and `.tsx` files (ripgrep's built-in `ts` type already includes `*.tsx`, `*.cts`, `*.mts`). Do NOT use `--type tsx` — it's not a valid type. Run `rg --type-list` to verify.
 
 ## Conversational Style
 

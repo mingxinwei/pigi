@@ -6,7 +6,7 @@
  * - Each session gets control/data MessagePorts for commands and streaming
  */
 import { app, BrowserWindow, ipcMain, net, protocol, shell, systemPreferences } from 'electron';
-import { electronApp, optimizer } from '@electron-toolkit/utils';
+import { electronApp } from '@electron-toolkit/utils';
 import { createMainWindow } from './windows/createMainWindow';
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
 import { registerProjectHandlers } from './ipc/projectHandlers';
@@ -27,8 +27,6 @@ app.whenReady().then(() => {
   protocol.handle('local-file', (request) =>
     net.fetch('file://' + decodeURIComponent(request.url.slice('local-file://'.length))),
   );
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
-
   initializeShellEnv();
   registerIpcHandlers();
   registerProjectHandlers();

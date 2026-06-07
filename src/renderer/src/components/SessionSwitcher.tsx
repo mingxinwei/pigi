@@ -222,7 +222,7 @@ export default function SessionSwitcher({
         className={cn(OVERLAY_BG, '[&_[data-selected=true]]:bg-foreground/10')}
       >
         <CommandInput
-          placeholder="Search sessions..."
+          placeholder="Type freely to fuzzy search sessions"
           value={query}
           onValueChange={setQuery}
           autoFocus

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { PiSessionInfo } from '../../../shared/ipcContract';
 import fuzzysort from 'fuzzysort';
 import { cn, formatRelativeTime } from '../lib/utils';
-import { OVERLAY_BG, FLOATING_ITEM_HOVER } from '../lib/layoutConstants';
+import { OVERLAY_BG } from '../lib/layoutConstants';
 import {
   Command,
   CommandDialog,
@@ -72,11 +72,11 @@ export default function SessionSwitcher({
       ...(activeSessionPath ? [activeSessionPath] : []),
       ...navigationForwardStack,
     ];
-    for (let index = 0; index < allHistoryPaths.length; index++) {
+    for (let index = allHistoryPaths.length - 1; index >= 0; index--) {
       const path = allHistoryPaths[index];
       if (!historySet.has(path)) {
         historySet.add(path);
-        historyOrder.set(path, allHistoryPaths.length - index);
+        historyOrder.set(path, index + 1);
       }
     }
 
@@ -140,10 +140,14 @@ export default function SessionSwitcher({
     return { filteredSessions: sessions, highlightMap: map };
   }, [query, allSessions]);
 
-  // cmdk does not auto-scroll to top when filtering is external (shouldFilter=false)
+  // Scroll to top when dialog opens or filtered list changes
   useEffect(() => {
-    commandListRef.current?.scrollTo(0, 0);
-  }, [filteredSessions]);
+    if (open) {
+      requestAnimationFrame(() => {
+        commandListRef.current?.scrollTo(0, 0);
+      });
+    }
+  }, [open, filteredSessions]);
 
   const handleSelect = useCallback(
     (path: string) => {
@@ -215,7 +219,7 @@ export default function SessionSwitcher({
         onValueChange={setSelectedValue}
         shouldFilter={false}
         onKeyDown={handleCommandKeyDown}
-        className={cn(OVERLAY_BG, `[&_[data-selected=true]]:${FLOATING_ITEM_HOVER}`)}
+        className={cn(OVERLAY_BG, '[&_[data-selected=true]]:bg-foreground/10')}
       >
         <CommandInput
           placeholder="Search sessions..."

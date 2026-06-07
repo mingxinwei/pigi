@@ -156,7 +156,10 @@ export const useAppStore = create<AppState>((set) => ({
   pushNavigationHistory: (sessionPath) =>
     set((state) => {
       if (sessionPath === state.activeSessionPath) return {};
-      const backStack = [...state.navigationBackStack];
+      // Remove target from backStack to avoid duplicates when toggling
+      // between sessions (e.g. Ctrl+Tab D↔C keeps backStack clean).
+      // .filter() creates a new array required by Zustand's immutability.
+      const backStack = state.navigationBackStack.filter((p) => p !== sessionPath);
       if (state.activeSessionPath) {
         backStack.push(state.activeSessionPath);
       }
@@ -173,7 +176,7 @@ export const useAppStore = create<AppState>((set) => ({
       const nextBackStack = [...state.navigationBackStack];
       targetPath = nextBackStack.pop()!;
       const nextForwardStack = [...state.navigationForwardStack];
-      if (state.activeSessionPath) {
+      if (state.activeSessionPath && !nextForwardStack.includes(state.activeSessionPath)) {
         nextForwardStack.push(state.activeSessionPath);
       }
       return {
@@ -192,7 +195,7 @@ export const useAppStore = create<AppState>((set) => ({
       const nextForwardStack = [...state.navigationForwardStack];
       targetPath = nextForwardStack.pop()!;
       const nextBackStack = [...state.navigationBackStack];
-      if (state.activeSessionPath) {
+      if (state.activeSessionPath && !nextBackStack.includes(state.activeSessionPath)) {
         nextBackStack.push(state.activeSessionPath);
       }
       return {

@@ -13,6 +13,3 @@ export const OVERLAY_BG = 'bg-popover/40';
 
 /** Row height for command palette items and input. */
 export const COMMAND_ROW_HEIGHT = 'h-[44px]';
-
-/** Item hover/selected state for floating panels. */
-export const FLOATING_ITEM_HOVER = 'bg-foreground/7';

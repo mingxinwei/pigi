@@ -49,4 +49,3 @@ publish:
   provider: github
   owner: whycatdothis
   repo: pigi
-

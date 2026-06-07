@@ -21,4 +21,5 @@ When asked to release a new version:
 1. Bump `version` in `package.json` (minor by default unless user says otherwise).
 2. Rename `## [Unreleased]` to `## [<version>]` in `CHANGELOG.md`, add date.
 3. Commit with message `release: v<version>`.
-4. Tag `v<version>`, push code and tag: `git push --follow-tags`.
+4. Create annotated tag and push: `git tag -a v<version> -m "v<version>" && git push --follow-tags`.
+   - Always use `-a` (annotated tag). `git push --follow-tags` only pushes annotated tags, lightweight tags are skipped.

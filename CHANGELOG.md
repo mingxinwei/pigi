@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Ctrl+R session switcher shortcut now works in production builds, not just in dev mode.
+
 ## [0.3.3] - 2026-06-07
 
 ### Added

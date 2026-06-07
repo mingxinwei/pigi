@@ -37,26 +37,6 @@ export function createMainWindow(): BrowserWindow {
     mainWindow!.show();
   });
 
-  // Disable built-in menu shortcuts (Ctrl+R, Ctrl+Shift+I, etc.) so
-  // keyboard events reach the renderer for custom shortcut handling.
-  mainWindow.webContents.setIgnoreMenuShortcuts(true);
-
-  // Toggle DevTools with F12 or Ctrl+Shift+I (dev only)
-  if (is.dev) {
-    mainWindow.webContents.on('before-input-event', (_event, input) => {
-      if (input.type !== 'keyDown') return;
-      const isDevToolsKey =
-        input.code === 'F12' || (input.code === 'KeyI' && input.control && input.shift);
-      if (isDevToolsKey) {
-        if (mainWindow!.webContents.isDevToolsOpened()) {
-          mainWindow!.webContents.closeDevTools();
-        } else {
-          mainWindow!.webContents.openDevTools({ mode: 'detach' });
-        }
-      }
-    });
-  }
-
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: 'deny' };

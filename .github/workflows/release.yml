@@ -20,9 +20,27 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:mac
+      - name: Import Apple Developer Certificate
+        env:
+          APPLE_DEVELOPER_CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12 }}
+          APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_DEVELOPER_CERTIFICATE_P12" | base64 -d > certificate.p12
+          security create-keychain -p "$RUNNER_TEMP/keychain-password" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$RUNNER_TEMP/keychain-password" build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$RUNNER_TEMP/keychain-password" build.keychain
+          security list-keychains -d user -s build.keychain
+          rm certificate.p12
+
+      - run: npm run build:mac:dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
 
       - name: Update release notes
         env:

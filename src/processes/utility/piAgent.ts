@@ -36,6 +36,7 @@ import type {
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
+import { generateSessionTitle } from './autoRename';
 
 function toModelInfo(model: {
   name: string;
@@ -155,6 +156,7 @@ let dataPort: Port | null = null;
 let unsubscribeEvents: (() => void) | null = null;
 let isCleanedUp = false;
 let isSessionBusy = false;
+let hasAutoRenamed = false;
 // Services are expensive to build; prewarm them while the user is browsing sessions.
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
 let serviceCreationQueue: Promise<void> = Promise.resolve();
@@ -268,6 +270,44 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       case 'auto_retry_end':
         setSessionBusy(session.isStreaming);
         break;
+    }
+
+    // Auto-rename: after the first agent turn completes, generate a title
+    if (event.type === 'agent_end' && !hasAutoRenamed && rt.services?.modelRegistry) {
+      hasAutoRenamed = true;
+      const messages = session.messages;
+      const snippets: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          const text =
+            typeof msg.content === 'string'
+              ? msg.content
+              : (msg.content as Array<{ type?: string; text?: string }>)
+                  .filter((c) => c.type === 'text')
+                  .map((c) => c.text)
+                  .join('');
+          if (text) snippets.push({ role: 'user', text });
+        } else if (msg.role === 'assistant') {
+          const text = (msg.content as Array<{ type?: string; text?: string }>)
+            .filter((c) => c.type === 'text')
+            .map((c) => c.text)
+            .join('');
+          if (text) snippets.push({ role: 'assistant', text });
+        }
+      }
+      if (snippets.length > 0) {
+        const sessionProvider = session.model?.provider;
+        const capturedSessionManager = session.sessionManager;
+        const capturedCwd = process.cwd();
+        void generateSessionTitle(snippets, rt.services.modelRegistry, sessionProvider).then(
+          (title) => {
+            if (title && runtime?.session.sessionManager === capturedSessionManager) {
+              capturedSessionManager.appendSessionInfo(title);
+              push({ type: 'auto_title', title, cwd: capturedCwd });
+            }
+          },
+        );
+      }
     }
 
     switch (event.type) {
@@ -665,6 +705,7 @@ async function warmUp(cwds: string[]): Promise<void> {
 
 async function createSession(cwd: string): Promise<void> {
   try {
+    hasAutoRenamed = false;
     await setSessionProcessCwd(cwd);
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,
@@ -697,6 +738,8 @@ async function resumeSession(sessionPath: string): Promise<void> {
       sessionManager,
     });
     await runtime.session.bindExtensions({});
+    // Resumed sessions already have names; skip auto-rename
+    hasAutoRenamed = true;
     sendToMain({
       type: 'session_created',
       sessionId: runtime.session.sessionId,

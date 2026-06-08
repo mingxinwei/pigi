@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { IconLoader2, IconPencil } from '@tabler/icons-react';
+import { useTypewriter } from '../../hooks/useTypewriter';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar';
@@ -32,6 +33,7 @@ export function SessionItem({
 }: SessionItemProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [displayTitle, skipNextAnimation] = useTypewriter(getSessionTitle(session));
 
   const handleStartRename = useCallback(() => {
     setEditValue(getSessionTitle(session));
@@ -41,10 +43,11 @@ export function SessionItem({
   const handleFinishRename = useCallback(() => {
     const trimmed = editValue.trim();
     if (trimmed && trimmed !== getSessionTitle(session)) {
+      skipNextAnimation();
       onRename(trimmed);
     }
     setIsEditing(false);
-  }, [editValue, session, onRename]);
+  }, [editValue, session, onRename, skipNextAnimation]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -94,7 +97,7 @@ export function SessionItem({
           >
             <button type="button" onClick={onSwitch} onDoubleClick={handleStartRename}>
               <span className="min-w-0 flex-1 truncate text-left" title={getSessionTitle(session)}>
-                {getSessionTitle(session)}
+                {displayTitle}
               </span>
               {isRunning ? (
                 <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-green-500" />

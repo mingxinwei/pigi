@@ -13,6 +13,8 @@ import {
   CommandItem,
 } from './ui/command';
 
+const MAX_VISIBLE_SESSIONS = 20;
+
 interface FlattenedSession {
   path: string;
   title: string;
@@ -134,8 +136,7 @@ export default function SessionSwitcher({
 
     const results = fuzzysort.go(trimmed, searchTargets, {
       keys: ['title', 'projectName'],
-      threshold: 0.3,
-      limit: 20,
+      limit: MAX_VISIBLE_SESSIONS,
     });
 
     const sessions: FlattenedSession[] = [];
@@ -148,6 +149,24 @@ export default function SessionSwitcher({
 
     return { filteredSessions: sessions, highlightMap: map };
   }, [deferredQuery, allSessions, searchTargets]);
+
+  // Reset selection to first item when dialog opens or filtered results change
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => {
+      if (autoSelectPrevious) {
+        // Ctrl+Tab mode: select the second item (previous session)
+        const secondPath = filteredSessions[1]?.path;
+        if (secondPath) {
+          setSelectedValue(secondPath);
+        }
+      } else {
+        // Normal mode: always select first item
+        const firstPath = filteredSessions[0]?.path ?? '';
+        setSelectedValue(firstPath);
+      }
+    });
+  }, [open, filteredSessions, autoSelectPrevious]);
 
   // Scroll to top when dialog opens or filtered list changes
   useEffect(() => {
@@ -193,15 +212,6 @@ export default function SessionSwitcher({
     [filteredSessions, selectedValue],
   );
 
-  // When opened via Ctrl+Tab, preselect the second item (previous session)
-  useEffect(() => {
-    if (!open || !autoSelectPrevious) return;
-    const secondPath = filteredSessions[1]?.path;
-    if (secondPath) {
-      requestAnimationFrame(() => setSelectedValue(secondPath));
-    }
-  }, [open, autoSelectPrevious, filteredSessions]);
-
   // Select highlighted item when Ctrl is released (Ctrl+Tab only)
   useEffect(() => {
     if (!open || !autoSelectPrevious) return;
@@ -244,7 +254,7 @@ export default function SessionSwitcher({
             </CommandEmpty>
           ) : (
             <CommandGroup>
-              {filteredSessions.slice(0, 20).map((session) => {
+              {filteredSessions.slice(0, MAX_VISIBLE_SESSIONS).map((session) => {
                 const results = highlightMap.get(session.path);
                 return (
                   <CommandItem

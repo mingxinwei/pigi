@@ -5,6 +5,7 @@
 ### Fixed
 
 - Session switcher no longer lags when searching with many sessions (1000+).
+- Session switcher now always selects the first item when opened or when search results change.
 
 ## [0.3.4] - 2026-06-07
 

@@ -2,11 +2,17 @@
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-06-08
+
+### Changed
+
+- Auto-rename now triggers after 3 text messages instead of waiting for the first full agent turn to complete.
+
 ## [0.3.5] - 2026-06-08
 
 ### Added
 
-- Auto-rename sessions: after the first agent response, a lightweight LLM call generates a concise title (max 10 words) using the cheapest available model.
+- Auto-rename sessions: after 3 text messages (user + assistant, excluding tool calls), a lightweight LLM call generates a concise title using the cheapest available model. Triggers mid-turn without waiting for the full agent response.
 - Typewriter animation when auto-rename updates the session title in the sidebar.
 
 ### Fixed

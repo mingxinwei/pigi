@@ -25,11 +25,14 @@ export function useTypewriter(text: string, speed = 30): string {
 
     async function animate(): Promise<void> {
       // Phase 1: delete old text character by character
-      for (let i = prevText.length; i >= 0; i--) {
+      // Delete in chunks to keep total deletion under ~300ms
+      const deleteStep = Math.max(1, Math.ceil(prevText.length / 10));
+      for (let i = prevText.length; i >= 0; i -= deleteStep) {
         if (cancelled) return;
         setDisplayed(prevText.slice(0, i));
-        await new Promise((r) => setTimeout(r, speed / 2));
+        await new Promise((r) => setTimeout(r, speed));
       }
+      if (!cancelled) setDisplayed('');
 
       // Phase 2: type new text character by character
       for (let i = 0; i <= text.length; i++) {

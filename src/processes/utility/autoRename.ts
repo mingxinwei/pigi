@@ -114,7 +114,11 @@ export async function generateSessionTitle(
   const candidates = getCandidatesByCost(modelRegistry);
   if (candidates.length === 0) return null;
 
-  const conversationText = messages.map((m) => `${m.role}: ${m.text.slice(0, 200)}`).join('\n');
+  const conversationText = messages
+    .slice(0, 4)
+    .map((m) => `${m.role}: ${m.text.slice(0, 200)}`)
+    .join('\n')
+    .slice(0, 1000);
 
   // Try cheapest models in order (up to MAX_GLOBAL_ATTEMPTS)
   const tried = new Set<string>();

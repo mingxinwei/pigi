@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-06-08
+
 ### Added
 
 - Auto-rename sessions: after the first agent response, a lightweight LLM call generates a concise title (max 10 words) using the cheapest available model.
@@ -12,6 +14,7 @@
 - Session switcher no longer lags when searching with many sessions (1000+).
 - Session switcher now always selects the first item when opened or when search results change.
 - Manual rename now refreshes the correct project's session list (uses session cwd instead of active project).
+
 ## [0.3.4] - 2026-06-07
 
 ### Fixed

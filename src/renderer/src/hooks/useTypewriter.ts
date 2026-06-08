@@ -3,29 +3,31 @@ import { useState, useEffect, useRef } from 'react';
 /**
  * Typewriter effect: when `text` changes, animates deletion of old text
  * then types in the new text character by character.
+ *
+ * Returns [displayedText, skipNext] where skipNext() suppresses the
+ * animation for the next text change (e.g. after a manual rename).
  */
-export function useTypewriter(text: string, speed = 30): string {
+export function useTypewriter(text: string, speed = 30): [string, () => void] {
   const [displayed, setDisplayed] = useState(text);
   const prevTextRef = useRef(text);
-  const animatingRef = useRef(false);
+  const skipNextRef = useRef(false);
 
   useEffect(() => {
     const prevText = prevTextRef.current;
     if (prevText === text) return;
     prevTextRef.current = text;
 
-    // Don't animate on initial mount or if already animating same transition
-    if (!prevText) {
+    // Skip animation if flagged (manual rename) or no previous text
+    if (skipNextRef.current || !prevText) {
+      skipNextRef.current = false;
       setDisplayed(text);
       return;
     }
 
-    animatingRef.current = true;
     let cancelled = false;
 
     async function animate(): Promise<void> {
-      // Phase 1: delete old text character by character
-      // Delete in chunks to keep total deletion under ~300ms
+      // Phase 1: delete in chunks to keep total deletion under ~300ms
       const deleteStep = Math.max(1, Math.ceil(prevText.length / 10));
       for (let i = prevText.length; i >= 0; i -= deleteStep) {
         if (cancelled) return;
@@ -40,18 +42,19 @@ export function useTypewriter(text: string, speed = 30): string {
         setDisplayed(text.slice(0, i));
         await new Promise((r) => setTimeout(r, speed));
       }
-
-      animatingRef.current = false;
     }
 
     void animate();
 
     return () => {
       cancelled = true;
-      animatingRef.current = false;
       setDisplayed(text);
     };
   }, [text, speed]);
 
-  return displayed;
+  function skipNext(): void {
+    skipNextRef.current = true;
+  }
+
+  return [displayed, skipNext];
 }

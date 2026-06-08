@@ -9,7 +9,13 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type RefObject } from 'react';
 import { TranscriptController, type TranscriptState } from '../state/transcriptController';
 import { useAppStore } from '../state/appStore';
-import { onPush, onStreamBatch, getMessages, getState } from '../services/piAgentClient';
+import {
+  onPush,
+  onStreamBatch,
+  getMessages,
+  getState,
+  listProjectSessions,
+} from '../services/piAgentClient';
 import type { PiPush, StreamBatch } from '../../../shared/ipcContract';
 
 interface UseTranscriptResult {
@@ -137,6 +143,10 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
 
       case 'login_progress':
       case 'login_error':
+        break;
+
+      case 'auto_title':
+        void listProjectSessions([pushMessage.cwd]);
         break;
     }
   });

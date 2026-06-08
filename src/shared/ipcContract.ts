@@ -169,7 +169,8 @@ export type PiPush =
   | { type: 'login_open_url'; url: string }
   | { type: 'login_progress'; message: string }
   | { type: 'login_complete'; providerId: string }
-  | { type: 'login_error'; error: string };
+  | { type: 'login_error'; error: string }
+  | { type: 'auto_title'; title: string; cwd: string };
 
 // =============================================================================
 // Stream batches: Utility → Renderer (via data MessagePort, high-frequency)

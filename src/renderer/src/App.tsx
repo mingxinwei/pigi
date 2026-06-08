@@ -828,7 +828,6 @@ function App(): React.JSX.Element {
         // Session is running, rename via SDK
         try {
           await renameSession(entry.sessionPath, name);
-          useAppStore.getState().updateSession(entry.sessionPath, { title: name });
         } catch (err) {
           console.error('Failed to rename session:', err);
         }
@@ -840,10 +839,12 @@ function App(): React.JSX.Element {
         }
       }
       // Refresh session list to reflect new name
-      const activeCwdNow = activeProject?.path ?? window.piApi.getCwd();
-      void listProjectSessions([activeCwdNow]);
+      const sessionCwd = entry?.cwd ?? findSessionByPath(sessionPath)?.cwd;
+      if (sessionCwd) {
+        void listProjectSessions([sessionCwd]);
+      }
     },
-    [sessions, activeProject],
+    [sessions, findSessionByPath],
   );
 
   const handleSelectModel = useCallback(

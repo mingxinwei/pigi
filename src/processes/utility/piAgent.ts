@@ -297,11 +297,13 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       }
       if (snippets.length > 0) {
         const sessionProvider = session.model?.provider;
+        const capturedSessionManager = session.sessionManager;
+        const capturedCwd = process.cwd();
         void generateSessionTitle(snippets, rt.services.modelRegistry, sessionProvider).then(
           (title) => {
-            if (title && runtime) {
-              runtime.session.sessionManager.appendSessionInfo(title);
-              push({ type: 'auto_title', title, cwd: process.cwd() });
+            if (title && runtime?.session.sessionManager === capturedSessionManager) {
+              capturedSessionManager.appendSessionInfo(title);
+              push({ type: 'auto_title', title, cwd: capturedCwd });
             }
           },
         );
@@ -703,6 +705,7 @@ async function warmUp(cwds: string[]): Promise<void> {
 
 async function createSession(cwd: string): Promise<void> {
   try {
+    hasAutoRenamed = false;
     await setSessionProcessCwd(cwd);
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,

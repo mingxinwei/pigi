@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Session switcher no longer lags when searching with many sessions (1000+).
+
 ## [0.3.4] - 2026-06-07
 
 ### Fixed

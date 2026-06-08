@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useDeferredValue, useCallback, useRef, useEffect } from 'react';
 import type { PiSessionInfo } from '../../../shared/ipcContract';
 import fuzzysort from 'fuzzysort';
 import { cn, formatRelativeTime } from '../lib/utils';
@@ -111,22 +111,31 @@ export default function SessionSwitcher({
     return flattened;
   }, [projectSessions, navigationBackStack, navigationForwardStack, activeSessionPath]);
 
+  // Prepare search targets once (avoid rebuilding on every keystroke)
+  const searchTargets = useMemo(
+    () =>
+      allSessions.map((session) => ({
+        session,
+        title: session.title,
+        projectName: session.projectName,
+      })),
+    [allSessions],
+  );
+
+  // Defer the search query so typing stays responsive
+  const deferredQuery = useDeferredValue(query);
+
   // Search (filtered + highlight data)
   const { filteredSessions, highlightMap } = useMemo(() => {
-    const trimmed = query.trim().toLowerCase();
+    const trimmed = deferredQuery.trim().toLowerCase();
     if (!trimmed) {
       return { filteredSessions: allSessions, highlightMap: new Map<string, Fuzzysort.Result[]>() };
     }
 
-    const searchTargets = allSessions.map((session) => ({
-      session,
-      title: session.title,
-      projectName: session.projectName,
-    }));
-
     const results = fuzzysort.go(trimmed, searchTargets, {
       keys: ['title', 'projectName'],
-      threshold: -10000,
+      threshold: 0.3,
+      limit: 20,
     });
 
     const sessions: FlattenedSession[] = [];
@@ -138,7 +147,7 @@ export default function SessionSwitcher({
     }
 
     return { filteredSessions: sessions, highlightMap: map };
-  }, [query, allSessions]);
+  }, [deferredQuery, allSessions, searchTargets]);
 
   // Scroll to top when dialog opens or filtered list changes
   useEffect(() => {
@@ -235,7 +244,7 @@ export default function SessionSwitcher({
             </CommandEmpty>
           ) : (
             <CommandGroup>
-              {filteredSessions.map((session) => {
+              {filteredSessions.slice(0, 20).map((session) => {
                 const results = highlightMap.get(session.path);
                 return (
                   <CommandItem

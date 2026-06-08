@@ -251,6 +251,56 @@ function setSessionBusy(isBusy: boolean): void {
   }
 }
 
+let snippets: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+
+/**
+ * Auto-rename: accumulate user/assistant text snippets on each message_start.
+ * Once we have 3, generate a title.
+ */
+function autoRenameOnce(
+  event: AgentSessionEvent & { type: 'message_start' },
+  session: AgentSessionRuntime['session'],
+  rt: AgentSessionRuntime & { services?: AgentSessionServices },
+  push: (msg: PiPush) => void,
+): void {
+  if (hasAutoRenamed || !rt.services?.modelRegistry) {
+    return;
+  }
+
+  const msg = event.message;
+  if (msg.role !== 'user' && msg.role !== 'assistant') {
+    return;
+  }
+
+  const content = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: msg.content }];
+  const text = content
+    .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+    .map((c) => c.text)
+    .join('');
+  if (!text) {
+    return;
+  }
+
+  snippets.push({ role: msg.role, text });
+  if (snippets.length < 3) {
+    return;
+  }
+
+  hasAutoRenamed = true;
+  const sessionProvider = session.model?.provider;
+  const capturedSessionManager = session.sessionManager;
+  const capturedCwd = process.cwd();
+  const capturedSnippets = snippets;
+  void generateSessionTitle(capturedSnippets, rt.services.modelRegistry, sessionProvider).then(
+    (title) => {
+      if (title && runtime?.session.sessionManager === capturedSessionManager) {
+        capturedSessionManager.appendSessionInfo(title);
+        push({ type: 'auto_title', title, cwd: capturedCwd });
+      }
+    },
+  );
+}
+
 function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBatcher): () => void {
   const session = rt.session;
 
@@ -272,47 +322,10 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
         break;
     }
 
-    // Auto-rename: after the first agent turn completes, generate a title
-    if (event.type === 'agent_end' && !hasAutoRenamed && rt.services?.modelRegistry) {
-      hasAutoRenamed = true;
-      const messages = session.messages;
-      const snippets: Array<{ role: 'user' | 'assistant'; text: string }> = [];
-      for (const msg of messages) {
-        if (msg.role === 'user') {
-          const text =
-            typeof msg.content === 'string'
-              ? msg.content
-              : (msg.content as Array<{ type?: string; text?: string }>)
-                  .filter((c) => c.type === 'text')
-                  .map((c) => c.text)
-                  .join('');
-          if (text) snippets.push({ role: 'user', text });
-        } else if (msg.role === 'assistant') {
-          const text = (msg.content as Array<{ type?: string; text?: string }>)
-            .filter((c) => c.type === 'text')
-            .map((c) => c.text)
-            .join('');
-          if (text) snippets.push({ role: 'assistant', text });
-        }
-      }
-      if (snippets.length > 0) {
-        const sessionProvider = session.model?.provider;
-        const capturedSessionManager = session.sessionManager;
-        const capturedCwd = process.cwd();
-        void generateSessionTitle(snippets, rt.services.modelRegistry, sessionProvider).then(
-          (title) => {
-            if (title && runtime?.session.sessionManager === capturedSessionManager) {
-              capturedSessionManager.appendSessionInfo(title);
-              push({ type: 'auto_title', title, cwd: capturedCwd });
-            }
-          },
-        );
-      }
-    }
-
     switch (event.type) {
       case 'message_start': {
         push({ type: 'event', event });
+        autoRenameOnce(event, session, rt, push);
         break;
       }
 
@@ -706,6 +719,7 @@ async function warmUp(cwds: string[]): Promise<void> {
 async function createSession(cwd: string): Promise<void> {
   try {
     hasAutoRenamed = false;
+    snippets = [];
     await setSessionProcessCwd(cwd);
     runtime = await createAgentSessionRuntime(createRuntimeFactory, {
       cwd,

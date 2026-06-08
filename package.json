@@ -23,7 +23,7 @@
     "build:win": "npm run build && electron-builder --win",
     "deploy": "pkill -f 'pigi.app/Contents/MacOS' || true; sleep 2; rm -rf ~/Applications/pigi.app && cp -R dist/mac-arm64/pigi.app ~/Applications/",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "build:mac:dev": "electron-vite build && electron-builder --mac --dir -c.mac.notarize=false",
+    "build:mac:dev": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir -c.mac.notarize=false -c.mac.identity=null -c.mac.hardenedRuntime=false",
     "build:mac:dist": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {

@@ -33,7 +33,7 @@ export function SessionItem({
 }: SessionItemProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const displayTitle = useTypewriter(getSessionTitle(session));
+  const [displayTitle, skipNextAnimation] = useTypewriter(getSessionTitle(session));
 
   const handleStartRename = useCallback(() => {
     setEditValue(getSessionTitle(session));
@@ -43,10 +43,11 @@ export function SessionItem({
   const handleFinishRename = useCallback(() => {
     const trimmed = editValue.trim();
     if (trimmed && trimmed !== getSessionTitle(session)) {
+      skipNextAnimation();
       onRename(trimmed);
     }
     setIsEditing(false);
-  }, [editValue, session, onRename]);
+  }, [editValue, session, onRename, skipNextAnimation]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

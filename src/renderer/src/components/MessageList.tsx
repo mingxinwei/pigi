@@ -26,7 +26,7 @@ function isRenderableNode(node: TranscriptNode): boolean {
   return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
-const MESSAGE_ROW_GAP = 16;
+const MESSAGE_ROW_GAP = 4;
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
@@ -528,7 +528,11 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
       >
         {showThinking && <ThinkingBlock text={node.thinking} />}
 
-        {showText && <MarkdownMessage text={node.text} />}
+        {showText && (
+          <div style={{ marginTop: showThinking ? `${MESSAGE_ROW_GAP}px` : undefined }}>
+            <MarkdownMessage text={node.text} />
+          </div>
+        )}
 
         {node.errorMessage && (
           <div className="mt-3 w-fit rounded-lg bg-destructive/10 px-3 py-2 text-[14px] text-destructive">
@@ -544,7 +548,7 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
 
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
-    <div className="mb-4 rounded-md bg-muted/70 px-3 py-1.5 text-muted-foreground">
+    <div className="rounded-md bg-muted/70 px-3 py-1.5 text-muted-foreground">
       <div className="text-[13px] font-medium">Thinking</div>
       <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
         {text}

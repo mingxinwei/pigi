@@ -4,7 +4,12 @@
 
 ### Changed
 
+- Reduced spacing between messages in the transcript for a more compact layout.
 - Increased the maximum number of recent projects from 12 to 64.
+
+### Fixed
+
+- The copy button now sits flush below thinking blocks instead of having extra space.
 
 ## [0.3.6] - 2026-06-08
 

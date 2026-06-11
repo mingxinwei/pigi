@@ -10,7 +10,7 @@ interface ProjectStoreSchema {
 const STORE_NAME = 'projects';
 const RECENT_PROJECTS_KEY = 'recentProjects';
 const ACTIVE_PROJECT_PATH_KEY = 'activeProjectPath';
-const MAX_RECENT_PROJECTS = 12;
+const MAX_RECENT_PROJECTS = 64;
 
 const store = new ElectronStore<ProjectStoreSchema>({
   name: STORE_NAME,

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Increased the maximum number of recent projects from 12 to 64.
+
 ## [0.3.6] - 2026-06-08
 
 ### Changed

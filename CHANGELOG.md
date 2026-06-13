@@ -5,6 +5,7 @@
 ### Changed
 
 - Reduced spacing between messages in the transcript for a more compact layout.
+- Markdown tables now have rounded corners.
 - Increased the maximum number of recent projects from 12 to 64.
 
 ### Fixed

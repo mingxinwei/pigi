@@ -90,15 +90,29 @@ const markdownComponents: Components = {
       </code>
     );
   },
+  // Table rendered with border-collapse: separate + border-spacing: 0 because
+  // border-radius does NOT work with border-collapse: collapse (per CSS spec).
+  // Instead of cell borders merging into one, each cell gets independent
+  // border-right + border-bottom so adjacent cells each contribute one edge
+  // — forming a clean 1px grid with no double borders. The table's own border
+  // provides the outer border, and overflow-hidden + rounded-md clips corners.
+  // Last column removes border-r, last row removes border-b to avoid overlapping
+  // the table's outer border.
   table: ({ children }) => (
     <div className="mb-3 overflow-x-auto last:mb-0">
-      <table className="w-full border-collapse text-left text-[14px]">{children}</table>
+      <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-md border border-border text-left text-[14px] [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0 [&_tbody_tr:last-child_td]:border-b-0">
+        {children}
+      </table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="border border-border bg-muted/60 px-2 py-1 font-medium">{children}</th>
+    <th className="border-b border-r border-border bg-muted/60 px-2 py-1 font-medium">
+      {children}
+    </th>
   ),
-  td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+  td: ({ children }) => (
+    <td className="border-b border-r border-border bg-background px-2 py-1">{children}</td>
+  ),
   strong: ({ children }) => <strong className="font-medium">{children}</strong>,
   img: ({ src, alt, title }) => (
     <img src={src} alt={alt ?? ''} title={title} className="my-3 max-w-full rounded-md" />

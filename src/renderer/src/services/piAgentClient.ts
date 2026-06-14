@@ -15,8 +15,8 @@ import type {
   SessionOptions,
   SessionState,
   SessionListResult,
-  ThinkingLevel,
   StreamBatch,
+  ThinkingLevel,
 } from '../../../shared/ipcContract';
 
 type CommandResult<T = unknown> = { success: boolean; error?: string } & T;

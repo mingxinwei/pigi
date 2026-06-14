@@ -169,8 +169,8 @@ function App(): React.JSX.Element {
         setLastModelSnapshot({ provider: sessionState.model.provider, id: sessionState.model.id });
       }
       if (sessionState.thinkingLevel) {
-        lastThinkingLevelRef.current = sessionState.thinkingLevel as ThinkingLevel;
-        setLastThinkingLevelSnapshot(sessionState.thinkingLevel as ThinkingLevel);
+        lastThinkingLevelRef.current = sessionState.thinkingLevel;
+        setLastThinkingLevelSnapshot(sessionState.thinkingLevel);
       }
     } catch (err) {
       console.error('Failed to refresh session state:', err);
@@ -663,11 +663,13 @@ function App(): React.JSX.Element {
             (m) => m.id === model.modelId && m.provider === model.provider,
           );
           useAppStore.getState().updateSession(sessionPath, {
-            thinkingLevel,
+            thinkingLevel: thinkingLevel as ThinkingLevel,
             ...(matchedModel ? { model: matchedModel } : {}),
           });
         } else {
-          useAppStore.getState().updateSession(sessionPath, { thinkingLevel });
+          useAppStore
+            .getState()
+            .updateSession(sessionPath, { thinkingLevel: thinkingLevel as ThinkingLevel });
         }
       } catch (err) {
         console.error('Failed to hydrate session from file:', err);

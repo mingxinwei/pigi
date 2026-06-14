@@ -75,14 +75,6 @@ const MODEL_SEARCH_PLACEHOLDER = 'Search models';
 const MODEL_EMPTY_TEXT = 'No models found';
 const MODEL_LIST_MAX_HEIGHT_CLASS = 'max-h-56';
 const THINKING_MENU_LABEL = 'Thinking';
-const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
-  'off',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-];
 const TEXTAREA_MAX_HEIGHT_RATIO = 0.35;
 const NEW_SESSION_PLACEHOLDER = 'Type # to quick change project.';
 const NEW_SESSION_HEADING = 'Here we go!';
@@ -120,19 +112,6 @@ export default function ChatInput({
 
   // Hash autocomplete state for project switching (#)
   const [hashMode, setHashMode] = useState(false);
-  const [hashQuery, setHashQuery] = useState('');
-  const [hashSelectedIndex, setHashSelectedIndex] = useState(0);
-  const hashEscapedIndexRef = useRef(-1);
-  const hashTriggerIndexRef = useRef(-1);
-
-  const filteredProjects = useMemo(() => {
-    if (!isNewSession || !hashMode || !recentProjects.length) return [];
-    if (!hashQuery) return recentProjects;
-    const results = fuzzysort.go(hashQuery, recentProjects, { key: 'name' });
-    return results.map((r) => r.obj);
-  }, [isNewSession, hashMode, hashQuery, recentProjects]);
-
-  const hasHashMatches = hashMode && filteredProjects.length > 0;
 
   const allSlashCommands = useMemo(() => getAllSlashCommands(skillOptions), [skillOptions]);
 
@@ -211,8 +190,7 @@ export default function ChatInput({
   const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled);
   const modelLabel = session?.model?.name ?? MODEL_FALLBACK;
   const rawThinkingLevel = session?.thinkingLevel ?? null;
-  const thinkingValue =
-    rawThinkingLevel && isThinkingLevel(rawThinkingLevel) ? rawThinkingLevel : null;
+  const thinkingValue = rawThinkingLevel;
   const thinkingLabel = rawThinkingLevel ?? THINKING_FALLBACK;
 
   const handleSend = useCallback(() => {
@@ -274,52 +252,6 @@ export default function ChatInput({
         return;
       }
 
-      // Hash autocomplete navigation (before slash, since both use Enter)
-      if (hasHashMatches) {
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setHashSelectedIndex((i) => (i - 1 + filteredProjects.length) % filteredProjects.length);
-          return;
-        }
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setHashSelectedIndex((i) => (i + 1) % filteredProjects.length);
-          return;
-        }
-        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-          e.preventDefault();
-          const project = filteredProjects[hashSelectedIndex];
-          if (project && textareaRef.current) {
-            const textarea = textareaRef.current;
-            const cursorPos = textarea.selectionStart;
-            const value = textarea.value;
-            // Remove #project-name text: from hash trigger index to cursor
-            let removeStart = hashTriggerIndexRef.current;
-            if (removeStart > 0 && value[removeStart - 1] === ' ') {
-              removeStart--;
-            }
-            const before = value.slice(0, removeStart);
-            const after = value.slice(cursorPos);
-            textarea.value = before + after;
-            textarea.selectionStart = textarea.selectionEnd = removeStart;
-            textarea.style.height = 'auto';
-            const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
-            textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
-            setHashMode(false);
-            setHashQuery('');
-            onSelectProject?.(project.path);
-            textarea.focus();
-          }
-          return;
-        }
-        if (e.key === 'Escape') {
-          hashEscapedIndexRef.current = hashTriggerIndexRef.current;
-          setHashMode(false);
-          return;
-        }
-        return;
-      }
-
       // Slash command autocomplete navigation
       if (hasSlashMatches) {
         if (e.key === 'ArrowUp') {
@@ -374,10 +306,6 @@ export default function ChatInput({
       flatSlashMatches,
       selectedSlashIndex,
       onSlashCommand,
-      hasHashMatches,
-      hashSelectedIndex,
-      filteredProjects,
-      onSelectProject,
     ],
   );
 
@@ -402,23 +330,8 @@ export default function ChatInput({
       const hashMatch = textBeforeCursor.match(/^#$/);
 
       if (hashMatch) {
-        const hashIndex = (hashMatch.index ?? 0) + hashMatch[0].indexOf('#');
-        // If this # was escaped, skip it
-        if (hashEscapedIndexRef.current === hashIndex) {
-          setHashMode(false);
-          return;
-        }
-        // New or different # — reset escape and activate
-        hashEscapedIndexRef.current = -1;
-        hashTriggerIndexRef.current = hashIndex;
-        setHashQuery(hashMatch[1]);
         setHashMode(true);
-        setHashSelectedIndex(0);
       } else {
-        // No # before cursor — clear escape (user deleted the escaped #)
-        if (hashEscapedIndexRef.current !== -1) {
-          hashEscapedIndexRef.current = -1;
-        }
         setHashMode(false);
       }
     }
@@ -454,19 +367,14 @@ export default function ChatInput({
                 if (textarea) {
                   const cursorPos = textarea.selectionStart;
                   const value = textarea.value;
-                  let removeStart = hashTriggerIndexRef.current;
-                  if (removeStart >= 0) {
-                    if (removeStart > 0 && value[removeStart - 1] === ' ') removeStart--;
-                    textarea.value = value.slice(0, removeStart) + value.slice(cursorPos);
-                    textarea.selectionStart = textarea.selectionEnd = removeStart;
-                    setHashQuery('');
-                  }
+                  // Remove leading # from text
+                  textarea.value = value.slice(cursorPos);
+                  textarea.selectionStart = textarea.selectionEnd = 0;
                   textarea.focus();
                 }
               }}
               forceOpen={hashMode}
               onClose={() => {
-                setHashQuery('');
                 setHashMode(false);
                 textareaRef.current?.focus();
               }}
@@ -976,11 +884,6 @@ function modelSearchValue(model: ModelInfo): string {
 
 function formatModelDetails(model: ModelInfo): string {
   return `${model.provider}/${model.id} - ${formatTokenCount(model.contextWindow)} context`;
-}
-
-function isThinkingLevel(level: string): level is ThinkingLevel {
-  // Cast required: TS Array.includes() signature doesn't accept supertype
-  return THINKING_LEVEL_VALUES.includes(level as ThinkingLevel);
 }
 
 function formatContextUsage(

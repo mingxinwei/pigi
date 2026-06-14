@@ -26,6 +26,7 @@ import {
 import type {
   AuthProviderInfo,
   ModelInfo,
+  ThinkingLevel,
   PiCommand,
   PiPush,
   PiRequest,
@@ -33,7 +34,6 @@ import type {
   ControlPortMessage,
   StreamBatch,
   StreamBatchToolArgs,
-  ThinkingLevel,
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
@@ -49,9 +49,10 @@ function toModelInfo(model: {
   reasoning: boolean;
   thinkingLevelMap?: Record<string, unknown | null>;
 }): ModelInfo {
-  const allLevels: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
   const thinkingLevels: ThinkingLevel[] = model.reasoning
-    ? allLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
+    ? (Object.entries(model.thinkingLevelMap ?? {}) as [ThinkingLevel, unknown | null][])
+        .filter(([, value]) => value !== null)
+        .map(([level]) => level)
     : ['off'];
   return {
     name: model.name,

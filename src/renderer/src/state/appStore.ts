@@ -4,6 +4,7 @@ import type {
   ModelInfo,
   PiSessionInfo,
   ProjectDirectory,
+  ThinkingLevel,
 } from '../../../shared/ipcContract';
 import type { Platform } from '../../../shared/platform';
 import type { AgentStatus } from './transcriptController';
@@ -18,7 +19,7 @@ export interface SessionEntry {
   cwd: string;
   createdAt: string;
   model: ModelInfo | null;
-  thinkingLevel: string | null;
+  thinkingLevel: ThinkingLevel | null;
   contextUsage: ContextUsage | null;
   autoCompactionEnabled: boolean;
   messageCount: number;

@@ -20,6 +20,10 @@ import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-ag
 // Shared Data Types
 // =============================================================================
 
+import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
+
+export type { ThinkingLevel };
+
 export interface ModelInfo {
   name: string;
   provider: string;
@@ -30,8 +34,6 @@ export interface ModelInfo {
   reasoning: boolean;
   thinkingLevels: ThinkingLevel[];
 }
-
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface ProjectDirectory {
   path: string;
@@ -78,7 +80,7 @@ export interface ProjectSessionsChunk {
 
 export interface SessionState {
   model: ModelInfo | null;
-  thinkingLevel: string | null;
+  thinkingLevel: ThinkingLevel | null;
   isStreaming: boolean;
   sessionFile: string | undefined;
   sessionId: string;
@@ -159,7 +161,7 @@ export type PiPush =
   | {
       type: 'session_ready';
       model: ModelInfo | null;
-      thinkingLevel: string | null;
+      thinkingLevel: ThinkingLevel | null;
       contextUsage: ContextUsage | null;
       autoCompactionEnabled: boolean;
     }
@@ -324,7 +326,7 @@ export type SessionWorkerResponse =
       success: boolean;
       messages?: unknown[];
       compactionCount?: number;
-      thinkingLevel?: string;
+      thinkingLevel?: ThinkingLevel;
       model?: { provider: string; modelId: string } | null;
       error?: string;
     };

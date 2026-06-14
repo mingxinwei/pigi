@@ -3,6 +3,7 @@ import type {
   PiSessionInfo,
   SessionWorkerCommand,
   SessionWorkerResponse,
+  ThinkingLevel,
 } from '../../shared/ipcContract';
 
 function sendToMain(response: SessionWorkerResponse): void {
@@ -95,7 +96,7 @@ process.parentPort?.on('message', async (messageEvent) => {
           success: true,
           messages,
           compactionCount,
-          thinkingLevel,
+          thinkingLevel: thinkingLevel as ThinkingLevel,
           model,
         });
       } catch (error) {

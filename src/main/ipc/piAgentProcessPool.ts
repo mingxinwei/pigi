@@ -12,7 +12,6 @@ interface WarmProcess {
   process: Electron.UtilityProcess;
   ready: boolean;
   models: ModelInfo[];
-  thinkingLevels: string[];
 }
 
 const MAX_IDLE_SESSION_PROCESS_COUNT = 3;
@@ -45,13 +44,12 @@ export class PiAgentProcessPool {
   }
 
   /** Get model/thinking options from the warm process (empty if not yet ready). */
-  getWarmSessionOptions(): { models: ModelInfo[]; thinkingLevels: string[] } {
+  getWarmSessionOptions(): { models: ModelInfo[] } {
     if (!this.warmProcess || !this.warmProcess.ready) {
-      return { models: [], thinkingLevels: [] };
+      return { models: [] };
     }
     return {
       models: this.warmProcess.models,
-      thinkingLevels: this.warmProcess.thinkingLevels,
     };
   }
 
@@ -174,7 +172,6 @@ export class PiAgentProcessPool {
       process: proc,
       ready: false,
       models: [],
-      thinkingLevels: [],
     };
     proc.on('exit', () => {
       if (this.warmProcess?.process === proc) {
@@ -182,16 +179,12 @@ export class PiAgentProcessPool {
       }
     });
     // Listen for warm_ready response
-    proc.on(
-      'message',
-      (message: { type: string; models?: unknown[]; thinkingLevels?: string[] }) => {
-        if (message.type === 'warm_ready' && this.warmProcess?.process === proc) {
-          this.warmProcess.ready = true;
-          this.warmProcess.models = (message.models ?? []) as ModelInfo[];
-          this.warmProcess.thinkingLevels = (message.thinkingLevels ?? []) as string[];
-        }
-      },
-    );
+    proc.on('message', (message: { type: string; models?: unknown[] }) => {
+      if (message.type === 'warm_ready' && this.warmProcess?.process === proc) {
+        this.warmProcess.ready = true;
+        this.warmProcess.models = (message.models ?? []) as ModelInfo[];
+      }
+    });
     // Send warm_up command to initialize services
     const command: UtilityCommand = { type: 'warm_up', cwds: this.warmCwds };
     proc.postMessage(command);

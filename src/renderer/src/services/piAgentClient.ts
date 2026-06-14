@@ -6,6 +6,7 @@
  */
 import type {
   AuthProviderInfo,
+  ModelInfo,
   PiCommand,
   PiPush,
   GitBranchResult,
@@ -251,16 +252,7 @@ export function onStreamBatch(
 
 /** Get model options from the warm (pre-spawned) process. Returns empty if not ready. */
 export async function getWarmSessionOptions(): Promise<{
-  models: {
-    name: string;
-    provider: string;
-    id: string;
-    api: string;
-    contextWindow: number;
-    maxTokens: number;
-    reasoning: boolean;
-  }[];
-  thinkingLevels: string[];
+  models: ModelInfo[];
 }> {
   return window.piApi.getWarmSessionOptions();
 }

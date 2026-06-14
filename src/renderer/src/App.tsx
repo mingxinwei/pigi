@@ -592,10 +592,10 @@ function App(): React.JSX.Element {
               )
             : null;
           if (matchedModel) {
-            setThinkingLevelOptions(matchedModel.thinkingLevels as ThinkingLevel[]);
+            setThinkingLevelOptions(matchedModel.thinkingLevels);
           } else {
             // Fallback: use first model's thinkingLevels
-            setThinkingLevelOptions(options.models[0].thinkingLevels as ThinkingLevel[]);
+            setThinkingLevelOptions(options.models[0].thinkingLevels);
           }
         }
         // If empty, warm process isn't ready yet — retry after a short delay
@@ -864,7 +864,7 @@ function App(): React.JSX.Element {
       // Filter thinking level options for the selected model
       let needsThinkingClamp = false;
       if (model.thinkingLevels.length > 0) {
-        const levels = model.thinkingLevels as ThinkingLevel[];
+        const levels = model.thinkingLevels;
         setThinkingLevelOptions(levels);
         // Reset thinking level if current one isn't available for this model
         if (lastThinkingLevelRef.current && !levels.includes(lastThinkingLevelRef.current)) {
@@ -880,16 +880,14 @@ function App(): React.JSX.Element {
       }
       await setModel(activeSessionPath, model.provider, model.id);
       await refreshSessionState(activeSessionPath);
-      const options = await getSessionOptions(activeSessionPath);
-      setModelOptions(options.models);
-      setThinkingLevelOptions(options.thinkingLevels);
+      await refreshSessionOptions(activeSessionPath);
       // Clamp thinking level on the backend if not available for new model
       if (needsThinkingClamp) {
         lastThinkingLevelRef.current = 'off';
         await setThinkingLevel(activeSessionPath, 'off');
       }
     },
-    [activeSessionPath, refreshSessionState],
+    [activeSessionPath, refreshSessionState, refreshSessionOptions],
   );
 
   const handleSelectThinkingLevel = useCallback(

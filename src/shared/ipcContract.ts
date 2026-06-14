@@ -28,7 +28,7 @@ export interface ModelInfo {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
-  thinkingLevels: string[];
+  thinkingLevels: ThinkingLevel[];
 }
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';

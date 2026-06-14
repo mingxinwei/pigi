@@ -556,7 +556,7 @@ export default function ChatInput({
                   rows={1}
                   className={cn(
                     'flex-initial field-sizing-fixed px-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto',
-                    isNewSession ? 'min-h-32 pt-4' : 'min-h-16 pt-4',
+                    isNewSession ? 'min-h-24 pt-4' : 'min-h-16 pt-4',
                   )}
                   data-testid="chat-textarea"
                 />

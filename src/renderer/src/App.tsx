@@ -570,6 +570,10 @@ function App(): React.JSX.Element {
   const handleNewSession = useCallback((): void => {
     // If already in draft mode, do nothing.
     if (isDraftChat && !activeSessionPath) return;
+    // Push current active session to navigation history so it's not lost.
+    // Pass empty string as sentinel (no real session path is empty) so the
+    // current activeSessionPath gets pushed to backStack.
+    pushNavigationHistory('');
     // Reset draft controller for a fresh chat.
     draftControllerRef.current.reset();
     isDraftSpawningRef.current = false;
@@ -606,7 +610,7 @@ function App(): React.JSX.Element {
       });
     };
     fetchWarmOptions();
-  }, [isDraftChat, activeSessionPath, setActiveSession]);
+  }, [isDraftChat, activeSessionPath, pushNavigationHistory, setActiveSession]);
 
   function handleNewSessionForProject(path: string): void {
     const result = setActiveProject(path);
@@ -622,7 +626,17 @@ function App(): React.JSX.Element {
     async (session: PiSessionInfo, options?: { skipHistory?: boolean }): Promise<void> => {
       setIsDraftChat(false);
       setPendingSelectedPath(session.path);
-      const existing = useAppStore.getState().sessions.get(session.path);
+
+      // Switch active project to match the session's project directory
+      const store = useAppStore.getState();
+      if (store.activeProject?.path !== session.cwd) {
+        const projectResult = await setActiveProject(session.cwd);
+        if (projectResult.success) {
+          store.setProjects(projectResult.recentProjects, projectResult.activeProject);
+        }
+      }
+
+      const existing = store.sessions.get(session.path);
       if (existing) {
         if (!options?.skipHistory) {
           pushNavigationHistory(existing.sessionPath);

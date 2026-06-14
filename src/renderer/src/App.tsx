@@ -583,10 +583,20 @@ function App(): React.JSX.Element {
       void getWarmSessionOptions().then((options) => {
         if (options.models.length > 0) {
           setModelOptions(options.models);
-        }
-        if (options.thinkingLevels.length > 0) {
-          // warm_ready returns string[] but they're always valid ThinkingLevel values
-          setThinkingLevelOptions(options.thinkingLevels as ThinkingLevel[]);
+          // Derive thinkingLevels from the last-used model if available
+          const matchedModel = lastModelRef.current
+            ? options.models.find(
+                (m) =>
+                  m.id === lastModelRef.current!.id &&
+                  m.provider === lastModelRef.current!.provider,
+              )
+            : null;
+          if (matchedModel) {
+            setThinkingLevelOptions(matchedModel.thinkingLevels as ThinkingLevel[]);
+          } else {
+            // Fallback: use first model's thinkingLevels
+            setThinkingLevelOptions(options.models[0].thinkingLevels as ThinkingLevel[]);
+          }
         }
         // If empty, warm process isn't ready yet — retry after a short delay
         if (options.models.length === 0 && warmRetryCount < 10) {
@@ -849,26 +859,47 @@ function App(): React.JSX.Element {
 
   const handleSelectModel = useCallback(
     async (model: ModelInfo) => {
+      lastModelRef.current = { provider: model.provider, id: model.id };
+      setLastModelSnapshot({ provider: model.provider, id: model.id });
+      // Filter thinking level options for the selected model
+      let needsThinkingClamp = false;
+      if (model.thinkingLevels.length > 0) {
+        const levels = model.thinkingLevels as ThinkingLevel[];
+        setThinkingLevelOptions(levels);
+        // Reset thinking level if current one isn't available for this model
+        if (lastThinkingLevelRef.current && !levels.includes(lastThinkingLevelRef.current)) {
+          needsThinkingClamp = true;
+          setLastThinkingLevelSnapshot('off');
+        }
+      }
       if (!activeSessionPath) {
+        if (needsThinkingClamp) {
+          lastThinkingLevelRef.current = 'off';
+        }
         return;
       }
       await setModel(activeSessionPath, model.provider, model.id);
-      lastModelRef.current = { provider: model.provider, id: model.id };
-      setLastModelSnapshot({ provider: model.provider, id: model.id });
       await refreshSessionState(activeSessionPath);
-      await refreshSessionOptions(activeSessionPath);
+      const options = await getSessionOptions(activeSessionPath);
+      setModelOptions(options.models);
+      setThinkingLevelOptions(options.thinkingLevels);
+      // Clamp thinking level on the backend if not available for new model
+      if (needsThinkingClamp) {
+        lastThinkingLevelRef.current = 'off';
+        await setThinkingLevel(activeSessionPath, 'off');
+      }
     },
-    [activeSessionPath, refreshSessionOptions, refreshSessionState],
+    [activeSessionPath, refreshSessionState],
   );
 
   const handleSelectThinkingLevel = useCallback(
     async (thinkingLevel: ThinkingLevel) => {
+      lastThinkingLevelRef.current = thinkingLevel;
+      setLastThinkingLevelSnapshot(thinkingLevel);
       if (!activeSessionPath) {
         return;
       }
       await setThinkingLevel(activeSessionPath, thinkingLevel);
-      lastThinkingLevelRef.current = thinkingLevel;
-      setLastThinkingLevelSnapshot(thinkingLevel);
       await refreshSessionState(activeSessionPath);
       await refreshSessionOptions(activeSessionPath);
     },
@@ -1015,7 +1046,7 @@ function App(): React.JSX.Element {
           </>
         ) : isDraftChat ? (
           <>
-            <MessageList nodes={draftState.nodes} sessionPath="" />
+            {draftState.nodes.length > 0 && <MessageList nodes={draftState.nodes} sessionPath="" />}
             <ChatInput
               onSend={handleSend}
               onFollowUp={handleFollowUp}
@@ -1032,6 +1063,10 @@ function App(): React.JSX.Element {
               skillOptions={skillOptions}
               onSelectModel={handleSelectModel}
               onSelectThinkingLevel={handleSelectThinkingLevel}
+              isNewSession
+              recentProjects={recentProjects}
+              activeProject={activeProject}
+              onSelectProject={handleSelectProject}
             />
           </>
         ) : recentProjects.length === 0 ? (

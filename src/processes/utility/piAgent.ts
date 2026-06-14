@@ -46,7 +46,12 @@ function toModelInfo(model: {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  thinkingLevelMap?: Record<string, unknown | null>;
 }): ModelInfo {
+  const allLevels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+  const thinkingLevels = model.reasoning
+    ? allLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
+    : ['off'];
   return {
     name: model.name,
     provider: model.provider,
@@ -55,6 +60,7 @@ function toModelInfo(model: {
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     reasoning: model.reasoning,
+    thinkingLevels,
   };
 }
 
@@ -707,12 +713,9 @@ async function warmUp(cwds: string[]): Promise<void> {
     services.modelRegistry.refresh();
     const available = services.modelRegistry.getAvailable();
     const models = available.map(toModelInfo);
-    // Use a default session to get thinking levels (they're global, not session-specific)
-    const thinkingLevels = ['off', 'low', 'medium', 'high'];
-    sendToMain({ type: 'warm_ready', models, thinkingLevels });
+    sendToMain({ type: 'warm_ready', models });
   } catch {
-    // Still report ready with empty models so the process is usable
-    sendToMain({ type: 'warm_ready', models: [], thinkingLevels: [] });
+    sendToMain({ type: 'warm_ready', models: [] });
   }
 }
 

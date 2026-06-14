@@ -372,7 +372,7 @@ const piApi = {
   },
 
   /** Get model options from the warm (pre-spawned) process. */
-  getWarmSessionOptions: (): Promise<{ models: ModelInfo[]; thinkingLevels: string[] }> =>
+  getWarmSessionOptions: (): Promise<{ models: ModelInfo[] }> =>
     ipcRenderer.invoke(PiChannel.GetWarmSessionOptions),
 
   /** Get the app's working directory (for session creation). */

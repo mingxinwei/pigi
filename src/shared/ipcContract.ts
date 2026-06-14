@@ -28,6 +28,7 @@ export interface ModelInfo {
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  thinkingLevels: string[];
 }
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -347,4 +348,4 @@ export type UtilityResponse =
   | { type: 'session_created'; sessionId: string; sessionPath: string }
   | { type: 'session_error'; error: string }
   | { type: 'session_busy_changed'; isBusy: boolean }
-  | { type: 'warm_ready'; models: ModelInfo[]; thinkingLevels: string[] };
+  | { type: 'warm_ready'; models: ModelInfo[] };

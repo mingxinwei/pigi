@@ -1,8 +1,11 @@
 import { useRef, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import fuzzysort from 'fuzzysort';
 import {
   IconArrowUp,
   IconCheck,
+  IconChevronDown,
   IconChevronRight,
+  IconFolderOpen,
   IconGitBranch,
   IconPlus,
   IconSquare,
@@ -10,6 +13,7 @@ import {
 import type {
   ContextUsage,
   ModelInfo,
+  ProjectDirectory,
   SkillSlashCommand,
   ThinkingLevel,
 } from '../../../shared/ipcContract';
@@ -52,6 +56,11 @@ interface ChatInputProps {
   skillOptions: SkillSlashCommand[];
   onSelectModel: (model: ModelInfo) => void;
   onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
+  /** New session mode: centers input, enables project switching via # */
+  isNewSession?: boolean;
+  recentProjects?: ProjectDirectory[];
+  activeProject?: ProjectDirectory | null;
+  onSelectProject?: (path: string) => void;
 }
 
 const TOKEN_UNIT = 1000;
@@ -75,6 +84,8 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
   'xhigh',
 ];
 const TEXTAREA_MAX_HEIGHT_RATIO = 0.35;
+const NEW_SESSION_PLACEHOLDER = 'Use #project-name to switch the project just by typing.';
+const NEW_SESSION_HEADING = 'Here we go!';
 
 export default function ChatInput({
   onSend,
@@ -92,6 +103,10 @@ export default function ChatInput({
   onSelectModel,
   onSelectThinkingLevel,
   skillOptions,
+  isNewSession = false,
+  recentProjects = [],
+  activeProject = null,
+  onSelectProject,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftsRef = useRef<Map<string, string>>(new Map());
@@ -102,6 +117,22 @@ export default function ChatInput({
   }>({ builtin: [], skill: [] });
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const slashListRef = useRef<HTMLDivElement>(null);
+
+  // Hash autocomplete state for project switching (#)
+  const [hashMode, setHashMode] = useState(false);
+  const [hashQuery, setHashQuery] = useState('');
+  const [hashSelectedIndex, setHashSelectedIndex] = useState(0);
+  const hashEscapedIndexRef = useRef(-1);
+  const hashTriggerIndexRef = useRef(-1);
+
+  const filteredProjects = useMemo(() => {
+    if (!isNewSession || !hashMode || !recentProjects.length) return [];
+    if (!hashQuery) return recentProjects;
+    const results = fuzzysort.go(hashQuery, recentProjects, { key: 'name' });
+    return results.map((r) => r.obj);
+  }, [isNewSession, hashMode, hashQuery, recentProjects]);
+
+  const hasHashMatches = hashMode && filteredProjects.length > 0;
 
   const allSlashCommands = useMemo(() => getAllSlashCommands(skillOptions), [skillOptions]);
 
@@ -243,6 +274,52 @@ export default function ChatInput({
         return;
       }
 
+      // Hash autocomplete navigation (before slash, since both use Enter)
+      if (hasHashMatches) {
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setHashSelectedIndex((i) => (i - 1 + filteredProjects.length) % filteredProjects.length);
+          return;
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setHashSelectedIndex((i) => (i + 1) % filteredProjects.length);
+          return;
+        }
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          const project = filteredProjects[hashSelectedIndex];
+          if (project && textareaRef.current) {
+            const textarea = textareaRef.current;
+            const cursorPos = textarea.selectionStart;
+            const value = textarea.value;
+            // Remove #project-name text: from hash trigger index to cursor
+            let removeStart = hashTriggerIndexRef.current;
+            if (removeStart > 0 && value[removeStart - 1] === ' ') {
+              removeStart--;
+            }
+            const before = value.slice(0, removeStart);
+            const after = value.slice(cursorPos);
+            textarea.value = before + after;
+            textarea.selectionStart = textarea.selectionEnd = removeStart;
+            textarea.style.height = 'auto';
+            const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
+            textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+            setHashMode(false);
+            setHashQuery('');
+            onSelectProject?.(project.path);
+            textarea.focus();
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          hashEscapedIndexRef.current = hashTriggerIndexRef.current;
+          setHashMode(false);
+          return;
+        }
+        return;
+      }
+
       // Slash command autocomplete navigation
       if (hasSlashMatches) {
         if (e.key === 'ArrowUp') {
@@ -297,6 +374,10 @@ export default function ChatInput({
       flatSlashMatches,
       selectedSlashIndex,
       onSlashCommand,
+      hasHashMatches,
+      hashSelectedIndex,
+      filteredProjects,
+      onSelectProject,
     ],
   );
 
@@ -313,50 +394,116 @@ export default function ChatInput({
     const value = textarea.value;
     setSlashMatches(matchSlashCommands(value, allSlashCommands));
     setSelectedSlashIndex(0);
-  }, [allSlashCommands]);
+
+    // Hash autocomplete detection (only in new session mode)
+    if (isNewSession) {
+      const cursorPos = textarea.selectionStart;
+      const textBeforeCursor = value.slice(0, cursorPos);
+      const hashMatch = textBeforeCursor.match(/(?:^|\s)#(\S*)$/);
+
+      if (hashMatch) {
+        const hashIndex = (hashMatch.index ?? 0) + hashMatch[0].indexOf('#');
+        // If this # was escaped, skip it
+        if (hashEscapedIndexRef.current === hashIndex) {
+          setHashMode(false);
+          return;
+        }
+        // New or different # — reset escape and activate
+        hashEscapedIndexRef.current = -1;
+        hashTriggerIndexRef.current = hashIndex;
+        setHashQuery(hashMatch[1]);
+        setHashMode(true);
+        setHashSelectedIndex(0);
+      } else {
+        // No # before cursor — clear escape (user deleted the escaped #)
+        if (hashEscapedIndexRef.current !== -1) {
+          hashEscapedIndexRef.current = -1;
+        }
+        setHashMode(false);
+      }
+    }
+  }, [allSlashCommands, isNewSession]);
+
+  const projectLabel = activeProject?.name ?? 'select project';
 
   return (
-    <div className="relative z-10 shrink-0 px-8 pb-3" data-testid="chat-input">
-      <Popover
-        open={hasSlashMatches}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setSlashMatches({ builtin: [], skill: [] });
-        }}
-      >
-        <PopoverContent
-          side="top"
-          align="start"
-          sideOffset={6}
-          className="max-h-[40vh] overflow-y-auto p-1 bg-popover/50"
-          style={{ width: `${CHAT_INPUT_MAX_WIDTH}px` }}
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          <div ref={slashListRef}>
-            {slashMatches.builtin.map((slashCommand, i) => (
-              <SlashCommandItem
-                key={slashCommand.name}
-                slashCommand={slashCommand}
-                isSelected={i === selectedSlashIndex}
-                onSelect={() => {
-                  const textarea = textareaRef.current;
-                  if (!textarea) return;
-                  textarea.value = `/${slashCommand.name} `;
-                  setSlashMatches({ builtin: [], skill: [] });
+    <div
+      className={cn(
+        !isNewSession && 'relative z-10 shrink-0 px-8 pb-3',
+        isNewSession && 'flex flex-1 flex-col items-center justify-center min-h-0 px-8',
+      )}
+      data-testid="chat-input"
+    >
+      {isNewSession && (
+        <h1 className="mb-12 text-center text-4xl font-normal text-foreground">
+          {NEW_SESSION_HEADING}
+        </h1>
+      )}
+      <div className="relative mx-auto w-full" style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}>
+        {isNewSession && recentProjects.length > 0 && (
+          <div className="pl-2.5 pt-3 pb-1">
+            <ProjectPicker
+              projectName={projectLabel}
+              hashActive={hashMode}
+              recentProjects={recentProjects}
+              onSelectProject={(path) => {
+                setHashMode(false);
+                onSelectProject?.(path);
+                void onRefreshGitBranch();
+                const textarea = textareaRef.current;
+                if (textarea) {
+                  const cursorPos = textarea.selectionStart;
+                  const value = textarea.value;
+                  let removeStart = hashTriggerIndexRef.current;
+                  if (removeStart >= 0) {
+                    if (removeStart > 0 && value[removeStart - 1] === ' ') removeStart--;
+                    textarea.value = value.slice(0, removeStart) + value.slice(cursorPos);
+                    textarea.selectionStart = textarea.selectionEnd = removeStart;
+                    setHashQuery('');
+                  }
                   textarea.focus();
-                }}
-                onHover={() => setSelectedSlashIndex(i)}
-              />
-            ))}
-            {slashMatches.builtin.length > 0 && slashMatches.skill.length > 0 && (
-              <Separator className="my-0.5 mx-auto h-px !w-[98%] opacity-90" />
-            )}
-            {slashMatches.skill.map((slashCommand, i) => {
-              const flatIndex = slashMatches.builtin.length + i;
-              return (
+                }
+              }}
+              forceOpen={hashMode}
+              onClose={() => {
+                if (hashTriggerIndexRef.current >= 0 && hashMode) {
+                  const textarea = textareaRef.current;
+                  if (textarea) {
+                    const cursorPos = textarea.selectionStart;
+                    const value = textarea.value;
+                    let removeStart = hashTriggerIndexRef.current;
+                    if (removeStart > 0 && value[removeStart - 1] === ' ') removeStart--;
+                    textarea.value = value.slice(0, removeStart) + value.slice(cursorPos);
+                    textarea.selectionStart = textarea.selectionEnd = removeStart;
+                    setHashQuery('');
+                    setHashMode(false);
+                  }
+                }
+                textareaRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
+        <Popover
+          open={hasSlashMatches}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setSlashMatches({ builtin: [], skill: [] });
+          }}
+        >
+          <PopoverContent
+            side="top"
+            align="start"
+            sideOffset={6}
+            className="max-h-[40vh] overflow-y-auto p-1 bg-popover/50"
+            style={{ width: `${CHAT_INPUT_MAX_WIDTH}px` }}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <div ref={slashListRef}>
+              {slashMatches.builtin.map((slashCommand, i) => (
                 <SlashCommandItem
                   key={slashCommand.name}
                   slashCommand={slashCommand}
-                  isSelected={flatIndex === selectedSlashIndex}
+                  isSelected={i === selectedSlashIndex}
                   onSelect={() => {
                     const textarea = textareaRef.current;
                     if (!textarea) return;
@@ -364,93 +511,135 @@ export default function ChatInput({
                     setSlashMatches({ builtin: [], skill: [] });
                     textarea.focus();
                   }}
-                  onHover={() => setSelectedSlashIndex(flatIndex)}
+                  onHover={() => setSelectedSlashIndex(i)}
                 />
-              );
-            })}
-          </div>
-        </PopoverContent>
-        <PopoverTrigger asChild>
-          <div
-            className="relative mx-auto w-full"
-            style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
-          >
-            <InputGroup className="h-auto min-h-28 flex-col rounded-3xl border bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-inherit">
-              <InputGroupTextarea
-                ref={textareaRef}
-                onKeyDown={handleKeyDown}
-                onInput={handleInput}
-                placeholder="Ask for follow-up changes"
-                rows={1}
-                className="flex-initial min-h-16 field-sizing-fixed px-4 pb-2 pt-4 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto"
-                data-testid="chat-textarea"
-              />
-              <InputGroupAddon
-                align="block-end"
-                className="min-w-0 justify-between gap-2 px-2.5 pb-2.5 pt-0"
+              ))}
+              {slashMatches.builtin.length > 0 && slashMatches.skill.length > 0 && (
+                <Separator className="my-0.5 mx-auto h-px !w-[98%] opacity-90" />
+              )}
+              {slashMatches.skill.map((slashCommand, i) => {
+                const flatIndex = slashMatches.builtin.length + i;
+                return (
+                  <SlashCommandItem
+                    key={slashCommand.name}
+                    slashCommand={slashCommand}
+                    isSelected={flatIndex === selectedSlashIndex}
+                    onSelect={() => {
+                      const textarea = textareaRef.current;
+                      if (!textarea) return;
+                      textarea.value = `/${slashCommand.name} `;
+                      setSlashMatches({ builtin: [], skill: [] });
+                      textarea.focus();
+                    }}
+                    onHover={() => setSelectedSlashIndex(flatIndex)}
+                  />
+                );
+              })}
+            </div>
+          </PopoverContent>
+          <PopoverTrigger asChild>
+            <div
+              className="relative mx-auto w-full"
+              style={{ maxWidth: `${CHAT_INPUT_MAX_WIDTH}px` }}
+            >
+              <InputGroup
+                className={cn(
+                  'relative h-auto flex-col rounded-3xl border bg-background shadow-[0_10px_34px_rgb(0_0_0_/_0.075)] has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-inherit',
+                  !isNewSession && 'min-h-28',
+                )}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1">
-                  <InputGroupButton
-                    size="icon-sm"
-                    variant="ghost"
-                    className="shrink-0 rounded-full"
-                  >
-                    <IconPlus />
-                  </InputGroupButton>
+                <InputGroupTextarea
+                  ref={textareaRef}
+                  onKeyDown={handleKeyDown}
+                  onInput={handleInput}
+                  placeholder={isNewSession ? NEW_SESSION_PLACEHOLDER : 'Ask for follow-up changes'}
+                  rows={1}
+                  className={cn(
+                    'flex-initial field-sizing-fixed px-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground/70 overflow-y-auto',
+                    isNewSession ? 'min-h-32 pt-4' : 'min-h-16 pt-4',
+                  )}
+                  data-testid="chat-textarea"
+                />
+                <InputGroupAddon
+                  align="block-end"
+                  className="min-w-0 justify-between gap-2 px-2.5 pb-2.5 pt-0"
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1">
+                    <InputGroupButton
+                      size="icon-sm"
+                      variant="ghost"
+                      className="shrink-0 rounded-full"
+                    >
+                      <IconPlus />
+                    </InputGroupButton>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <ModelSettingsPicker
+                      modelLabel={modelLabel}
+                      modelValue={session?.model ?? null}
+                      modelOptions={modelOptions}
+                      onSelectModel={onSelectModel}
+                      thinkingLabel={thinkingLabel}
+                      thinkingValue={thinkingValue}
+                      thinkingOptions={thinkingLevelOptions}
+                      onSelectThinkingLevel={onSelectThinkingLevel}
+                    />
+                  </div>
+                  {isStreaming ? (
+                    <InputGroupButton
+                      onClick={onAbort}
+                      size="icon-sm"
+                      variant="default"
+                      className="rounded-full"
+                      data-testid="abort-button"
+                    >
+                      <IconSquare className="fill-current" />
+                    </InputGroupButton>
+                  ) : (
+                    <InputGroupButton
+                      onClick={handleSend}
+                      size="icon-sm"
+                      variant="default"
+                      className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
+                      data-testid="send-button"
+                    >
+                      <IconArrowUp />
+                    </InputGroupButton>
+                  )}
+                </InputGroupAddon>
+              </InputGroup>
+              {isNewSession ? (
+                <div className="-mt-15 rounded-b-2xl bg-muted/60 px-4 pt-17 pb-2 text-sm text-muted-foreground">
+                  <div className="flex items-center">
+                    <span
+                      className="flex min-w-0 items-center gap-1.5"
+                      onClick={() => void onRefreshGitBranch()}
+                    >
+                      <IconGitBranch className="size-4 shrink-0" />
+                      <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
+                    </span>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <ModelSettingsPicker
-                    modelLabel={modelLabel}
-                    modelValue={session?.model ?? null}
-                    modelOptions={modelOptions}
-                    onSelectModel={onSelectModel}
-                    thinkingLabel={thinkingLabel}
-                    thinkingValue={thinkingValue}
-                    thinkingOptions={thinkingLevelOptions}
-                    onSelectThinkingLevel={onSelectThinkingLevel}
+              ) : (
+                <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
+                  <span
+                    className="flex min-w-0 items-center gap-1.5"
+                    onClick={() => void onRefreshGitBranch()}
+                  >
+                    <IconGitBranch className="size-4 shrink-0" />
+                    <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
+                  </span>
+                  <ContextUsageTooltip
+                    label={contextUsageLabel}
+                    contextUsage={contextUsage}
+                    autoCompactionEnabled={autoCompactionEnabled}
                   />
                 </div>
-                {isStreaming ? (
-                  <InputGroupButton
-                    onClick={onAbort}
-                    size="icon-sm"
-                    variant="default"
-                    className="rounded-full"
-                    data-testid="abort-button"
-                  >
-                    <IconSquare className="fill-current" />
-                  </InputGroupButton>
-                ) : (
-                  <InputGroupButton
-                    onClick={handleSend}
-                    size="icon-sm"
-                    variant="default"
-                    className="rounded-full bg-muted-foreground text-background hover:bg-foreground"
-                    data-testid="send-button"
-                  >
-                    <IconArrowUp />
-                  </InputGroupButton>
-                )}
-              </InputGroupAddon>
-            </InputGroup>
-
-            <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
-              <span
-                className="flex min-w-0 items-center gap-1.5"
-                onClick={() => void onRefreshGitBranch()}
-              >
-                <IconGitBranch className="size-4 shrink-0" />
-                <span className="truncate">{gitBranch ?? UNKNOWN_STATUS}</span>
-              </span>
-              <ContextUsageTooltip
-                label={contextUsageLabel}
-                contextUsage={contextUsage}
-                autoCompactionEnabled={autoCompactionEnabled}
-              />
+              )}
             </div>
-          </div>
-        </PopoverTrigger>
-      </Popover>
+          </PopoverTrigger>
+        </Popover>
+      </div>
     </div>
   );
 }
@@ -597,6 +786,93 @@ function ModelSettingsButton({
       <span className="min-w-0 truncate text-foreground">{modelLabel}</span>
       <span className="shrink-0 text-muted-foreground">{thinkingLabel}</span>
     </Button>
+  );
+}
+
+function ProjectPicker({
+  projectName,
+  hashActive,
+  recentProjects,
+  onSelectProject,
+  forceOpen,
+  onClose,
+}: {
+  projectName: string;
+  hashActive: boolean;
+  recentProjects: ProjectDirectory[];
+  onSelectProject: (path: string) => void;
+  forceOpen?: boolean;
+  onClose?: () => void;
+}): React.JSX.Element {
+  const [openInternal, setOpenInternal] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const open = openInternal || (forceOpen ?? false);
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setOpenInternal(nextOpen);
+      if (!nextOpen) onClose?.();
+    },
+    [onClose],
+  );
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return recentProjects;
+    const results = fuzzysort.go(search, recentProjects, { key: 'name' });
+    return results.map((r) => r.obj);
+  }, [search, recentProjects]);
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'flex items-center rounded-md px-1.5 py-0.5 text-sm font-normal bg-muted/60 hover:bg-muted transition-colors text-muted-foreground',
+          )}
+        >
+          <span className={cn('mr-0.5', hashActive && 'text-yellow-500')}>#</span>
+          <span className="truncate">{projectName}</span>
+          <IconChevronDown className="size-4 shrink-0 [&_path]:stroke-[1.8]" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        className="w-auto min-w-40 gap-0 overflow-visible p-0 bg-popover/50"
+      >
+        <Command>
+          <CommandInput
+            autoFocus
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Search projects"
+            inputGroupClassName="bg-transparent!"
+          />
+          <CommandList className="max-h-56">
+            <CommandEmpty>No projects found</CommandEmpty>
+            <CommandGroup>
+              {filtered.map((project) => (
+                <CommandItem
+                  key={project.path}
+                  value={project.name}
+                  className="h-8"
+                  onSelect={() => {
+                    onSelectProject(project.path);
+                    handleOpenChange(false);
+                    setSearch('');
+                  }}
+                >
+                  <IconFolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{project.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

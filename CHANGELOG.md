@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Clicking a session now properly switches the active project to that session's project
+- Opening a new session no longer loses the previously active session from navigation history
+
 ## [0.3.7] - 2026-06-14
 
 ### Added

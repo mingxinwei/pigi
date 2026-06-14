@@ -84,7 +84,7 @@ const THINKING_LEVEL_VALUES: readonly ThinkingLevel[] = [
   'xhigh',
 ];
 const TEXTAREA_MAX_HEIGHT_RATIO = 0.35;
-const NEW_SESSION_PLACEHOLDER = 'Use #project-name to switch the project just by typing.';
+const NEW_SESSION_PLACEHOLDER = 'Type # to quick change project.';
 const NEW_SESSION_HEADING = 'Here we go!';
 
 export default function ChatInput({
@@ -399,7 +399,7 @@ export default function ChatInput({
     if (isNewSession) {
       const cursorPos = textarea.selectionStart;
       const textBeforeCursor = value.slice(0, cursorPos);
-      const hashMatch = textBeforeCursor.match(/(?:^|\s)#(\S*)$/);
+      const hashMatch = textBeforeCursor.match(/^#$/);
 
       if (hashMatch) {
         const hashIndex = (hashMatch.index ?? 0) + hashMatch[0].indexOf('#');
@@ -466,19 +466,8 @@ export default function ChatInput({
               }}
               forceOpen={hashMode}
               onClose={() => {
-                if (hashTriggerIndexRef.current >= 0 && hashMode) {
-                  const textarea = textareaRef.current;
-                  if (textarea) {
-                    const cursorPos = textarea.selectionStart;
-                    const value = textarea.value;
-                    let removeStart = hashTriggerIndexRef.current;
-                    if (removeStart > 0 && value[removeStart - 1] === ' ') removeStart--;
-                    textarea.value = value.slice(0, removeStart) + value.slice(cursorPos);
-                    textarea.selectionStart = textarea.selectionEnd = removeStart;
-                    setHashQuery('');
-                    setHashMode(false);
-                  }
-                }
+                setHashQuery('');
+                setHashMode(false);
                 textareaRef.current?.focus();
               }}
             />
@@ -834,7 +823,7 @@ function ProjectPicker({
         >
           <span className={cn('mr-0.5', hashActive && 'text-yellow-500')}>#</span>
           <span className="truncate">{projectName}</span>
-          <IconChevronDown className="size-4 shrink-0 [&_path]:stroke-[1.8]" />
+          <IconChevronDown className="size-4 shrink-0 ml-1 [&_path]:stroke-[1.8]" />
         </button>
       </PopoverTrigger>
       <PopoverContent

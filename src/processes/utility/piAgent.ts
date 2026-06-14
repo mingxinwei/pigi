@@ -33,6 +33,7 @@ import type {
   ControlPortMessage,
   StreamBatch,
   StreamBatchToolArgs,
+  ThinkingLevel,
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
@@ -48,8 +49,8 @@ function toModelInfo(model: {
   reasoning: boolean;
   thinkingLevelMap?: Record<string, unknown | null>;
 }): ModelInfo {
-  const allLevels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
-  const thinkingLevels = model.reasoning
+  const allLevels: ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+  const thinkingLevels: ThinkingLevel[] = model.reasoning
     ? allLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
     : ['off'];
   return {
@@ -714,7 +715,8 @@ async function warmUp(cwds: string[]): Promise<void> {
     const available = services.modelRegistry.getAvailable();
     const models = available.map(toModelInfo);
     sendToMain({ type: 'warm_ready', models });
-  } catch {
+  } catch (err) {
+    console.error('Failed to warm up:', err);
     sendToMain({ type: 'warm_ready', models: [] });
   }
 }

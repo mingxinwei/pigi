@@ -3,15 +3,18 @@
 ## [Unreleased]
 
 ### Added
+
 - New session view with centered "Here we go" heading, center-aligned input box, and clean footer
 - `#project-name` dropdown in top-left of input for project selection with fuzzy search
 - `#` hash autocomplete in textarea for switching projects
 
 ### Changed
+
 - Thinking level options are now per-model: switching models filters available thinking levels automatically
 - Model selection no longer available in new session toolbar; model/thinking set on first send
 
 ### Fixed
+
 - Switching to a model that doesn't support the current thinking level now properly resets to `off` on the backend
 
 ### Changed

@@ -39,6 +39,15 @@ import type {
 } from '../../shared/ipcContract';
 import { generateSessionTitle } from './autoRename';
 
+const EXTENDED_THINKING_LEVELS: ThinkingLevel[] = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+];
+
 function toModelInfo(model: {
   name: string;
   provider: string;
@@ -50,9 +59,12 @@ function toModelInfo(model: {
   thinkingLevelMap?: Record<string, unknown | null>;
 }): ModelInfo {
   const thinkingLevels: ThinkingLevel[] = model.reasoning
-    ? (Object.entries(model.thinkingLevelMap ?? {}) as [ThinkingLevel, unknown | null][])
-        .filter(([, value]) => value !== null)
-        .map(([level]) => level)
+    ? EXTENDED_THINKING_LEVELS.filter((level) => {
+        const mapped = model.thinkingLevelMap?.[level];
+        if (mapped === null) return false;
+        if (level === 'xhigh') return mapped !== undefined;
+        return true;
+      })
     : ['off'];
   return {
     name: model.name,

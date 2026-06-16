@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Session switcher now shows accurate relative times (e.g. "2m", "5h") instead of "now" for all sessions.
+
 ## [0.3.9] - 2026-06-28
 
 ### Fixed
@@ -42,7 +48,8 @@
 ### Fixed
 
 - The copy button now sits flush below thinking blocks instead of having extra space.
-
+- The copy button now sits flush below thinking blocks instead of having extra space.
+- Session switcher now shows accurate relative times (e.g. "2m", "5h") instead of "now" for all sessions.
 ## [0.3.6] - 2026-06-08
 
 ### Changed

@@ -64,7 +64,14 @@ export default function SessionSwitcher({
   const [query, setQuery] = useState('');
   const [selectedValue, setSelectedValue] = useState('');
   const commandListRef = useRef<HTMLDivElement>(null);
-  const [relativeTimeBase] = useState(() => Date.now());
+  // Ideally just Date.now(), but react-hooks/purity forbids impure calls during render.
+  // Refresh once when the dialog opens so relative times are accurate.
+  const [relativeTimeBase, setRelativeTimeBase] = useState(Date.now);
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => setRelativeTimeBase(Date.now()));
+    }
+  }, [open]);
 
   const allSessions = useMemo((): FlattenedSession[] => {
     const historyOrder = new Map<string, number>();
@@ -90,7 +97,7 @@ export default function SessionSwitcher({
           path: session.path,
           title: session.name || session.firstMessage || 'Untitled',
           projectName: getProjectName(session.cwd),
-          modified: session.modified,
+          modified: session.modified || session.created,
           cwd: session.cwd,
           isActive: session.path === activeSessionPath,
         });

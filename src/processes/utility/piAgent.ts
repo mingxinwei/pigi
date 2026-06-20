@@ -278,7 +278,7 @@ let snippets: Array<{ role: 'user' | 'assistant'; text: string }> = [];
  * Once we have 3, generate a title.
  */
 function autoRenameOnce(
-  event: AgentSessionEvent & { type: 'message_start' },
+  event: AgentSessionEvent & { type: 'message_end' },
   session: AgentSessionRuntime['session'],
   rt: AgentSessionRuntime & { services?: AgentSessionServices },
   push: (msg: PiPush) => void,
@@ -345,7 +345,6 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
     switch (event.type) {
       case 'message_start': {
         push({ type: 'event', event });
-        autoRenameOnce(event, session, rt, push);
         break;
       }
 
@@ -384,6 +383,7 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       case 'message_end':
         batch.flushNow();
         push({ type: 'event', event });
+        autoRenameOnce(event, session, rt, push);
         break;
 
       case 'tool_execution_update': {

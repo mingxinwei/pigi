@@ -119,6 +119,7 @@ function App(): React.JSX.Element {
   );
   const draftGetSnapshot = useCallback(() => draftControllerRef.current.state, []);
   const draftState = useSyncExternalStore(draftSubscribe, draftGetSnapshot);
+  const isDraftEmpty = draftState.nodes.length === 0;
 
   // Synthetic session entry for draft mode — provides model/thinking display.
   const draftSession = useMemo((): SessionEntry | null => {
@@ -1061,7 +1062,7 @@ function App(): React.JSX.Element {
           </>
         ) : isDraftChat ? (
           <>
-            {draftState.nodes.length > 0 && <MessageList nodes={draftState.nodes} sessionPath="" />}
+            {!isDraftEmpty && <MessageList nodes={draftState.nodes} sessionPath="" />}
             <ChatInput
               onSend={handleSend}
               onFollowUp={handleFollowUp}
@@ -1078,7 +1079,7 @@ function App(): React.JSX.Element {
               skillOptions={skillOptions}
               onSelectModel={handleSelectModel}
               onSelectThinkingLevel={handleSelectThinkingLevel}
-              isNewSession
+              isNewSession={isDraftEmpty}
               recentProjects={recentProjects}
               activeProject={activeProject}
               onSelectProject={handleSelectProject}

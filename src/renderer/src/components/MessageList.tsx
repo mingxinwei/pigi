@@ -149,20 +149,24 @@ export default React.memo(function MessageList({
     };
   }, []);
 
-  // Save scroll position to store on every scroll event
+  // Save scroll position to store on every scroll event.
+  // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !sessionPath) return;
 
     function savePosition(): void {
-      useAppStore.getState().setScrollPosition(sessionPath, container!.scrollTop);
+      const atBottom = isAtBottom(container!);
+      useAppStore.getState().setScrollPosition(sessionPath, atBottom ? -1 : container!.scrollTop);
     }
 
     container.addEventListener('scroll', savePosition, { passive: true });
     return () => container.removeEventListener('scroll', savePosition);
   }, [sessionPath]);
 
-  // Restore saved scroll position on session change, or auto-scroll to bottom
+  // Restore saved scroll position on session change, or auto-scroll to bottom.
+  // -1 sentinel means user was at bottom → enable auto-scroll so ResizeObserver
+  // tracks the true bottom even if content height changed.
   useEffect(() => {
     let cancelled = false;
 
@@ -170,7 +174,15 @@ export default React.memo(function MessageList({
       ? useAppStore.getState().scrollPositions.get(sessionPath)
       : undefined;
 
-    if (savedPosition !== undefined) {
+    if (savedPosition === -1) {
+      // Was at bottom: let ResizeObserver handle it
+      autoScrollRef.current = true;
+      requestAnimationFrame(() => {
+        if (!cancelled && containerRef.current) {
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        }
+      });
+    } else if (savedPosition !== undefined) {
       autoScrollRef.current = false;
       requestAnimationFrame(() => {
         if (!cancelled && containerRef.current) {

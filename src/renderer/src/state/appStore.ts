@@ -31,6 +31,7 @@ interface AppState {
   sessions: Map<string, SessionEntry>;
   activeSessionPath: string | null;
   // Remembered scroll positions per session (sessionPath -> scrollTop)
+  // scrollTop = -1 means "was at bottom, auto-scroll on restore"
   scrollPositions: Map<string, number>;
   setScrollPosition: (sessionPath: string, scrollTop: number) => void;
 

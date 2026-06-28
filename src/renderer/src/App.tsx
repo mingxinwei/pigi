@@ -383,7 +383,25 @@ function App(): React.JSX.Element {
       try {
         const sessionPath = await createSession(cwd);
         addSession(sessionPath, cwd);
-        useAppStore.getState().updateSession(sessionPath, { title: message.slice(0, 48) });
+        useAppStore.getState().updateSession(sessionPath, { title: message });
+        {
+          const s = useAppStore.getState();
+          const existing = s.projectSessions[cwd] ?? [];
+          s.setProjectSessionList(cwd, [
+            {
+              path: sessionPath,
+              id: '',
+              cwd,
+              name: message,
+              firstMessage: message,
+              created: new Date().toISOString(),
+              modified: new Date().toISOString(),
+              messageCount: 1,
+              allMessagesText: message,
+            } satisfies PiSessionInfo,
+            ...existing.filter((ps) => ps.path !== sessionPath),
+          ]);
+        }
 
         // Transfer draft controller content to the real session.
         // Draft only contains UserNodes (optimistic messages), so we just add them.
@@ -429,7 +447,6 @@ function App(): React.JSX.Element {
             await steer(sessionPath, messages[i]);
           }
         }
-        void listProjectSessions([cwd]);
       } catch (err) {
         console.error('Failed to create session from draft:', err);
         isDraftSpawningRef.current = false;
@@ -443,7 +460,7 @@ function App(): React.JSX.Element {
     const sessionPath = activeSessionPath;
     const existing = useAppStore.getState().sessions.get(sessionPath);
     if (existing?.title === 'New chat') {
-      useAppStore.getState().updateSession(sessionPath, { title: message.slice(0, 48) });
+      useAppStore.getState().updateSession(sessionPath, { title: message });
     }
 
     // If the session is still pending (utility process not ready), buffer the prompt
@@ -690,7 +707,9 @@ function App(): React.JSX.Element {
       }
 
       // Show the session — messages and metadata are ready
-      pushNavigationHistory(sessionPath);
+      if (!options?.skipHistory) {
+        pushNavigationHistory(sessionPath);
+      }
       setActiveSession(sessionPath);
       setPendingSelectedPath(null);
 

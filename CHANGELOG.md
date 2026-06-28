@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- New sessions now appear in session switcher and sidebar immediately after creation
+- Navigation forward/back no longer skips sessions that are being loaded from disk
+- Session titles no longer get truncated to 48 characters on first message
+
+### Fixed
+
 - Switching sessions now correctly restores scroll-to-bottom position when user was already scrolled to the bottom
 
 ## [0.3.8] - 2026-06-14

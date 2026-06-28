@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Switching sessions now correctly restores scroll-to-bottom position when user was already scrolled to the bottom
+
 ## [0.3.8] - 2026-06-14
 
 ### Fixed

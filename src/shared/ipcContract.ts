@@ -1,4 +1,8 @@
-import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-agent';
+import type {
+  EditToolInput,
+  WriteToolInput,
+  AgentSessionEvent,
+} from '@earendil-works/pi-coding-agent';
 
 /**
  * IPC Contract - single source of truth for all inter-process communication.
@@ -166,7 +170,7 @@ export type PiPush =
       autoCompactionEnabled: boolean;
     }
   | { type: 'session_error'; error: string }
-  | { type: 'event'; event: unknown }
+  | { type: 'event'; event: AgentSessionEvent }
   | { type: 'error'; error: string }
   | { type: 'status_sync'; isStreaming: boolean }
   | { type: 'login_open_url'; url: string }

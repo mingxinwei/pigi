@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- New sessions now appear in session switcher and sidebar immediately after creation
+- New sessions now appear in session switcher and sidebar after the first response completes
 - Navigation forward/back no longer skips sessions that are being loaded from disk
 - Session titles no longer get truncated to 48 characters on first message
 

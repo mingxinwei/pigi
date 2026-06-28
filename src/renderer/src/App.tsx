@@ -384,24 +384,6 @@ function App(): React.JSX.Element {
         const sessionPath = await createSession(cwd);
         addSession(sessionPath, cwd);
         useAppStore.getState().updateSession(sessionPath, { title: message });
-        {
-          const s = useAppStore.getState();
-          const existing = s.projectSessions[cwd] ?? [];
-          s.setProjectSessionList(cwd, [
-            {
-              path: sessionPath,
-              id: '',
-              cwd,
-              name: message,
-              firstMessage: message,
-              created: new Date().toISOString(),
-              modified: new Date().toISOString(),
-              messageCount: 1,
-              allMessagesText: message,
-            } satisfies PiSessionInfo,
-            ...existing.filter((ps) => ps.path !== sessionPath),
-          ]);
-        }
 
         // Transfer draft controller content to the real session.
         // Draft only contains UserNodes (optimistic messages), so we just add them.

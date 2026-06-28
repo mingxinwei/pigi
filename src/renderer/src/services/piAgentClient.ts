@@ -80,8 +80,24 @@ export async function reorderProjects(paths: string[]): Promise<ProjectStateResu
   return window.piApi.reorderProjects(paths);
 }
 
+/** cwds recently sent to the session worker; cleared after a short TTL */
+const pendingListCwds = new Set<string>();
+
 export async function listProjectSessions(cwds: string[]): Promise<SessionListResult> {
-  return window.piApi.listProjectSessions(cwds);
+  const fresh = cwds.filter((c) => !pendingListCwds.has(c));
+  if (fresh.length === 0) {
+    return { success: true, requestId: '' };
+  }
+  for (const c of fresh) {
+    pendingListCwds.add(c);
+  }
+  const result = await window.piApi.listProjectSessions(fresh);
+  setTimeout(() => {
+    for (const c of fresh) {
+      pendingListCwds.delete(c);
+    }
+  }, 500);
+  return result;
 }
 
 /** Read messages from a session file without a live utility process. */

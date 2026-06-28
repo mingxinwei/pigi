@@ -17,6 +17,7 @@ import {
   listProjectSessions,
 } from '../services/piAgentClient';
 import type { PiPush, StreamBatch } from '../../../shared/ipcContract';
+import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 
 interface UseTranscriptResult {
   state: TranscriptState;
@@ -27,6 +28,7 @@ const emptyController = new TranscriptController();
 const controllersBySession = new Map<string, TranscriptController>();
 const subscriptionsBySession = new Map<string, () => void>();
 const hydrationStartedSessions = new Set<string>();
+const projectSessionsRefreshed = new Set<string>();
 
 export function getTranscriptController(sessionPath: string): TranscriptController {
   const existing = controllersBySession.get(sessionPath);
@@ -50,6 +52,7 @@ export function disposeTranscriptSession(sessionPath: string): void {
   subscriptionsBySession.get(sessionPath)?.();
   controllersBySession.delete(sessionPath);
   hydrationStartedSessions.delete(sessionPath);
+  projectSessionsRefreshed.delete(sessionPath);
 }
 
 /**
@@ -97,6 +100,24 @@ function syncSessionState(sessionPath: string, controller: TranscriptController)
     });
 }
 
+function refreshProjectSessionsIfFirstAssistantMessage(
+  sessionPath: string,
+  event: AgentSessionEvent,
+): void {
+  if (
+    projectSessionsRefreshed.has(sessionPath) ||
+    event.type !== 'message_end' ||
+    event.message.role !== 'assistant'
+  ) {
+    return;
+  }
+  const cwd = useAppStore.getState().sessions.get(sessionPath)?.cwd;
+  if (cwd) {
+    projectSessionsRefreshed.add(sessionPath);
+    void listProjectSessions([cwd]);
+  }
+}
+
 function ensureSessionSubscription(sessionPath: string, controller: TranscriptController): void {
   if (subscriptionsBySession.has(sessionPath)) {
     return;
@@ -128,6 +149,7 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
       case 'event':
         controller.processEvent(pushMessage.event);
         useAppStore.getState().updateSession(sessionPath, { status: controller.state.status });
+        refreshProjectSessionsIfFirstAssistantMessage(sessionPath, pushMessage.event);
         break;
 
       case 'error':

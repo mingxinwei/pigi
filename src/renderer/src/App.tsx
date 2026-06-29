@@ -765,6 +765,9 @@ function App(): React.JSX.Element {
           .catch(() => {});
         void touchSession(sessionPath);
 
+        // Refresh session list for this project
+        void listProjectSessions([session.cwd]);
+
         // Flush any pending prompts
         const bufferedMessages = pendingPromptsRef.current.get(sessionPath);
         if (bufferedMessages && bufferedMessages.length > 0) {
@@ -860,6 +863,7 @@ function App(): React.JSX.Element {
     const result = await setActiveProject(path);
     if (result.success) {
       useAppStore.getState().setProjects(result.recentProjects, result.activeProject);
+      void listProjectSessions([path]);
     }
   }, []);
 

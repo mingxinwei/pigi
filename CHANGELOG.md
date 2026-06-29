@@ -7,6 +7,10 @@
 - Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
 - Hovering the minimap popover highlights and scrolls the active item into view.
 
+### Changed
+
+- Clicking a session or project in the sidebar now refreshes the session list
+
 ## [0.3.13] - 2026-07-01
 
 ### Fixed
@@ -42,6 +46,7 @@
 - Pressing Esc now only aborts a running session when the chat input or message list is focused.
 - New chats now recover better from failed startup attempts and retry without resending old failed messages.
 - Session switcher now shows accurate relative times (e.g. "2m", "5h") instead of "now" for all sessions.
+- Clicking a session or project in the sidebar now refreshes the session list
 
 ## [0.3.9] - 2026-06-28
 

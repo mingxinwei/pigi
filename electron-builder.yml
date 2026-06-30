@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: pigi
+productName: windsurf
 directories:
   buildResources: build
 files:

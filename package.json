@@ -1,6 +1,6 @@
 {
-  "name": "pigi",
-  "version": "0.3.11",
+  "name": "windsurf",
+  "version": "0.3.12",
   "type": "module",
   "description": "A high performance pi GUI",
   "main": "./out/main/index.js",

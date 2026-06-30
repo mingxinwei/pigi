@@ -57,7 +57,7 @@ import LoginDialog from './components/LoginDialog';
 import SessionSwitcher from './components/SessionSwitcher';
 import { SidebarProvider } from './components/ui/sidebar';
 import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
-
+import { ESCAPE_ABORT_SCOPE_SELECTOR } from './lib/focusScopes';
 const WELCOME_TITLE = 'Welcome to pigi';
 
 function App(): React.JSX.Element {
@@ -591,10 +591,21 @@ function App(): React.JSX.Element {
 
   const handleRestoredText = useCallback(() => setRestoreText(null), []);
 
-  // Global Escape key to abort streaming
+  // Escape aborts only when focus is in an explicit abort scope.
   useEffect(() => {
+    function isAbortScopeFocused(): boolean {
+      const activeElement = document.activeElement;
+      return (
+        activeElement instanceof Element &&
+        activeElement.closest(ESCAPE_ABORT_SCOPE_SELECTOR) !== null
+      );
+    }
+
     function handleKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape' && transcript.status !== 'idle') {
+      if (e.defaultPrevented) {
+        return;
+      }
+      if (e.key === 'Escape' && transcript.status !== 'idle' && isAbortScopeFocused()) {
         handleAbort();
       }
     }

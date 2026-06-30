@@ -72,6 +72,11 @@ interface AppState {
   navigateForward: () => string | null;
   /** Remove a session path from all history stacks */
   removeFromNavigationHistory: (sessionPath: string) => void;
+
+  // Tracks session paths that were manually renamed (to suppress typewriter animation)
+  renamedSessionPaths: Set<string>;
+  markSessionRenamed: (sessionPath: string) => void;
+  clearSessionRenamed: (sessionPath: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -221,4 +226,18 @@ export const useAppStore = create<AppState>((set) => ({
       navigationBackStack: state.navigationBackStack.filter((p) => p !== sessionPath),
       navigationForwardStack: state.navigationForwardStack.filter((p) => p !== sessionPath),
     })),
+
+  renamedSessionPaths: new Set(),
+  markSessionRenamed: (sessionPath) =>
+    set((state) => {
+      const next = new Set(state.renamedSessionPaths);
+      next.add(sessionPath);
+      return { renamedSessionPaths: next };
+    }),
+  clearSessionRenamed: (sessionPath) =>
+    set((state) => {
+      const next = new Set(state.renamedSessionPaths);
+      next.delete(sessionPath);
+      return { renamedSessionPaths: next };
+    }),
 }));

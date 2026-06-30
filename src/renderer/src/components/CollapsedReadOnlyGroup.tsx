@@ -42,8 +42,8 @@ export default function CollapsedReadOnlyGroup({
 
   return (
     <Collapsible className="group/collapsible mb-2">
-      <div>
-        <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-muted-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
+      <div className="rounded-md border border-border/65 bg-muted/25 px-3 py-1.5">
+        <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
           <span>{label}</span>
           <IconChevronRight className="chevron-right size-3.5 shrink-0" />
           <IconChevronDown className="chevron-down size-3.5 shrink-0" />
@@ -52,8 +52,8 @@ export default function CollapsedReadOnlyGroup({
           {nodes.map((node) => (
             <div
               key={node.id}
-              className={`relative truncate font-mono text-xs overflow-hidden ${
-                node.id === latestNodeId ? 'text-muted-foreground/70' : 'text-muted-foreground/50'
+              className={`relative truncate font-mono text-[13px] overflow-hidden ${
+                node.id === latestNodeId ? 'text-foreground' : 'text-foreground/70'
               }`}
             >
               {getCommandLabel(node)}

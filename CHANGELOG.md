@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-06-30
+
 ### Added
 
 - Session toolbar at the top of the message list showing session title and a view mode toggle to switch between compact and full tool block display.

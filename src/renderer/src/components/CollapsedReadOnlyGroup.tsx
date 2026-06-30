@@ -41,14 +41,14 @@ export default function CollapsedReadOnlyGroup({
   const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
 
   return (
-    <Collapsible className="mb-2">
+    <Collapsible className="group/collapsible mb-2">
       <div>
         <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-muted-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
           <span>{label}</span>
           <IconChevronRight className="chevron-right size-3.5 shrink-0" />
           <IconChevronDown className="chevron-down size-3.5 shrink-0" />
         </CollapsibleTrigger>
-        <div className="mt-0.5 flex flex-col">
+        <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
           {nodes.map((node) => (
             <div
               key={node.id}

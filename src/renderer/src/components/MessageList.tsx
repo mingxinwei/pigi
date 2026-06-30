@@ -15,7 +15,7 @@ import {
   MESSAGE_ROW_GAP,
 } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
-import CollapsedReadOnlyGroup from './CollapsedReadOnlyGroup';
+import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -49,9 +49,9 @@ const USER_MESSAGE_MAX_HEIGHT = 360;
 /** A render item is either a single transcript node or a collapsed group of read-only tool nodes */
 type RenderItem =
   | { type: 'node'; node: TranscriptNode; id: string }
-  | { type: 'readOnlyGroup'; nodes: ToolNode[]; id: string };
+  | { type: 'readGroup'; nodes: ToolNode[]; id: string };
 
-function isReadOnlyToolNode(node: TranscriptNode): boolean {
+function isReadToolNode(node: TranscriptNode): boolean {
   if (node.role !== 'tool') return false;
   if (node.name === 'read') return true;
   if (node.name === 'bash') {
@@ -77,7 +77,7 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   function flushGroup(): void {
     if (currentGroup.length > 0) {
       items.push({
-        type: 'readOnlyGroup',
+        type: 'readGroup',
         nodes: currentGroup,
         id: `group-${currentGroup[0].id}`,
       });
@@ -86,7 +86,7 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   }
 
   for (const node of nodes) {
-    if (node.role === 'tool' && isReadOnlyToolNode(node)) {
+    if (node.role === 'tool' && isReadToolNode(node)) {
       currentGroup.push(node);
     } else {
       flushGroup();
@@ -293,7 +293,7 @@ export default React.memo(function MessageList({
         {...escapeAbortScopeProps}
       >
         <div
-          className="mx-auto px-5 pb-8 pt-14 user-content"
+          className="mx-auto px-5 pb-8 pt-6 user-content"
           style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
@@ -329,6 +329,8 @@ export default React.memo(function MessageList({
         containerWidth={containerWidth}
         onScrollToIndex={handleScrollToIndex}
       />
+      {/* Top gradient fade */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-background to-transparent" />
       {/* Bottom gradient fade */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent" />
       {showScrollButton && (
@@ -350,7 +352,7 @@ const COLLAPSED_GROUP_COMMAND_LINE_HEIGHT = 16;
 
 function estimateRenderItemHeight(item: RenderItem | undefined): number {
   if (!item) return 96;
-  if (item.type === 'readOnlyGroup') {
+  if (item.type === 'readGroup') {
     return COLLAPSED_GROUP_TRIGGER_HEIGHT + item.nodes.length * COLLAPSED_GROUP_COMMAND_LINE_HEIGHT;
   }
   return estimateNodeHeight(item.node);
@@ -447,8 +449,8 @@ function RenderItemRenderer({
   isLast: boolean;
   sessionActive: boolean;
 }): React.JSX.Element {
-  if (item.type === 'readOnlyGroup') {
-    return <CollapsedReadOnlyGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
+  if (item.type === 'readGroup') {
+    return <CollapsedReadGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
   }
   return <NodeRenderer node={item.node} />;
 }

@@ -9,13 +9,20 @@ import {
   type UserNode,
   getToolArgs,
 } from '../state/transcriptController';
-import { MESSAGE_CONTENT_MAX_WIDTH, MESSAGE_LIST_MAX_WIDTH } from '../lib/layoutConstants';
+import {
+  MESSAGE_CONTENT_MAX_WIDTH,
+  MESSAGE_LIST_MAX_WIDTH,
+  MESSAGE_ROW_GAP,
+} from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
+import CollapsedReadOnlyGroup from './CollapsedReadOnlyGroup';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
+import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
+
 interface MessageListProps {
   nodes: TranscriptNode[];
   sessionPath: string;
@@ -26,7 +33,6 @@ function isRenderableNode(node: TranscriptNode): boolean {
   return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
-const MESSAGE_ROW_GAP = 4;
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
@@ -40,6 +46,58 @@ const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
 /** Max height (px) for user bubble content before showing expand button */
 const USER_MESSAGE_MAX_HEIGHT = 360;
 
+/** A render item is either a single transcript node or a collapsed group of read-only tool nodes */
+type RenderItem =
+  | { type: 'node'; node: TranscriptNode; id: string }
+  | { type: 'readOnlyGroup'; nodes: ToolNode[]; id: string };
+
+function isReadOnlyToolNode(node: TranscriptNode): boolean {
+  if (node.role !== 'tool') return false;
+  if (node.name === 'read') return true;
+  if (node.name === 'bash') {
+    const args = getToolArgs(node);
+    const command = typeof args?.command === 'string' ? args.command : '';
+    return isReadOnlyBashCommand(command);
+  }
+  return false;
+}
+
+/**
+ * Groups consecutive read-only tool nodes into collapsed groups.
+ * Non-read-only nodes break the consecutive sequence.
+ */
+function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem[] {
+  if (!compact) {
+    return nodes.map((node) => ({ type: 'node', node, id: node.id }));
+  }
+
+  const items: RenderItem[] = [];
+  let currentGroup: ToolNode[] = [];
+
+  function flushGroup(): void {
+    if (currentGroup.length > 0) {
+      items.push({
+        type: 'readOnlyGroup',
+        nodes: currentGroup,
+        id: `group-${currentGroup[0].id}`,
+      });
+      currentGroup = [];
+    }
+  }
+
+  for (const node of nodes) {
+    if (isReadOnlyToolNode(node)) {
+      currentGroup.push(node as ToolNode);
+    } else {
+      flushGroup();
+      items.push({ type: 'node', node, id: node.id });
+    }
+  }
+  flushGroup();
+
+  return items;
+}
+
 export default React.memo(function MessageList({
   nodes,
   sessionPath,
@@ -49,20 +107,28 @@ export default React.memo(function MessageList({
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
-  const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes]);
-
-  const getItemKey = useCallback(
-    (index: number) => displayNodes[index]?.id ?? index,
-    [displayNodes],
+  const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
+  const sessionStatus = useAppStore(
+    (state) => (sessionPath ? state.sessions.get(sessionPath)?.status : undefined) ?? 'idle',
   );
 
+  const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes]);
+  const renderItems = useMemo(
+    () => buildRenderItems(displayNodes, toolBlockViewMode === 'compact_read'),
+
+    [displayNodes, toolBlockViewMode],
+  );
+
+  const getItemKey = useCallback((index: number) => renderItems[index]?.id ?? index, [renderItems]);
+
   // TanStack Virtual returns imperative measurement helpers; this follows its documented React pattern.
+
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: displayNodes.length,
+    count: renderItems.length,
     getScrollElement: () => containerRef.current,
     getItemKey,
-    estimateSize: (index) => estimateNodeHeight(displayNodes[index]),
+    estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
     gap: MESSAGE_ROW_GAP,
     useAnimationFrameWithResizeObserver: true,
@@ -238,16 +304,20 @@ export default React.memo(function MessageList({
             data-testid="message-virtualizer"
           >
             {virtualItems.map((virtualItem) => {
-              const node = displayNodes[virtualItem.index];
+              const item = renderItems[virtualItem.index];
               return (
                 <div
-                  key={node.id}
+                  key={item.id}
                   ref={rowVirtualizer.measureElement}
                   data-index={virtualItem.index}
                   className="absolute left-0 top-0 w-full"
                   style={{ transform: `translateY(${virtualItem.start}px)` }}
                 >
-                  <NodeRenderer node={node} />
+                  <RenderItemRenderer
+                    item={item}
+                    isLast={virtualItem.index === renderItems.length - 1}
+                    sessionActive={sessionStatus !== 'idle'}
+                  />
                 </div>
               );
             })}
@@ -273,6 +343,15 @@ export default React.memo(function MessageList({
     </div>
   );
 });
+
+/** Collapsed read-only group row height estimate (single line button) */
+const COLLAPSED_GROUP_HEIGHT = 36;
+
+function estimateRenderItemHeight(item: RenderItem | undefined): number {
+  if (!item) return 96;
+  if (item.type === 'readOnlyGroup') return COLLAPSED_GROUP_HEIGHT;
+  return estimateNodeHeight(item.node);
+}
 
 function estimateNodeHeight(node: TranscriptNode | undefined): number {
   if (!node) {
@@ -354,6 +433,21 @@ function estimateToolCommandLineCount(node: ToolNode): number {
         : String(JSON.stringify(args ?? {}) ?? '');
 
   return Math.min(2, Math.max(1, Math.ceil(command.length / 80)));
+}
+
+function RenderItemRenderer({
+  item,
+  isLast,
+  sessionActive,
+}: {
+  item: RenderItem;
+  isLast: boolean;
+  sessionActive: boolean;
+}): React.JSX.Element {
+  if (item.type === 'readOnlyGroup') {
+    return <CollapsedReadOnlyGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
+  }
+  return <NodeRenderer node={item.node} />;
 }
 
 function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {

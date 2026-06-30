@@ -52,6 +52,10 @@ interface AppState {
   sidebarExpanded: boolean;
   toggleSidebar: () => void;
 
+  // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools
+  toolBlockViewMode: 'default' | 'compact_read';
+  setToolBlockViewMode: (mode: 'default' | 'compact_read') => void;
+
   // Platform
   platform: Platform;
   setPlatform: (platform: Platform) => void;
@@ -146,6 +150,11 @@ export const useAppStore = create<AppState>((set) => ({
   // Sidebar
   sidebarExpanded: true,
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
+
+  // Tool block view mode
+  toolBlockViewMode: 'compact_read',
+
+  setToolBlockViewMode: (mode) => set({ toolBlockViewMode: mode }),
 
   // Platform
   platform: 'unknown',

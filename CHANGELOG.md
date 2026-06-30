@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Compact read view mode: consecutive read-only tool calls (read, grep, rg, ls, fd, etc.) are collapsed into a single "Looked into N files" line with a list of commands underneath. Click to expand and see the full cards. Active groups show a shimmer animation on the current command.
+
 ### Fixed
 
 - Pressing Enter while selecting text with an input method no longer saves a session rename.

@@ -3,6 +3,7 @@ export const MESSAGE_LIST_HORIZONTAL_PADDING = 20;
 export const MESSAGE_CONTENT_MAX_WIDTH =
   MESSAGE_LIST_MAX_WIDTH - MESSAGE_LIST_HORIZONTAL_PADDING * 2;
 export const CHAT_INPUT_MAX_WIDTH = MESSAGE_CONTENT_MAX_WIDTH;
+export const MESSAGE_ROW_GAP = 4;
 
 /** Used by Dialog, Popover, and ContextMenu — these need backdrop-blur but blur renders incorrectly in vibrant regions, so they use a separate configuration. */
 export const VIBRANCY_OVERLAY_CONTENT =

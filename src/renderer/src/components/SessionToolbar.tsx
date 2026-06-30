@@ -10,7 +10,6 @@ import {
 } from './ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
-
 interface SessionToolbarProps {
   sessionPath: string;
 }
@@ -40,12 +39,14 @@ export default React.memo(function SessionToolbar({
             <IconFilter2 size={16} stroke={1.5} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="min-w-0 w-fit text-xs bg-popover/50 backdrop-blur-md">
+        <DropdownMenuContent
+          align="end"
+          sideOffset={4}
+          className="min-w-0 w-fit text-xs bg-popover/50 backdrop-blur-md"
+        >
           <DropdownMenuRadioGroup
             value={toolBlockViewMode}
-            onValueChange={(value) =>
-              setToolBlockViewMode(value as 'default' | 'compact_read')
-            }
+            onValueChange={(value) => setToolBlockViewMode(value as 'default' | 'compact_read')}
           >
             <TooltipProvider delayDuration={400}>
               <Tooltip>

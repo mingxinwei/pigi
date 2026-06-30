@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- New chats now recover better from failed startup attempts and retry without resending old failed messages.
 - Session switcher now shows accurate relative times (e.g. "2m", "5h") instead of "now" for all sessions.
 
 ## [0.3.9] - 2026-06-28

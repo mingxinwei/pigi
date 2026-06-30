@@ -134,12 +134,11 @@ function listProjectSessions(cwds: string[]): SessionListResult {
  * Spawn a utility process (or claim the warm one), send lifecycle command,
  * wait for sessionPath, then establish dedicated control/data MessagePorts.
  */
-async function spawnSessionProcess(
+async function attemptSpawnSessionProcess(
   command: UtilityCommand,
+  proc: Electron.UtilityProcess,
 ): Promise<{ success: boolean; sessionPath?: string; error?: string }> {
   return new Promise((resolve) => {
-    // Try to claim the warm process first; fall back to spawning fresh.
-    const proc = processPool.claimWarmProcess() ?? processPool.createFreshProcess();
     let resolved = false;
 
     const timeout = setTimeout(() => {
@@ -218,6 +217,32 @@ async function spawnSessionProcess(
     // Send the lifecycle command
     proc.postMessage(command);
   });
+}
+
+/**
+ * Spawn a utility process (or claim the warm one), send lifecycle command,
+ * wait for sessionPath, then establish dedicated control/data MessagePorts.
+ * Retries once with a fresh process if the first attempt fails.
+ */
+async function spawnSessionProcess(
+  command: UtilityCommand,
+): Promise<{ success: boolean; sessionPath?: string; error?: string }> {
+  // First attempt: prefer warm process, fall back to fresh
+  const firstProc = processPool.claimWarmProcess() ?? processPool.createFreshProcess();
+  const firstResult = await attemptSpawnSessionProcess(command, firstProc);
+  if (firstResult.success) {
+    return firstResult;
+  }
+
+  // Retry once with a fresh process (warm process may have been stale/crashed)
+  const retryProc = processPool.createFreshProcess();
+  const retryResult = await attemptSpawnSessionProcess(command, retryProc);
+  if (retryResult.success) {
+    return retryResult;
+  }
+
+  // Both attempts failed — return the retry error
+  return { success: false, error: retryResult.error ?? firstResult.error };
 }
 
 export function stopAllProcesses(): void {

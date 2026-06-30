@@ -370,6 +370,10 @@ function App(): React.JSX.Element {
 
     // Draft chat: first message triggers session creation in background.
     if (isDraftChat || !activeSessionPath) {
+      if (!activeSessionPath && draftControllerRef.current.state.status === 'error') {
+        draftControllerRef.current.reset();
+      }
+
       // Show optimistic user message on the draft controller
       draftControllerRef.current.addUserMessage(message);
 
@@ -381,8 +385,40 @@ function App(): React.JSX.Element {
       setIsDraftSpawning(true);
       setIsDraftChat(true);
 
+      // Retry createSession up to 3 times with a delay to handle transient failures
+      // (e.g., warm process was stale, pi agent crashed on init).
+      const MAX_CREATE_RETRIES = 3;
+      const RETRY_DELAY_MS = 1000;
+      let sessionPath: string | null = null;
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < MAX_CREATE_RETRIES; attempt++) {
+        try {
+          sessionPath = await createSession(cwd);
+          break;
+        } catch (err) {
+          lastError = err;
+          console.error(
+            `Failed to create session (attempt ${attempt + 1}/${MAX_CREATE_RETRIES}):`,
+            err,
+          );
+          if (attempt < MAX_CREATE_RETRIES - 1) {
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          }
+        }
+      }
+
+      if (!sessionPath) {
+        console.error('All session creation attempts failed:', lastError);
+        isDraftSpawningRef.current = false;
+        setIsDraftSpawning(false);
+        draftControllerRef.current.setError(
+          'Failed to start agent process. Please try sending your message again.',
+        );
+        return;
+      }
+
       try {
-        const sessionPath = await createSession(cwd);
         addSession(sessionPath, cwd);
         useAppStore.getState().updateSession(sessionPath, { title: message });
 
@@ -431,10 +467,10 @@ function App(): React.JSX.Element {
           }
         }
       } catch (err) {
-        console.error('Failed to create session from draft:', err);
+        console.error('Failed to initialize session after creation:', err);
         isDraftSpawningRef.current = false;
         setIsDraftSpawning(false);
-        toast.error('Failed to create session. Please try again.');
+        toast.error('Failed to start session. Please try again.');
       }
       return;
     }
@@ -568,8 +604,10 @@ function App(): React.JSX.Element {
 
   /** Enter draft chat mode — instant, no process spawned. */
   const handleNewSession = useCallback((): void => {
-    // If already in draft mode, do nothing.
-    if (isDraftChat && !activeSessionPath) return;
+    // If already in a clean draft mode (no error), do nothing.
+    if (isDraftChat && !activeSessionPath && draftControllerRef.current.state.status !== 'error') {
+      return;
+    }
     // Push current active session to navigation history so it's not lost.
     // Pass empty string as sentinel (no real session path is empty) so the
     // current activeSessionPath gets pushed to backStack.

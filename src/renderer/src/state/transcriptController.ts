@@ -482,6 +482,19 @@ export class TranscriptController {
     this.notify();
   }
 
+  /** Show a persistent error message in the transcript (e.g., session creation failed). */
+  setError(message: string): void {
+    const node: AssistantNode = {
+      id: nextNodeId(),
+      role: 'assistant',
+      text: '',
+      thinking: '',
+      errorMessage: message,
+      isStreaming: false,
+    };
+    this.setState({ nodes: [...this._state.nodes, node], status: 'error' });
+  }
+
   // ===========================================================================
   private _optimisticUserMessages = new Map<string, number>();
 

@@ -51,9 +51,14 @@ export function SessionItem({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing || e.key === 'Process') {
+        return;
+      }
       if (e.key === 'Enter') {
+        e.preventDefault();
         handleFinishRename();
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         setIsEditing(false);
       }
     },

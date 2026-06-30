@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Pressing Enter while selecting text with an input method no longer saves a session rename.
 - Pressing Esc now only aborts a running session when the chat input or message list is focused.
 - New chats now recover better from failed startup attempts and retry without resending old failed messages.
 - Session switcher now shows accurate relative times (e.g. "2m", "5h") instead of "now" for all sessions.

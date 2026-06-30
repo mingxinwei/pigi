@@ -24,7 +24,7 @@ function getCommandLabel(node: ToolNode): string {
   return node.name;
 }
 
-interface CollapsedReadOnlyGroupProps {
+interface CollapsedReadGroupProps {
   nodes: ToolNode[];
   /** True when this group is still potentially growing (last group + agent active) */
   isActive: boolean;
@@ -33,7 +33,7 @@ interface CollapsedReadOnlyGroupProps {
 export default function CollapsedReadGroup({
   nodes,
   isActive,
-}: CollapsedReadOnlyGroupProps): React.JSX.Element {
+}: CollapsedReadGroupProps): React.JSX.Element {
   const count = nodes.length;
   const noun = count === 1 ? 'file' : 'files';
   const label = isActive ? `Looking into ${count} ${noun}` : `Looked into ${count} ${noun}`;

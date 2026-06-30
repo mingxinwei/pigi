@@ -86,8 +86,8 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   }
 
   for (const node of nodes) {
-    if (isReadOnlyToolNode(node)) {
-      currentGroup.push(node as ToolNode);
+    if (node.role === 'tool' && isReadOnlyToolNode(node)) {
+      currentGroup.push(node);
     } else {
       flushGroup();
       items.push({ type: 'node', node, id: node.id });
@@ -344,12 +344,15 @@ export default React.memo(function MessageList({
   );
 });
 
-/** Collapsed read-only group row height estimate (single line button) */
-const COLLAPSED_GROUP_HEIGHT = 36;
+/** Height estimates for collapsed read-only group */
+const COLLAPSED_GROUP_TRIGGER_HEIGHT = 28;
+const COLLAPSED_GROUP_COMMAND_LINE_HEIGHT = 16;
 
 function estimateRenderItemHeight(item: RenderItem | undefined): number {
   if (!item) return 96;
-  if (item.type === 'readOnlyGroup') return COLLAPSED_GROUP_HEIGHT;
+  if (item.type === 'readOnlyGroup') {
+    return COLLAPSED_GROUP_TRIGGER_HEIGHT + item.nodes.length * COLLAPSED_GROUP_COMMAND_LINE_HEIGHT;
+  }
   return estimateNodeHeight(item.node);
 }
 

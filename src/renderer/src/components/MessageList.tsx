@@ -15,7 +15,7 @@ import {
   MESSAGE_ROW_GAP,
 } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
-import CollapsedReadOnlyGroup from './CollapsedReadOnlyGroup';
+import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -450,7 +450,7 @@ function RenderItemRenderer({
   sessionActive: boolean;
 }): React.JSX.Element {
   if (item.type === 'readOnlyGroup') {
-    return <CollapsedReadOnlyGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
+    return <CollapsedReadGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
   }
   return <NodeRenderer node={item.node} />;
 }

@@ -15,7 +15,7 @@ import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
-
+import { escapeAbortScopeProps } from '../lib/focusScopes';
 interface MessageListProps {
   nodes: TranscriptNode[];
   sessionPath: string;
@@ -220,8 +220,11 @@ export default React.memo(function MessageList({
     <div className="relative min-h-0 flex-1">
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto bg-background [overflow-anchor:none]"
+        className="h-full overflow-y-auto bg-background [overflow-anchor:none] focus:outline-none"
         data-testid="message-list"
+        tabIndex={0}
+        aria-label="Message list"
+        {...escapeAbortScopeProps}
       >
         <div
           className="mx-auto px-5 pb-8 pt-14 user-content"

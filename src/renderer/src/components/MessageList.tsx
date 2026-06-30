@@ -293,7 +293,7 @@ export default React.memo(function MessageList({
         {...escapeAbortScopeProps}
       >
         <div
-          className="mx-auto px-5 pb-8 pt-14 user-content"
+          className="mx-auto px-5 pb-8 pt-6 user-content"
           style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
@@ -329,6 +329,8 @@ export default React.memo(function MessageList({
         containerWidth={containerWidth}
         onScrollToIndex={handleScrollToIndex}
       />
+      {/* Top gradient fade */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-background to-transparent" />
       {/* Bottom gradient fade */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent" />
       {showScrollButton && (

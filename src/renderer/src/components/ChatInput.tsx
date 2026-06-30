@@ -39,7 +39,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants';
 import { cn } from '../lib/utils';
 import { getAllSlashCommands, matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
-
+import { escapeAbortScopeProps } from '../lib/focusScopes';
 interface ChatInputProps {
   onSend: (message: string) => void;
   onFollowUp: (message: string) => void;
@@ -283,6 +283,7 @@ export default function ChatInput({
           return;
         }
         if (e.key === 'Escape') {
+          e.preventDefault();
           setSlashMatches({ builtin: [], skill: [] });
           return;
         }
@@ -346,6 +347,7 @@ export default function ChatInput({
         isNewSession && 'flex flex-1 flex-col items-center justify-center min-h-0 px-8',
       )}
       data-testid="chat-input"
+      {...escapeAbortScopeProps}
     >
       {isNewSession && (
         <h1 className="mb-12 text-center text-4xl font-normal text-foreground">

@@ -7,7 +7,16 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collap
 function getCommandLabel(node: ToolNode): string {
   const args = getToolArgs(node);
   if (node.name === 'read') {
-    return `read ${String(args?.path ?? '')}`;
+    const path = String(args?.path ?? '');
+    const offset = typeof args?.offset === 'number' ? args.offset : undefined;
+    const limit = typeof args?.limit === 'number' ? args.limit : undefined;
+    if (offset != null || limit != null) {
+      const from = offset ?? 1;
+      const to = limit != null ? from + limit - 1 : undefined;
+      const range = to != null ? `:${from}-${to}` : `:${from}`;
+      return `read ${path}${range}`;
+    }
+    return `read ${path}`;
   }
   if (node.name === 'bash') {
     return String(args?.command ?? '');
@@ -26,7 +35,8 @@ export default function CollapsedReadOnlyGroup({
   isActive,
 }: CollapsedReadOnlyGroupProps): React.JSX.Element {
   const count = nodes.length;
-  const label = isActive ? `Looking into ${count} files` : `Looked into ${count} files`;
+  const noun = count === 1 ? 'file' : 'files';
+  const label = isActive ? `Looking into ${count} ${noun}` : `Looked into ${count} ${noun}`;
 
   const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
 

@@ -30,7 +30,7 @@ interface CollapsedReadOnlyGroupProps {
   isActive: boolean;
 }
 
-export default function CollapsedReadOnlyGroup({
+export default function CollapsedReadGroup({
   nodes,
   isActive,
 }: CollapsedReadOnlyGroupProps): React.JSX.Element {

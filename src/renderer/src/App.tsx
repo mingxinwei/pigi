@@ -50,6 +50,7 @@ import type {
   ThinkingLevel,
 } from '../../shared/ipcContract';
 import Sidebar from './components/Sidebar';
+import SessionToolbar from './components/SessionToolbar';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import StreamingQueue from './components/StreamingQueue';
@@ -1084,6 +1085,7 @@ function App(): React.JSX.Element {
         />
         {activeSession ? (
           <>
+            <SessionToolbar sessionPath={activeSessionPath ?? ''} />
             <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
             <StreamingQueue
               isStreaming={transcript.status !== 'idle'}

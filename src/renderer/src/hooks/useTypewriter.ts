@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * Typewriter effect: when `text` changes, animates deletion of old text
@@ -52,9 +52,9 @@ export function useTypewriter(text: string, speed = 30): [string, () => void] {
     };
   }, [text, speed]);
 
-  function skipNext(): void {
+  const skipNext = useCallback((): void => {
     skipNextRef.current = true;
-  }
+  }, []);
 
   return [displayed, skipNext];
 }

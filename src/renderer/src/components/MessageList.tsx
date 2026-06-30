@@ -49,9 +49,9 @@ const USER_MESSAGE_MAX_HEIGHT = 360;
 /** A render item is either a single transcript node or a collapsed group of read-only tool nodes */
 type RenderItem =
   | { type: 'node'; node: TranscriptNode; id: string }
-  | { type: 'readOnlyGroup'; nodes: ToolNode[]; id: string };
+  | { type: 'readGroup'; nodes: ToolNode[]; id: string };
 
-function isReadOnlyToolNode(node: TranscriptNode): boolean {
+function isReadToolNode(node: TranscriptNode): boolean {
   if (node.role !== 'tool') return false;
   if (node.name === 'read') return true;
   if (node.name === 'bash') {
@@ -77,7 +77,7 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   function flushGroup(): void {
     if (currentGroup.length > 0) {
       items.push({
-        type: 'readOnlyGroup',
+        type: 'readGroup',
         nodes: currentGroup,
         id: `group-${currentGroup[0].id}`,
       });
@@ -86,7 +86,7 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   }
 
   for (const node of nodes) {
-    if (node.role === 'tool' && isReadOnlyToolNode(node)) {
+    if (node.role === 'tool' && isReadToolNode(node)) {
       currentGroup.push(node);
     } else {
       flushGroup();
@@ -352,7 +352,7 @@ const COLLAPSED_GROUP_COMMAND_LINE_HEIGHT = 16;
 
 function estimateRenderItemHeight(item: RenderItem | undefined): number {
   if (!item) return 96;
-  if (item.type === 'readOnlyGroup') {
+  if (item.type === 'readGroup') {
     return COLLAPSED_GROUP_TRIGGER_HEIGHT + item.nodes.length * COLLAPSED_GROUP_COMMAND_LINE_HEIGHT;
   }
   return estimateNodeHeight(item.node);
@@ -449,7 +449,7 @@ function RenderItemRenderer({
   isLast: boolean;
   sessionActive: boolean;
 }): React.JSX.Element {
-  if (item.type === 'readOnlyGroup') {
+  if (item.type === 'readGroup') {
     return <CollapsedReadGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
   }
   return <NodeRenderer node={item.node} />;

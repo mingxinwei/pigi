@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Double-click the session name in the toolbar to rename it inline, matching the sidebar behavior.
+- Toolbar session title now animates with the same typewriter effect as the sidebar when the title updates.
+
 ## [0.3.11] - 2026-06-30
 
 ### Added

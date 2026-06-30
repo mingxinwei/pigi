@@ -900,6 +900,8 @@ function App(): React.JSX.Element {
 
   const handleRenameSession = useCallback(
     async (sessionPath: string, name: string) => {
+      // Mark as manually renamed to suppress sidebar typewriter animation
+      useAppStore.getState().markSessionRenamed(sessionPath);
       // Find the running session by path
       const entry = Array.from(sessions.values()).find((s) => s.sessionPath === sessionPath);
       if (entry) {
@@ -1085,7 +1087,7 @@ function App(): React.JSX.Element {
         />
         {activeSession ? (
           <>
-            <SessionToolbar sessionPath={activeSessionPath ?? ''} />
+            <SessionToolbar sessionPath={activeSessionPath ?? ''} onRename={handleRenameSession} />
             <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
             <StreamingQueue
               isStreaming={transcript.status !== 'idle'}

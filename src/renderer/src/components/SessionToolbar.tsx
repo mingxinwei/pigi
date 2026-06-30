@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { IconFilter2 } from '@tabler/icons-react';
 import { useAppStore } from '../state/appStore';
+import { useTypewriter } from '../hooks/useTypewriter';
+import { useRenameSuppress } from '../hooks/useRenameSuppress';
+import { getSessionTitle } from './sidebar/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,20 +15,88 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 
 interface SessionToolbarProps {
   sessionPath: string;
+  onRename?: (sessionPath: string, name: string) => void;
 }
 
 export default React.memo(function SessionToolbar({
   sessionPath,
+  onRename,
 }: SessionToolbarProps): React.JSX.Element {
-  const title = useAppStore((state) => state.sessions.get(sessionPath)?.title ?? 'New chat');
+  const title = useAppStore(
+    useCallback(
+      (state) => {
+        const cwd = state.sessions.get(sessionPath)?.cwd ?? '';
+        const sessionList = cwd ? state.projectSessions[cwd] : undefined;
+        if (sessionList) {
+          const match = sessionList.find((s) => s.path === sessionPath);
+          if (match) return getSessionTitle(match);
+        }
+        return state.sessions.get(sessionPath)?.title ?? 'New chat';
+      },
+      [sessionPath],
+    ),
+  );
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
   const setToolBlockViewMode = useAppStore((state) => state.setToolBlockViewMode);
 
+  const [displayTitle, skipNextAnimation] = useTypewriter(title);
+  useRenameSuppress(sessionPath, skipNextAnimation);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+
+  const handleStartRename = useCallback(() => {
+    setEditValue(title);
+    setIsEditing(true);
+  }, [title]);
+
+  const handleFinishRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== title && onRename) {
+      skipNextAnimation();
+      onRename(sessionPath, trimmed);
+    }
+    setIsEditing(false);
+  }, [editValue, title, onRename, sessionPath, skipNextAnimation]);
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.nativeEvent.isComposing || event.key === 'Process') {
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleFinishRename();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsEditing(false);
+      }
+    },
+    [handleFinishRename],
+  );
+
   return (
     <div className="flex shrink-0 items-center gap-2 px-5 h-10 border-b border-border">
-      <span className="max-w-[50%] truncate text-sm text-foreground" title={title}>
-        {title}
-      </span>
+      {isEditing ? (
+        <input
+          type="text"
+          value={editValue}
+          onChange={(event) => setEditValue(event.target.value)}
+          onBlur={handleFinishRename}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          size={editValue.length || 1}
+          className="max-w-[50%] min-w-0 bg-transparent text-sm text-foreground outline-none caret-foreground"
+        />
+      ) : (
+        <span
+          className="max-w-[50%] truncate text-sm text-foreground cursor-default"
+          title={title}
+          onDoubleClick={handleStartRename}
+        >
+          {displayTitle}
+        </span>
+      )}
 
       <div className="flex-1" />
 

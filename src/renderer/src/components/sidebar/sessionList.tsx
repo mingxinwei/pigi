@@ -3,6 +3,7 @@ import { IconLoader2, IconPencil } from '@tabler/icons-react';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
 import type { SessionEntry } from '../../state/appStore';
+import { useRenameSuppress } from '../../hooks/useRenameSuppress';
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar';
 import {
   ContextMenuRoot,
@@ -34,6 +35,7 @@ export function SessionItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [displayTitle, skipNextAnimation] = useTypewriter(getSessionTitle(session));
+  useRenameSuppress(session.path, skipNextAnimation);
 
   const handleStartRename = useCallback(() => {
     setEditValue(getSessionTitle(session));

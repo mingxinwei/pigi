@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-06-30
+
 ### Added
 
 - Compact read view mode: consecutive read-only tool calls (read, grep, rg, ls, fd, etc.) are collapsed into a single "Looked into N files" line with a list of commands underneath. Click to expand and see the full cards. Active groups show a shimmer animation on the current command.

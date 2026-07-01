@@ -7,6 +7,8 @@ import { MESSAGE_LIST_HORIZONTAL_PADDING, MESSAGE_LIST_MAX_WIDTH } from '../lib/
 interface UserMessageMiniMapProps {
   nodes: TranscriptNode[];
   containerWidth: number;
+  /** Index in the displayNodes array of the user message closest to viewport center */
+  activeUserMessageIndex: number;
   onScrollToIndex: (index: number) => void;
 }
 
@@ -54,11 +56,14 @@ function getLineWidth(index: number, total: number, maxWidth: number): number {
 export default React.memo(function UserMessageMiniMap({
   nodes,
   containerWidth,
+  activeUserMessageIndex,
   onScrollToIndex,
 }: UserMessageMiniMapProps): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const activeItemRef = useRef<HTMLButtonElement>(null);
 
   const maxLineWidth = useMemo(() => {
     const centerGap = Math.max(0, (containerWidth - MESSAGE_LIST_MAX_WIDTH) / 2);
@@ -86,6 +91,14 @@ export default React.memo(function UserMessageMiniMap({
     return result;
   }, [nodes]);
 
+  /** Which position in the userMessages array is currently active */
+  const activePosition = useMemo(() => {
+    for (let position = 0; position < userMessages.length; position++) {
+      if (userMessages[position].index === activeUserMessageIndex) return position;
+    }
+    return -1;
+  }, [userMessages, activeUserMessageIndex]);
+
   const handleMouseEnter = useCallback((): void => {
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
@@ -99,7 +112,14 @@ export default React.memo(function UserMessageMiniMap({
       clearTimeout(openTimerRef.current);
       openTimerRef.current = null;
     }
-    closeTimerRef.current = setTimeout(() => setOpen(false), HOVER_CLOSE_DELAY);
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      setHoveredIndex(null);
+    }, HOVER_CLOSE_DELAY);
+  }, []);
+
+  const handleItemHover = useCallback((index: number) => {
+    setHoveredIndex(index);
   }, []);
 
   if (userMessages.length === 0) return null;
@@ -110,15 +130,22 @@ export default React.memo(function UserMessageMiniMap({
         <div
           role="navigation"
           aria-label="Message navigation minimap"
-          className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 cursor-default flex-col items-end gap-1.5 rounded-l py-2 pl-1 opacity-40 transition-opacity hover:opacity-80"
+          className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 cursor-default flex-col items-end gap-1.5 rounded-l py-2 pl-1 transition-opacity [&:not(:hover)]:opacity-60 hover:opacity-90"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {userMessages.map(({ node }, index) => (
+          {userMessages.map(({ node }, position) => (
             <div
               key={node.id}
-              className="h-px rounded-full bg-muted-foreground/50"
-              style={{ width: `${getLineWidth(index, userMessages.length, maxLineWidth)}px` }}
+              className="rounded-full transition-colors"
+              style={{
+                width: `${getLineWidth(position, userMessages.length, maxLineWidth)}px`,
+                height: '1.5px',
+                backgroundColor:
+                  position === activePosition
+                    ? 'var(--system-accent)'
+                    : 'color-mix(in srgb, var(--muted-foreground) 50%, transparent)',
+              }}
             />
           ))}
         </div>
@@ -129,31 +156,48 @@ export default React.memo(function UserMessageMiniMap({
         className={`max-h-[50vh] w-64 overflow-hidden ${OVERLAY_BG} p-0 backdrop-blur-md`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          // Scroll active item into view when popover opens
+          requestAnimationFrame(() => {
+            activeItemRef.current?.scrollIntoView({ block: 'center' });
+          });
+        }}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         <div className="flex flex-col gap-0.5 overflow-y-auto p-1 scrollbar-none">
-          {userMessages.map(({ node, index }) => (
-            <button
-              key={node.id}
-              type="button"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-foreground/7"
-              onClick={() => {
-                onScrollToIndex(index);
-                setOpen(false);
-              }}
-            >
-              <span
-                className="min-w-0 flex-1 truncate text-[13px] text-foreground"
-                title={node.text.split('\n')[0] || 'Empty message'}
+          {userMessages.map(({ node, index }, position) => {
+            const isActive = position === activePosition;
+            const isHovered = hoveredIndex === index;
+            return (
+              <button
+                key={node.id}
+                ref={isActive ? activeItemRef : undefined}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                  isActive || isHovered ? 'bg-[var(--system-accent)]/10' : 'hover:bg-foreground/7'
+                }`}
+                onClick={() => {
+                  onScrollToIndex(index);
+                  setOpen(false);
+                }}
+                onMouseEnter={() => handleItemHover(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
               >
-                {node.text.split('\n')[0] || 'Empty message'}
-              </span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {formatTime(node.sentAt)}
-              </span>
-            </button>
-          ))}
+                <span
+                  className={`min-w-0 flex-1 truncate text-[13px] ${
+                    isActive || isHovered ? 'text-[var(--system-accent)]' : 'text-foreground'
+                  }`}
+                  title={node.text.split('\n')[0] || 'Empty message'}
+                >
+                  {node.text.split('\n')[0] || 'Empty message'}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {formatTime(node.sentAt)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>

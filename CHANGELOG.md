@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
+- Hovering the minimap popover highlights and scrolls the active item into view.
+
 ## [0.3.13] - 2026-07-01
 
 ### Fixed

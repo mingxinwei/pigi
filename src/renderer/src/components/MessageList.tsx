@@ -107,17 +107,41 @@ export default React.memo(function MessageList({
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
   const sessionStatus = useAppStore(
     (state) => (sessionPath ? state.sessions.get(sessionPath)?.status : undefined) ?? 'idle',
   );
 
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes]);
+
+  // O(1) lookup: node reference → displayNodes index
+  const nodeToDisplayIndex = useMemo(() => {
+    const map = new WeakMap<TranscriptNode, number>();
+    for (let index = 0; index < displayNodes.length; index++) {
+      map.set(displayNodes[index], index);
+    }
+    return map;
+  }, [displayNodes]);
+
   const renderItems = useMemo(
     () => buildRenderItems(displayNodes, toolBlockViewMode === 'compact_read'),
 
     [displayNodes, toolBlockViewMode],
   );
+
+  // Map from displayNodes index → renderItems index for user messages
+  const displayToRenderIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    for (let renderIndex = 0; renderIndex < renderItems.length; renderIndex++) {
+      const item = renderItems[renderIndex];
+      if (item.type === 'node') {
+        const displayIndex = nodeToDisplayIndex.get(item.node);
+        if (displayIndex !== undefined) map.set(displayIndex, renderIndex);
+      }
+    }
+    return map;
+  }, [renderItems, nodeToDisplayIndex]);
 
   const getItemKey = useCallback((index: number) => renderItems[index]?.id ?? index, [renderItems]);
 
@@ -266,6 +290,32 @@ export default React.memo(function MessageList({
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
+  // Derive active user message from visible virtual items — no scroll listener needed
+  // because the virtualizer already triggers re-renders on scroll.
+  // Returns a displayNodes index (what the MiniMap uses).
+  const activeUserMessageIndex = useMemo(() => {
+    if (virtualItems.length === 0) return -1;
+    const container = containerRef.current;
+    // Use actual viewport center; fall back to midpoint of rendered range
+    const viewportCenter = container
+      ? container.scrollTop + container.clientHeight / 2
+      : (virtualItems[0].start + virtualItems[virtualItems.length - 1].end) / 2;
+    let closestDisplayIndex = -1;
+    let closestDistance = Infinity;
+    for (const virtualItem of virtualItems) {
+      const item = renderItems[virtualItem.index];
+      if (item?.type === 'node' && item.node.role === 'user') {
+        const itemCenter = virtualItem.start + virtualItem.size / 2;
+        const distance = Math.abs(itemCenter - viewportCenter);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestDisplayIndex = nodeToDisplayIndex.get(item.node) ?? -1;
+        }
+      }
+    }
+    return closestDisplayIndex;
+  }, [virtualItems, renderItems, nodeToDisplayIndex]);
+
   function handleScrollToBottom(): void {
     const container = containerRef.current;
     if (!container) return;
@@ -275,11 +325,13 @@ export default React.memo(function MessageList({
   }
 
   const handleScrollToIndex = useCallback(
-    (index: number) => {
+    (displayIndex: number) => {
+      const renderIndex = displayToRenderIndex.get(displayIndex);
+      if (renderIndex === undefined) return;
       autoScrollRef.current = false;
-      rowVirtualizer.scrollToIndex(index, { align: 'start', behavior: 'auto' });
+      rowVirtualizer.scrollToIndex(renderIndex, { align: 'start', behavior: 'auto' });
     },
-    [rowVirtualizer],
+    [rowVirtualizer, displayToRenderIndex],
   );
 
   return (
@@ -327,6 +379,7 @@ export default React.memo(function MessageList({
       <UserMessageMiniMap
         nodes={displayNodes}
         containerWidth={containerWidth}
+        activeUserMessageIndex={activeUserMessageIndex}
         onScrollToIndex={handleScrollToIndex}
       />
       {/* Top gradient fade */}

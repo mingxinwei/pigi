@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.13] - 2026-07-01
+
+### Fixed
+
+- Switching sessions no longer triggers typewriter animation on the toolbar title.
+
 ## [0.3.12] - 2026-07-01
 
 ### Added

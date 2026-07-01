@@ -1087,7 +1087,11 @@ function App(): React.JSX.Element {
         />
         {activeSession ? (
           <>
-            <SessionToolbar sessionPath={activeSessionPath ?? ''} onRename={handleRenameSession} />
+            <SessionToolbar
+              key={activeSessionPath}
+              sessionPath={activeSessionPath ?? ''}
+              onRename={handleRenameSession}
+            />
             <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
             <StreamingQueue
               isStreaming={transcript.status !== 'idle'}

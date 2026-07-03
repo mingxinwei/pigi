@@ -7,6 +7,7 @@
  * - Exposes state plus the controller for optimistic user messages
  */
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type RefObject } from 'react';
+import { toast } from 'sonner';
 import { TranscriptController, type TranscriptState } from '../state/transcriptController';
 import { useAppStore } from '../state/appStore';
 import {
@@ -158,6 +159,19 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
 
       case 'login_open_url':
         window.piApi.openExternal(pushMessage.url);
+        break;
+
+      case 'login_device_code':
+        toast(`Device code: ${pushMessage.userCode}`, {
+          duration: Infinity,
+          action: {
+            label: 'Copy & Open',
+            onClick: () => {
+              void navigator.clipboard.writeText(pushMessage.userCode);
+              window.piApi.openExternal(pushMessage.verificationUri);
+            },
+          },
+        });
         break;
 
       case 'login_complete':

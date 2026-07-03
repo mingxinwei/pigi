@@ -11,6 +11,10 @@
 
 - Clicking a session or project in the sidebar now refreshes the session list
 
+### Fixed
+
+- Sidebar now automatically scrolls to the selected session when switching, expanding the project and show-more list as needed
+
 ## [0.3.13] - 2026-07-01
 
 ### Fixed

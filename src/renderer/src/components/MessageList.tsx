@@ -293,28 +293,32 @@ export default React.memo(function MessageList({
   // Derive active user message from visible virtual items — no scroll listener needed
   // because the virtualizer already triggers re-renders on scroll.
   // Returns a displayNodes index (what the MiniMap uses).
+  // Uses measurement cache to check ALL user messages, not just visible ones,
+  // so the last user message stays highlighted when scrolled to the bottom.
   const activeUserMessageIndex = useMemo(() => {
     if (virtualItems.length === 0) return -1;
     const container = containerRef.current;
-    // Use actual viewport center; fall back to midpoint of rendered range
     const viewportCenter = container
       ? container.scrollTop + container.clientHeight / 2
       : (virtualItems[0].start + virtualItems[virtualItems.length - 1].end) / 2;
     let closestDisplayIndex = -1;
     let closestDistance = Infinity;
-    for (const virtualItem of virtualItems) {
-      const item = renderItems[virtualItem.index];
-      if (item?.type === 'node' && item.node.role === 'user') {
-        const itemCenter = virtualItem.start + virtualItem.size / 2;
-        const distance = Math.abs(itemCenter - viewportCenter);
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestDisplayIndex = nodeToDisplayIndex.get(item.node) ?? -1;
-        }
+    const measurements = rowVirtualizer.measurementsCache;
+    for (let renderIndex = 0; renderIndex < renderItems.length; renderIndex++) {
+      const item = renderItems[renderIndex];
+      if (item.type !== 'node' || item.node.role !== 'user') continue;
+      const measurement = measurements[renderIndex];
+      if (!measurement) continue;
+      const itemCenter = measurement.start + measurement.size / 2;
+      const distance = Math.abs(itemCenter - viewportCenter);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestDisplayIndex = nodeToDisplayIndex.get(item.node) ?? -1;
       }
     }
     return closestDisplayIndex;
-  }, [virtualItems, renderItems, nodeToDisplayIndex]);
+    // virtualItems included as dependency to re-derive on scroll
+  }, [virtualItems, renderItems, nodeToDisplayIndex, rowVirtualizer]);
 
   function handleScrollToBottom(): void {
     const container = containerRef.current;

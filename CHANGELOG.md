@@ -7,6 +7,10 @@
 - Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
 - Hovering the minimap popover highlights and scrolls the active item into view.
 
+### Fixed
+
+- Reduced visual jitter when long content streams in during AI responses, especially noticeable in long thinking blocks.
+
 ### Changed
 
 - Clicking a session or project in the sidebar now refreshes the session list

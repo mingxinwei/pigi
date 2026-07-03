@@ -154,9 +154,6 @@ export default React.memo(function MessageList({
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
-    gap: MESSAGE_ROW_GAP,
-    useAnimationFrameWithResizeObserver: true,
-    useFlushSync: false,
   });
 
   // Disable virtualizer scroll corrections when auto-scroll is off.
@@ -359,24 +356,28 @@ export default React.memo(function MessageList({
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
             data-testid="message-virtualizer"
           >
-            {virtualItems.map((virtualItem) => {
-              const item = renderItems[virtualItem.index];
-              return (
-                <div
-                  key={item.id}
-                  ref={rowVirtualizer.measureElement}
-                  data-index={virtualItem.index}
-                  className="absolute left-0 top-0 w-full"
-                  style={{ transform: `translateY(${virtualItem.start}px)` }}
-                >
-                  <RenderItemRenderer
-                    item={item}
-                    isLast={virtualItem.index === renderItems.length - 1}
-                    sessionActive={sessionStatus !== 'idle'}
-                  />
-                </div>
-              );
-            })}
+            <div
+              className="absolute left-0 top-0 w-full"
+              style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
+            >
+              {virtualItems.map((virtualItem) => {
+                const item = renderItems[virtualItem.index];
+                return (
+                  <div
+                    key={item.id}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualItem.index}
+                    style={{ marginBottom: `${MESSAGE_ROW_GAP}px` }}
+                  >
+                    <RenderItemRenderer
+                      item={item}
+                      isLast={virtualItem.index === renderItems.length - 1}
+                      sessionActive={sessionStatus !== 'idle'}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

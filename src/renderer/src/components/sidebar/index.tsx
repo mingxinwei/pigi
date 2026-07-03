@@ -45,7 +45,9 @@ export default function Sidebar({
     Record<string, Set<string>>
   >({});
   const [relativeTimeBase, setRelativeTimeBase] = useState(() => Date.now());
-  const previousSelectedSessionPathRef = useRef<string | null>(selectedSessionPath);
+  // Track the last session path we've successfully scrolled to.
+  // This allows retries when projectSessions loads asynchronously after selectedSessionPath changes.
+  const lastScrolledPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -54,13 +56,15 @@ export default function Sidebar({
     return () => window.clearInterval(timer);
   }, []);
 
-  // Auto-expand project and scroll to session when selection changes externally
+  // Auto-expand project and scroll to session when selection changes or when projectSessions loads
   useEffect(() => {
-    if (!selectedSessionPath || selectedSessionPath === previousSelectedSessionPathRef.current) {
-      previousSelectedSessionPathRef.current = selectedSessionPath;
+    if (!selectedSessionPath) {
+      lastScrolledPathRef.current = null;
       return;
     }
-    previousSelectedSessionPathRef.current = selectedSessionPath;
+
+    // Already scrolled to this session — skip unless projectSessions just loaded
+    if (lastScrolledPathRef.current === selectedSessionPath) return;
 
     // Find which project contains this session
     let targetProjectPath: string | null = null;
@@ -72,6 +76,8 @@ export default function Sidebar({
       }
     }
     if (!targetProjectPath) return;
+
+    lastScrolledPathRef.current = selectedSessionPath;
 
     // Capture path in local variable to avoid stale closure
     const scrollToPath = selectedSessionPath;
@@ -85,10 +91,15 @@ export default function Sidebar({
         next.add(projectPath);
         return next;
       });
+      // Wait 2 frames: one for React to commit expandedProjects + any showAll state changes,
+      // another for the browser to paint the updated DOM before querying for the element.
       requestAnimationFrame(() => {
         if (cancelled) return;
-        const el = document.querySelector(`[data-session-path="${CSS.escape(scrollToPath)}"]`);
-        el?.scrollIntoView({ block: 'nearest' });
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          const el = document.querySelector(`[data-session-path="${CSS.escape(scrollToPath)}"]`);
+          el?.scrollIntoView({ block: 'center' });
+        });
       });
     });
 

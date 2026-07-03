@@ -33,7 +33,6 @@ function isRenderableNode(node: TranscriptNode): boolean {
   return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
-const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
@@ -103,8 +102,6 @@ export default React.memo(function MessageList({
   sessionPath,
 }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const autoScrollRef = useRef(true);
-  const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -154,87 +151,69 @@ export default React.memo(function MessageList({
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
+    gap: MESSAGE_ROW_GAP,
+    anchorTo: 'end',
+    followOnAppend: true,
+    scrollEndThreshold: 80,
   });
 
-  // Disable virtualizer scroll corrections when auto-scroll is off.
-  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => autoScrollRef.current;
+  // Track whether user was at end before a size change, so we know whether
+  // to follow streaming growth or stay put.
+  const followingRef = useRef(true);
 
-  // Resume auto-scroll when a new user message appears
-  useLayoutEffect(() => {
-    const lastNode = displayNodes[displayNodes.length - 1];
-    if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
-      autoScrollRef.current = true;
-    }
-    lastNodeIdRef.current = lastNode?.id ?? null;
-  }, [displayNodes]);
-
-  // Auto-scroll + wheel handler. ResizeObserver on the scroll container
-  // detects when content height changes (virtualizer spacer div grows).
-  // Stable effect — never re-created.
+  // Scroll button visibility + container width tracking.
+  // anchorTo: 'end' + manual follow handle streaming growth reliably.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    let lastScrollHeight = container.scrollHeight;
-    let pendingRaf = 0;
-
-    function scrollToBottom(): void {
-      if (!autoScrollRef.current) return;
-      container!.scrollTop = container!.scrollHeight;
+    function handleWheel(event: WheelEvent): void {
+      if (event.deltaY < 0) {
+        followingRef.current = false;
+      } else if (event.deltaY > 0 && !followingRef.current && rowVirtualizer.isAtEnd()) {
+        followingRef.current = true;
+      }
     }
 
-    const ro = new ResizeObserver(() => {
-      if (container!.scrollHeight !== lastScrollHeight) {
-        lastScrollHeight = container!.scrollHeight;
-        if (pendingRaf) cancelAnimationFrame(pendingRaf);
-        pendingRaf = requestAnimationFrame(scrollToBottom);
-      }
-    });
-    // Observe the first child (the content wrapper whose height changes)
-    const content = container.firstElementChild;
-    if (content) ro.observe(content);
+    function handleScroll(): void {
+      setShowScrollButton(
+        !rowVirtualizer.isAtEnd(container!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER),
+      );
+    }
 
-    // Also observe the container itself — when it shrinks (e.g. StreamingQueue appears)
-    // we need to scroll to bottom so content isn't hidden.
     const containerRo = new ResizeObserver(() => {
-      if (autoScrollRef.current) {
-        if (pendingRaf) cancelAnimationFrame(pendingRaf);
-        pendingRaf = requestAnimationFrame(scrollToBottom);
-      }
       setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
     setContainerWidth(container.clientWidth);
 
-    function handleWheel(event: WheelEvent): void {
-      if (event.deltaY < 0) {
-        autoScrollRef.current = false;
-      } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(container!)) {
-        autoScrollRef.current = true;
-      }
-    }
-
-    function handleScroll(): void {
-      const distanceFromBottom =
-        container!.scrollHeight - container!.scrollTop - container!.clientHeight;
-      setShowScrollButton(
-        distanceFromBottom > container!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER,
-      );
-    }
-
     container.addEventListener('wheel', handleWheel, { capture: true, passive: true });
     container.addEventListener('scroll', handleScroll, { passive: true });
 
-    scrollToBottom();
-
     return () => {
-      ro.disconnect();
       containerRo.disconnect();
-      if (pendingRaf) cancelAnimationFrame(pendingRaf);
       container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [rowVirtualizer]);
+
+  // Force scroll to end when content grows and user is following.
+  // anchorTo: 'end' handles scroll adjustment on item resize, but this
+  // ensures we never get stuck slightly above the bottom.
+  const totalSize = rowVirtualizer.getTotalSize();
+  useEffect(() => {
+    if (followingRef.current) {
+      rowVirtualizer.scrollToEnd();
+    }
+  }, [totalSize, rowVirtualizer]);
+
+  // Resume following when a new user message appears
+  useLayoutEffect(() => {
+    const lastNode = displayNodes[displayNodes.length - 1];
+    if (lastNode?.role === 'user') {
+      followingRef.current = true;
+    }
+  }, [displayNodes]);
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
@@ -243,17 +222,15 @@ export default React.memo(function MessageList({
     if (!container || !sessionPath) return;
 
     function savePosition(): void {
-      const atBottom = isAtBottom(container!);
-      useAppStore.getState().setScrollPosition(sessionPath, atBottom ? -1 : container!.scrollTop);
+      const atEnd = rowVirtualizer.isAtEnd();
+      useAppStore.getState().setScrollPosition(sessionPath, atEnd ? -1 : container!.scrollTop);
     }
 
     container.addEventListener('scroll', savePosition, { passive: true });
     return () => container.removeEventListener('scroll', savePosition);
-  }, [sessionPath]);
+  }, [sessionPath, rowVirtualizer]);
 
-  // Restore saved scroll position on session change, or auto-scroll to bottom.
-  // -1 sentinel means user was at bottom → enable auto-scroll so ResizeObserver
-  // tracks the true bottom even if content height changed.
+  // Restore saved scroll position on session change, or scroll to end.
   useEffect(() => {
     let cancelled = false;
 
@@ -261,23 +238,18 @@ export default React.memo(function MessageList({
       ? useAppStore.getState().scrollPositions.get(sessionPath)
       : undefined;
 
-    if (savedPosition === -1) {
-      // Was at bottom: let ResizeObserver handle it
-      autoScrollRef.current = true;
+    if (savedPosition === -1 || savedPosition === undefined) {
       requestAnimationFrame(() => {
-        if (!cancelled && containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        if (!cancelled) {
+          rowVirtualizer.scrollToEnd();
         }
       });
-    } else if (savedPosition !== undefined) {
-      autoScrollRef.current = false;
+    } else {
       requestAnimationFrame(() => {
         if (!cancelled && containerRef.current) {
           containerRef.current.scrollTop = savedPosition;
         }
       });
-    } else {
-      autoScrollRef.current = true;
     }
 
     return () => {
@@ -318,10 +290,7 @@ export default React.memo(function MessageList({
   }, [virtualItems, renderItems, nodeToDisplayIndex, rowVirtualizer]);
 
   function handleScrollToBottom(): void {
-    const container = containerRef.current;
-    if (!container) return;
-    autoScrollRef.current = true;
-    container.scrollTop = container.scrollHeight;
+    rowVirtualizer.scrollToEnd();
     setShowScrollButton(false);
   }
 
@@ -329,7 +298,6 @@ export default React.memo(function MessageList({
     (displayIndex: number) => {
       const renderIndex = displayToRenderIndex.get(displayIndex);
       if (renderIndex === undefined) return;
-      autoScrollRef.current = false;
       rowVirtualizer.scrollToIndex(renderIndex, { align: 'start', behavior: 'auto' });
     },
     [rowVirtualizer, displayToRenderIndex],
@@ -430,13 +398,6 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
     case 'system':
       return 56;
   }
-}
-
-function isAtBottom(container: HTMLDivElement): boolean {
-  return (
-    container.scrollHeight - container.scrollTop - container.clientHeight <
-    AUTO_SCROLL_BOTTOM_THRESHOLD
-  );
 }
 
 function estimateUserHeight(text: string): number {

@@ -174,6 +174,7 @@ export type PiPush =
   | { type: 'error'; error: string }
   | { type: 'status_sync'; isStreaming: boolean }
   | { type: 'login_open_url'; url: string }
+  | { type: 'login_device_code'; verificationUri: string; userCode: string }
   | { type: 'login_progress'; message: string }
   | { type: 'login_complete'; providerId: string }
   | { type: 'login_error'; error: string }

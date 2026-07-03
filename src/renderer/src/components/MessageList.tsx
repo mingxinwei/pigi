@@ -1,4 +1,4 @@
-import React, { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { useAppStore } from '../state/appStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconArrowDown, IconCopy, IconCheck, IconSparkles } from '@tabler/icons-react';
@@ -154,26 +154,14 @@ export default React.memo(function MessageList({
     gap: MESSAGE_ROW_GAP,
     anchorTo: 'end',
     followOnAppend: true,
-    scrollEndThreshold: 80,
+    scrollEndThreshold: 10,
+    paddingEnd: 16,
   });
 
-  // Track whether user was at end before a size change, so we know whether
-  // to follow streaming growth or stay put.
-  const followingRef = useRef(true);
-
   // Scroll button visibility + container width tracking.
-  // anchorTo: 'end' + manual follow handle streaming growth reliably.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    function handleWheel(event: WheelEvent): void {
-      if (event.deltaY < 0) {
-        followingRef.current = false;
-      } else if (event.deltaY > 0 && !followingRef.current && rowVirtualizer.isAtEnd()) {
-        followingRef.current = true;
-      }
-    }
 
     function handleScroll(): void {
       setShowScrollButton(
@@ -187,33 +175,13 @@ export default React.memo(function MessageList({
     containerRo.observe(container);
     setContainerWidth(container.clientWidth);
 
-    container.addEventListener('wheel', handleWheel, { capture: true, passive: true });
     container.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       containerRo.disconnect();
-      container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
   }, [rowVirtualizer]);
-
-  // Force scroll to end when content grows and user is following.
-  // anchorTo: 'end' handles scroll adjustment on item resize, but this
-  // ensures we never get stuck slightly above the bottom.
-  const totalSize = rowVirtualizer.getTotalSize();
-  useEffect(() => {
-    if (followingRef.current) {
-      rowVirtualizer.scrollToEnd();
-    }
-  }, [totalSize, rowVirtualizer]);
-
-  // Resume following when a new user message appears
-  useLayoutEffect(() => {
-    const lastNode = displayNodes[displayNodes.length - 1];
-    if (lastNode?.role === 'user') {
-      followingRef.current = true;
-    }
-  }, [displayNodes]);
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
@@ -314,7 +282,7 @@ export default React.memo(function MessageList({
         {...escapeAbortScopeProps}
       >
         <div
-          className="mx-auto px-5 pb-8 pt-6 user-content"
+          className="mx-auto px-5 pt-6 user-content"
           style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
@@ -324,28 +292,24 @@ export default React.memo(function MessageList({
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
             data-testid="message-virtualizer"
           >
-            <div
-              className="absolute left-0 top-0 w-full"
-              style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
-            >
-              {virtualItems.map((virtualItem) => {
-                const item = renderItems[virtualItem.index];
-                return (
-                  <div
-                    key={item.id}
-                    ref={rowVirtualizer.measureElement}
-                    data-index={virtualItem.index}
-                    style={{ marginBottom: `${MESSAGE_ROW_GAP}px` }}
-                  >
-                    <RenderItemRenderer
-                      item={item}
-                      isLast={virtualItem.index === renderItems.length - 1}
-                      sessionActive={sessionStatus !== 'idle'}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            {virtualItems.map((virtualItem) => {
+              const item = renderItems[virtualItem.index];
+              return (
+                <div
+                  key={item.id}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <RenderItemRenderer
+                    item={item}
+                    isLast={virtualItem.index === renderItems.length - 1}
+                    sessionActive={sessionStatus !== 'idle'}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

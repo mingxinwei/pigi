@@ -11,6 +11,8 @@
 
 ### Added
 
+- Message search via Cmd+F / Ctrl+F: fuzzy-search across all messages and tool outputs, with keyboard-driven match navigation and auto-expand for grouped read blocks.
+
 - Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
 - Hovering the minimap popover highlights and scrolls the active item into view.
 - OAuth device code flow support: when a provider requires a device code, a persistent toast shows the code with a "Copy & Open" button that copies to clipboard and opens the verification page.

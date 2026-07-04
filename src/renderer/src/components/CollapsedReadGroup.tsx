@@ -28,11 +28,19 @@ interface CollapsedReadGroupProps {
   nodes: ToolNode[];
   /** True when this group is still potentially growing (last group + agent active) */
   isActive: boolean;
+  /** Controlled open state */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** When set, the matching tool node gets a highlight */
+  highlightedToolNodeId?: string;
 }
 
 export default function CollapsedReadGroup({
   nodes,
   isActive,
+  open,
+  onOpenChange,
+  highlightedToolNodeId,
 }: CollapsedReadGroupProps): React.JSX.Element {
   const count = nodes.length;
   const noun = count === 1 ? 'file' : 'files';
@@ -41,7 +49,7 @@ export default function CollapsedReadGroup({
   const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
 
   return (
-    <Collapsible className="group/collapsible mb-2">
+    <Collapsible className="group/collapsible mb-2" open={open} onOpenChange={onOpenChange}>
       <div className="rounded-md border border-border/65 bg-muted/25">
         <div className="rounded-t-md px-3 py-1.5">
           <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
@@ -77,7 +85,11 @@ export default function CollapsedReadGroup({
           style={{ gap: `${MESSAGE_ROW_GAP * 3}px`, marginTop: `${MESSAGE_ROW_GAP * 3}px` }}
         >
           {nodes.map((node) => (
-            <div key={node.id} className="group">
+            <div
+              key={node.id}
+              data-tool-node-id={node.id}
+              className={`group${node.id === highlightedToolNodeId ? ' search-highlight' : ''}`}
+            >
               <ToolBlock node={node} />
             </div>
           ))}

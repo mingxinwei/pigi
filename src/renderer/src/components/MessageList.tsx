@@ -21,6 +21,7 @@ import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
+import MessageSearch, { type MessageSearchTarget } from './MessageSearch';
 import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
 
 interface MessageListProps {
@@ -98,6 +99,82 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   return items;
 }
 
+/** Extract a search-friendly command string for a tool node */
+function getToolSearchMeta(node: ToolNode): string {
+  const args = getToolArgs(node);
+  if (node.name === 'bash') return `$ ${String(args?.command ?? '')}`;
+  if (node.name === 'read' || node.name === 'write' || node.name === 'edit') {
+    return `${node.name} ${String(args?.path ?? '')}`;
+  }
+  return node.name;
+}
+
+function buildSearchTargets(items: RenderItem[]): MessageSearchTarget[] {
+  const targets: MessageSearchTarget[] = [];
+  for (let renderIndex = 0; renderIndex < items.length; renderIndex++) {
+    const item = items[renderIndex];
+    if (item.type === 'readGroup') {
+      for (const node of item.nodes) {
+        targets.push({
+          renderIndex,
+          itemId: item.id,
+          groupId: item.id,
+          toolNodeId: node.id,
+          role: 'tool',
+          text: node.output,
+          meta: getToolSearchMeta(node),
+          preview: node.output || getToolSearchMeta(node),
+        });
+      }
+    } else {
+      const node = item.node;
+      switch (node.role) {
+        case 'user':
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            role: 'user',
+            text: node.text,
+            meta: '',
+            preview: node.text,
+          });
+          break;
+        case 'assistant':
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            role: 'assistant',
+            text: node.text,
+            meta: node.thinking,
+            preview: node.text || node.thinking,
+          });
+          break;
+        case 'tool':
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            role: 'tool',
+            text: node.output,
+            meta: getToolSearchMeta(node),
+            preview: node.output || getToolSearchMeta(node),
+          });
+          break;
+        case 'system':
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            role: 'system',
+            text: node.text,
+            meta: '',
+            preview: node.text,
+          });
+          break;
+      }
+    }
+  }
+  return targets;
+}
+
 export default React.memo(function MessageList({
   nodes,
   sessionPath,
@@ -107,6 +184,11 @@ export default React.memo(function MessageList({
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const [highlightedToolNodeId, setHighlightedToolNodeId] = useState<string | null>(null);
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
   const sessionStatus = useAppStore(
@@ -142,6 +224,8 @@ export default React.memo(function MessageList({
     }
     return map;
   }, [renderItems, nodeToDisplayIndex]);
+
+  const searchTargets = useMemo(() => buildSearchTargets(renderItems), [renderItems]);
 
   const getItemKey = useCallback((index: number) => renderItems[index]?.id ?? index, [renderItems]);
 
@@ -335,6 +419,73 @@ export default React.memo(function MessageList({
     [rowVirtualizer, displayToRenderIndex],
   );
 
+  const toggleGroupExpand = useCallback((groupId: string) => {
+    setExpandedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSearchJump = useCallback(
+    (target: MessageSearchTarget): void => {
+      autoScrollRef.current = false;
+      if (target.groupId) {
+        setExpandedGroupIds((prev) => {
+          if (prev.has(target.groupId!)) return prev;
+          const next = new Set(prev);
+          next.add(target.groupId!);
+          return next;
+        });
+      }
+      rowVirtualizer.scrollToIndex(target.renderIndex, { align: 'start', behavior: 'auto' });
+      setHighlightedItemId(target.itemId);
+      setHighlightedToolNodeId(target.toolNodeId ?? null);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setHighlightedItemId(null);
+        setHighlightedToolNodeId(null);
+        highlightTimerRef.current = null;
+      }, 2400);
+    },
+    [rowVirtualizer],
+  );
+
+  // When a grouped tool is highlighted, scroll it into view after the group expands
+  useEffect(() => {
+    if (!highlightedToolNodeId) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const raf = requestAnimationFrame(() => {
+      const elements = container.querySelectorAll('[data-tool-node-id]');
+      for (const element of elements) {
+        if (element.getAttribute('data-tool-node-id') === highlightedToolNodeId) {
+          if (element instanceof HTMLElement) {
+            element.scrollIntoView({ block: 'center', behavior: 'auto' });
+          }
+          break;
+        }
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [highlightedToolNodeId]);
+
+  // Cmd/Ctrl+F opens search
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="relative min-h-0 flex-1">
       <div
@@ -363,17 +514,30 @@ export default React.memo(function MessageList({
               {virtualItems.map((virtualItem) => {
                 const item = renderItems[virtualItem.index];
                 const isLast = virtualItem.index === renderItems.length - 1;
+                const isHighlighted = highlightedItemId === item.id;
                 return (
                   <div
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualItem.index}
+                    className={cn(item.type !== 'readGroup' && isHighlighted && 'search-highlight')}
                     style={{ marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px` }}
                   >
                     <RenderItemRenderer
                       item={item}
                       isLast={isLast}
                       sessionActive={sessionStatus !== 'idle'}
+                      expanded={
+                        item.type === 'readGroup' ? expandedGroupIds.has(item.id) : undefined
+                      }
+                      onToggleExpand={
+                        item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
+                      }
+                      highlightedToolNodeId={
+                        (item.type === 'readGroup' && isHighlighted
+                          ? highlightedToolNodeId
+                          : undefined) ?? undefined
+                      }
                     />
                   </div>
                 );
@@ -382,6 +546,13 @@ export default React.memo(function MessageList({
           </div>
         </div>
       </div>
+      <MessageSearch
+        key={searchOpen ? 'open' : 'closed'}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        targets={searchTargets}
+        onJump={handleSearchJump}
+      />
       <UserMessageMiniMap
         nodes={displayNodes}
         containerWidth={containerWidth}
@@ -503,13 +674,27 @@ function RenderItemRenderer({
   item,
   isLast,
   sessionActive,
+  expanded,
+  onToggleExpand,
+  highlightedToolNodeId,
 }: {
   item: RenderItem;
   isLast: boolean;
   sessionActive: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  highlightedToolNodeId?: string;
 }): React.JSX.Element {
   if (item.type === 'readGroup') {
-    return <CollapsedReadGroup nodes={item.nodes} isActive={isLast && sessionActive} />;
+    return (
+      <CollapsedReadGroup
+        nodes={item.nodes}
+        isActive={isLast && sessionActive}
+        open={expanded ?? false}
+        onOpenChange={onToggleExpand ?? (() => {})}
+        highlightedToolNodeId={highlightedToolNodeId}
+      />
+    );
   }
   return <NodeRenderer node={item.node} />;
 }
@@ -696,7 +881,7 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
   return (
     <div className="group flex justify-start" data-testid="assistant-message">
       <div
-        className="w-full min-w-0 text-[15px] leading-6 text-foreground"
+        className="w-full min-w-0 text-[15px] text-foreground"
         style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       >
         {showThinking && <ThinkingBlock text={node.thinking} />}

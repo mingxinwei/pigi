@@ -154,6 +154,7 @@ export default React.memo(function MessageList({
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
+    paddingEnd: 36,
   });
 
   // Disable virtualizer scroll corrections when auto-scroll is off.

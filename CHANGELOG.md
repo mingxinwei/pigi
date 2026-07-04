@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Restored bottom spacing between message list and chat input that was lost when switching to block translation layout.
 - Reduced visual jitter when long content streams in during AI responses, especially noticeable in long thinking blocks.
 
 ### Changed

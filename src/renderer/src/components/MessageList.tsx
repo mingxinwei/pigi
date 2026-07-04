@@ -450,8 +450,58 @@ export default React.memo(function MessageList({
         setHighlightedToolNodeId(null);
         highlightTimerRef.current = null;
       }, 2400);
+
+      // Auto-expand overflow-hidden tool content when a match is inside
+      if (target.role === 'tool') {
+        const expandIfHidden = (): void => {
+          const container = containerRef.current;
+          if (!container) return;
+          const selector = target.toolNodeId
+            ? `[data-tool-node-id="${target.toolNodeId}"]`
+            : `[data-index="${target.renderIndex}"]`;
+          const root = container.querySelector(selector);
+          if (!root) return;
+
+          // Find the overflow container (has max-height inline style)
+          const overflowEl = root.querySelector<HTMLElement>('[style*="max-height"]');
+          if (!overflowEl) return;
+
+          // Create a Range for the first occurrence of the query in the tool
+          const query = searchQuery.trim();
+          if (!query) return;
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          let matchRange: Range | null = null;
+          while (walker.nextNode()) {
+            const node = walker.currentNode as Text;
+            const idx = (node.textContent || '').toLowerCase().indexOf(query.toLowerCase());
+            if (idx !== -1) {
+              matchRange = new Range();
+              matchRange.setStart(node, idx);
+              matchRange.setEnd(node, idx + query.length);
+              break;
+            }
+          }
+          if (!matchRange) return;
+
+          const matchRect = matchRange.getBoundingClientRect();
+          const overflowRect = overflowEl.getBoundingClientRect();
+          // Match is below the visible bottom of the overflow container
+          if (matchRect.bottom <= overflowRect.bottom) return;
+
+          // Need to expand
+          const buttons = root.querySelectorAll('button');
+          for (const btn of buttons) {
+            if (btn.textContent?.trim().toLowerCase() === 'show more') {
+              (btn as HTMLButtonElement).click();
+              break;
+            }
+          }
+        };
+        // Delay for scroll + expand animations to settle, then check
+        requestAnimationFrame(() => setTimeout(expandIfHidden, 100));
+      }
     },
-    [rowVirtualizer],
+    [rowVirtualizer, searchQuery],
   );
 
   // When a grouped tool is highlighted, scroll it into view after the group expands
@@ -699,6 +749,7 @@ function RenderItemRenderer({
         isActive={isLast && sessionActive}
         open={expanded ?? false}
         onOpenChange={onToggleExpand ?? (() => {})}
+        searchQuery={searchQuery}
       />
     );
   }

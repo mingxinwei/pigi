@@ -148,7 +148,7 @@
     height: 100%;
     overflow: hidden;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
@@ -453,4 +453,10 @@
   100% {
     background-position: -100% 0;
   }
+}
+
+.search-highlight {
+  background-color: color-mix(in srgb, var(--system-accent) 16%, transparent);
+  border-radius: var(--radius-md);
+  transition: background-color 200ms ease-out;
 }

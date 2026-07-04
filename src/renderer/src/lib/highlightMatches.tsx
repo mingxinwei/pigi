@@ -22,7 +22,7 @@ export function highlightMatches(text: string, query: string): React.ReactNode {
       nodes.push(text.slice(cursor, index));
     }
     nodes.push(
-      <mark key={key++} className="rounded-sm bg-amber-300/70 text-foreground">
+      <mark key={key++} className="rounded-sm text-foreground" style={{ backgroundColor: 'var(--search-highlight-bg)' }}>
         {text.slice(index, index + query.length)}
       </mark>,
     );

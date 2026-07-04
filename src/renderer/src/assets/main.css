@@ -59,6 +59,7 @@
 
 :root {
   --system-accent: oklch(0.623 0.214 259.815);
+  --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(1 0 0);
   --foreground: #1a1c1f;
   --card: oklch(1 0 0);
@@ -95,6 +96,7 @@
 
 .dark {
   --system-accent: oklch(0.623 0.214 259.815);
+  --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -456,13 +458,13 @@
 }
 
 .search-highlight {
-  background-color: color-mix(in srgb, var(--system-accent) 16%, transparent);
+  background-color: var(--search-highlight-bg);
   border-radius: var(--radius-md);
   transition: background-color 200ms ease-out;
 }
 
 ::highlight(pi-search-highlights) {
-  background-color: rgb(252 211 77 / 0.7);
+  background-color: var(--search-highlight-bg);
   border-radius: 2px;
   color: var(--foreground);
 }

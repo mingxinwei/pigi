@@ -1,8 +1,10 @@
 import { IconChevronRight, IconChevronDown } from '@tabler/icons-react';
+import { useRef } from 'react';
 import { type ToolNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
+import { useHighlightTextNodes } from '../lib/highlightMatches';
 
 function getCommandLabel(node: ToolNode): string {
   const args = getToolArgs(node);
@@ -31,6 +33,8 @@ interface CollapsedReadGroupProps {
   /** Controlled open state */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Current search query for text highlighting */
+  searchQuery: string;
 }
 
 export default function CollapsedReadGroup({
@@ -38,6 +42,7 @@ export default function CollapsedReadGroup({
   isActive,
   open,
   onOpenChange,
+  searchQuery,
 }: CollapsedReadGroupProps): React.JSX.Element {
   const count = nodes.length;
   const noun = count === 1 ? 'file' : 'files';
@@ -45,49 +50,54 @@ export default function CollapsedReadGroup({
 
   const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  useHighlightTextNodes(rootRef, searchQuery);
+
   return (
-    <Collapsible className="group/collapsible mb-2" open={open} onOpenChange={onOpenChange}>
-      <div className="rounded-md border border-border/65 bg-muted/25">
-        <div className="rounded-t-md px-3 py-1.5">
-          <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
-            <span>{label}</span>
-            <IconChevronRight className="chevron-right size-3.5 shrink-0" />
-            <IconChevronDown className="chevron-down size-3.5 shrink-0" />
-          </CollapsibleTrigger>
-          <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
+    <div ref={rootRef}>
+      <Collapsible className="group/collapsible mb-2" open={open} onOpenChange={onOpenChange}>
+        <div className="rounded-md border border-border/65 bg-muted/25">
+          <div className="rounded-t-md px-3 py-1.5">
+            <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
+              <span>{label}</span>
+              <IconChevronRight className="chevron-right size-3.5 shrink-0" />
+              <IconChevronDown className="chevron-down size-3.5 shrink-0" />
+            </CollapsibleTrigger>
+            <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
+              {nodes.map((node) => (
+                <div
+                  key={node.id}
+                  className={`relative truncate font-mono text-[14px] overflow-hidden ${
+                    node.id === latestNodeId ? 'text-foreground' : 'text-foreground/70'
+                  }`}
+                >
+                  {getCommandLabel(node)}
+                  {node.id === latestNodeId && (
+                    <span
+                      className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"
+                      style={{
+                        background:
+                          'linear-gradient(90deg, transparent 0%, transparent 30%, rgba(255,255,255,0.95) 50%, transparent 70%, transparent 100%)',
+                        backgroundSize: '200% 100%',
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <CollapsibleContent
+            className="flex flex-col px-3 pb-1.5"
+            style={{ gap: `${MESSAGE_ROW_GAP * 3}px`, marginTop: `${MESSAGE_ROW_GAP * 3}px` }}
+          >
             {nodes.map((node) => (
-              <div
-                key={node.id}
-                className={`relative truncate font-mono text-[14px] overflow-hidden ${
-                  node.id === latestNodeId ? 'text-foreground' : 'text-foreground/70'
-                }`}
-              >
-                {getCommandLabel(node)}
-                {node.id === latestNodeId && (
-                  <span
-                    className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"
-                    style={{
-                      background:
-                        'linear-gradient(90deg, transparent 0%, transparent 30%, rgba(255,255,255,0.95) 50%, transparent 70%, transparent 100%)',
-                      backgroundSize: '200% 100%',
-                    }}
-                  />
-                )}
+              <div key={node.id} data-tool-node-id={node.id} className="group">
+                <ToolBlock node={node} />
               </div>
             ))}
-          </div>
+          </CollapsibleContent>
         </div>
-        <CollapsibleContent
-          className="flex flex-col px-3 pb-1.5"
-          style={{ gap: `${MESSAGE_ROW_GAP * 3}px`, marginTop: `${MESSAGE_ROW_GAP * 3}px` }}
-        >
-          {nodes.map((node) => (
-            <div key={node.id} data-tool-node-id={node.id} className="group">
-              <ToolBlock node={node} />
-            </div>
-          ))}
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
+      </Collapsible>
+    </div>
   );
 }

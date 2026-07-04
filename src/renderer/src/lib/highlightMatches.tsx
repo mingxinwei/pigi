@@ -34,8 +34,15 @@ export function highlightMatches(text: string, query: string): React.ReactNode {
 const HIGHLIGHT_NAME = 'pi-search-highlights';
 
 function findRangesInContainer(container: HTMLElement, query: string): Range[] {
-  const ranges: Range[] = [];
   const lowerQuery = query.toLowerCase();
+
+  // Collect all text nodes with their accumulated offsets
+  interface Entry {
+    node: Text;
+    offset: number;
+  }
+  const entries: Entry[] = [];
+  let totalOffset = 0;
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -49,19 +56,48 @@ function findRangesInContainer(container: HTMLElement, query: string): Range[] {
 
   while (walker.nextNode()) {
     const textNode = walker.currentNode as Text;
-    const text = textNode.textContent || '';
-    const lowerText = text.toLowerCase();
-    let start = 0;
+    entries.push({ node: textNode, offset: totalOffset });
+    totalOffset += textNode.textContent?.length ?? 0;
+  }
 
-    while (start < text.length) {
-      const index = lowerText.indexOf(lowerQuery, start);
-      if (index === -1) break;
+  if (entries.length === 0) return [];
+
+  // Build concatenated text and find all match positions
+  const fullText = entries.map((e) => e.node.textContent ?? '').join('');
+  const lowerFull = fullText.toLowerCase();
+
+  const ranges: Range[] = [];
+  let searchPos = 0;
+
+  while (searchPos < fullText.length) {
+    const matchStart = lowerFull.indexOf(lowerQuery, searchPos);
+    if (matchStart === -1) break;
+
+    // Map concatenated position back to text nodes
+    let remaining = query.length;
+    let pos = matchStart;
+
+    for (const entry of entries) {
+      const nodeLen = entry.node.textContent?.length ?? 0;
+      if (pos + remaining <= entry.offset) break;
+      if (pos >= entry.offset + nodeLen) continue;
+
+      const localStart = Math.max(0, pos - entry.offset);
+      const localEnd = Math.min(nodeLen, pos + remaining - entry.offset);
+
       const range = new Range();
-      range.setStart(textNode, index);
-      range.setEnd(textNode, index + query.length);
+      range.setStart(entry.node, localStart);
+      range.setEnd(entry.node, localEnd);
       ranges.push(range);
-      start = index + query.length;
+
+      const taken = localEnd - localStart;
+      remaining -= taken;
+      pos += taken;
+      if (remaining <= 0) break;
     }
+
+    searchPos = matchStart + query.length;
+    if (remaining > 0) searchPos = matchStart + 1; // safety: partial match at end, advance by 1
   }
 
   return ranges;
@@ -93,7 +129,11 @@ export function useHighlightTextNodes(
       const existing = CSS.highlights.get(HIGHLIGHT_NAME);
       if (existing) {
         for (const range of ownedRangesRef.current) {
-          existing.delete(range);
+          try {
+            existing.delete(range);
+          } catch {
+            /* detached */
+          }
         }
       }
       ownedRangesRef.current = [];
@@ -102,11 +142,15 @@ export function useHighlightTextNodes(
     if (!trimmed || !available) return;
 
     const apply = (): void => {
-      // Remove previous ranges
+      // Remove previous ranges (ignore errors from detached text nodes)
       const existing = CSS.highlights.get(HIGHLIGHT_NAME);
       if (existing) {
         for (const range of ownedRangesRef.current) {
-          existing.delete(range);
+          try {
+            existing.delete(range);
+          } catch {
+            /* text node detached by async render */
+          }
         }
       }
 
@@ -129,7 +173,10 @@ export function useHighlightTextNodes(
 
     apply();
 
-    observerRef.current = new MutationObserver(() => apply());
+    observerRef.current = new MutationObserver(() => {
+      // Defer to next frame so Shiki async render has completed
+      requestAnimationFrame(() => apply());
+    });
     observerRef.current.observe(container, {
       childList: true,
       subtree: true,
@@ -143,7 +190,11 @@ export function useHighlightTextNodes(
         const existing = CSS.highlights.get(HIGHLIGHT_NAME);
         if (existing) {
           for (const range of ownedRangesRef.current) {
-            existing.delete(range);
+            try {
+              existing.delete(range);
+            } catch {
+              /* detached */
+            }
           }
         }
         ownedRangesRef.current = [];

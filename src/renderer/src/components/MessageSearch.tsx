@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import fuzzysort from 'fuzzysort';
 import { IconChevronUp, IconChevronDown, IconX, IconSearch } from '@tabler/icons-react';
 import { Popover, PopoverContent, PopoverAnchor } from './ui/popover';
 import { Input } from './ui/input';
@@ -20,17 +19,18 @@ interface MessageSearchProps {
   onOpenChange: (open: boolean) => void;
   targets: MessageSearchTarget[];
   onJump: (target: MessageSearchTarget) => void;
+  query: string;
+  onQueryChange: (query: string) => void;
 }
-
-const MAX_RESULTS = 200;
 
 export default function MessageSearch({
   open,
   onOpenChange,
   targets,
   onJump,
+  query,
+  onQueryChange,
 }: MessageSearchProps): React.JSX.Element | null {
-  const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const deferredQuery = useDeferredValue(query);
@@ -47,14 +47,14 @@ export default function MessageSearch({
 
   const results = useMemo(() => {
     const trimmed = deferredQuery.trim().toLowerCase();
-    if (!trimmed) return [] as { obj: MessageSearchTarget }[];
-    const fuzzResults = fuzzysort.go(trimmed, targets, {
-      keys: ['text', 'meta'],
-      limit: MAX_RESULTS,
+    if (!trimmed) return [] as MessageSearchTarget[];
+    const matched = targets.filter((target) => {
+      const lowerText = target.text.toLowerCase();
+      const lowerMeta = target.meta.toLowerCase();
+      return lowerText.includes(trimmed) || lowerMeta.includes(trimmed);
     });
-    // Sort by document order for intuitive prev/next navigation
-    const sorted = [...fuzzResults].sort((a, b) => a.obj.renderIndex - b.obj.renderIndex);
-    return sorted;
+    matched.sort((a, b) => a.renderIndex - b.renderIndex);
+    return matched;
   }, [deferredQuery, targets]);
 
   const totalMatches = results.length;
@@ -65,7 +65,7 @@ export default function MessageSearch({
       if (results.length === 0) return;
       const clamped = ((index % results.length) + results.length) % results.length;
       setActiveIndex(clamped);
-      onJump(results[clamped].obj);
+      onJump(results[clamped]);
     },
     [results, onJump],
   );
@@ -77,7 +77,7 @@ export default function MessageSearch({
     prevDeferredRef.current = deferredQuery;
     if (prev === deferredQuery) return;
     if (deferredQuery.trim().length > 0 && results.length > 0) {
-      onJump(results[0].obj);
+      onJump(results[0]);
     }
   }, [deferredQuery, results, onJump]);
 
@@ -108,6 +108,11 @@ export default function MessageSearch({
     [results.length, clampedIndex, jumpTo, onOpenChange],
   );
 
+  if (!open) return null;
+
+  const hasQuery = deferredQuery.trim().length > 0;
+  const empty = hasQuery && results.length === 0;
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor className="absolute right-3 top-2" />
@@ -116,7 +121,6 @@ export default function MessageSearch({
         sideOffset={0}
         className="w-[min(24rem,calc(100%-1.5rem))] p-0"
         onInteractOutside={(event) => {
-          // Keep open when clicking inside the message list
           const target = event.target;
           if (target instanceof Element && target.closest('[data-testid="message-list"]')) {
             event.preventDefault();
@@ -130,18 +134,14 @@ export default function MessageSearch({
             value={query}
             onChange={(event) => {
               setActiveIndex(0);
-              setQuery(event.target.value);
+              onQueryChange(event.target.value);
             }}
             onKeyDown={handleKeyDown}
             placeholder="Search messages…"
             className="h-7 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
           />
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {deferredQuery.trim()
-              ? totalMatches > 0
-                ? `${clampedIndex + 1}/${totalMatches}`
-                : '0/0'
-              : ''}
+            {hasQuery ? (totalMatches > 0 ? `${clampedIndex + 1}/${totalMatches}` : '0/0') : ''}
           </span>
           <button
             type="button"
@@ -170,6 +170,11 @@ export default function MessageSearch({
             <IconX className="size-4" stroke={1.75} />
           </button>
         </div>
+        {empty ? (
+          <div className="border-t border-border px-3 py-3 text-center text-sm text-muted-foreground">
+            No matches
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

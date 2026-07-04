@@ -31,8 +31,6 @@ interface CollapsedReadGroupProps {
   /** Controlled open state */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** When set, the matching tool node gets a highlight */
-  highlightedToolNodeId?: string;
 }
 
 export default function CollapsedReadGroup({
@@ -40,7 +38,6 @@ export default function CollapsedReadGroup({
   isActive,
   open,
   onOpenChange,
-  highlightedToolNodeId,
 }: CollapsedReadGroupProps): React.JSX.Element {
   const count = nodes.length;
   const noun = count === 1 ? 'file' : 'files';
@@ -85,11 +82,7 @@ export default function CollapsedReadGroup({
           style={{ gap: `${MESSAGE_ROW_GAP * 3}px`, marginTop: `${MESSAGE_ROW_GAP * 3}px` }}
         >
           {nodes.map((node) => (
-            <div
-              key={node.id}
-              data-tool-node-id={node.id}
-              className={`group${node.id === highlightedToolNodeId ? ' search-highlight' : ''}`}
-            >
+            <div key={node.id} data-tool-node-id={node.id} className="group">
               <ToolBlock node={node} />
             </div>
           ))}

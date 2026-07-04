@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
 import MessageSearch, { type MessageSearchTarget } from './MessageSearch';
+import { highlightMatches, useHighlightTextNodes } from '../lib/highlightMatches';
 import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
 
 interface MessageListProps {
@@ -185,7 +186,7 @@ export default React.memo(function MessageList({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [highlightedToolNodeId, setHighlightedToolNodeId] = useState<string | null>(null);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -443,11 +444,9 @@ export default React.memo(function MessageList({
         });
       }
       rowVirtualizer.scrollToIndex(target.renderIndex, { align: 'start', behavior: 'auto' });
-      setHighlightedItemId(target.itemId);
       setHighlightedToolNodeId(target.toolNodeId ?? null);
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       highlightTimerRef.current = setTimeout(() => {
-        setHighlightedItemId(null);
         setHighlightedToolNodeId(null);
         highlightTimerRef.current = null;
       }, 2400);
@@ -526,29 +525,23 @@ export default React.memo(function MessageList({
               {virtualItems.map((virtualItem) => {
                 const item = renderItems[virtualItem.index];
                 const isLast = virtualItem.index === renderItems.length - 1;
-                const isHighlighted = highlightedItemId === item.id;
                 return (
                   <div
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualItem.index}
-                    className={cn(item.type !== 'readGroup' && isHighlighted && 'search-highlight')}
                     style={{ marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px` }}
                   >
                     <RenderItemRenderer
                       item={item}
                       isLast={isLast}
                       sessionActive={sessionStatus !== 'idle'}
+                      searchQuery={searchQuery}
                       expanded={
                         item.type === 'readGroup' ? expandedGroupIds.has(item.id) : undefined
                       }
                       onToggleExpand={
                         item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
-                      }
-                      highlightedToolNodeId={
-                        (item.type === 'readGroup' && isHighlighted
-                          ? highlightedToolNodeId
-                          : undefined) ?? undefined
                       }
                     />
                   </div>
@@ -562,6 +555,8 @@ export default React.memo(function MessageList({
         key={searchOpen ? 'open' : 'closed'}
         open={searchOpen}
         onOpenChange={setSearchOpen}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
         targets={searchTargets}
         onJump={handleSearchJump}
       />
@@ -686,16 +681,16 @@ function RenderItemRenderer({
   item,
   isLast,
   sessionActive,
+  searchQuery,
   expanded,
   onToggleExpand,
-  highlightedToolNodeId,
 }: {
   item: RenderItem;
   isLast: boolean;
   sessionActive: boolean;
+  searchQuery: string;
   expanded?: boolean;
   onToggleExpand?: () => void;
-  highlightedToolNodeId?: string;
 }): React.JSX.Element {
   if (item.type === 'readGroup') {
     return (
@@ -704,32 +699,56 @@ function RenderItemRenderer({
         isActive={isLast && sessionActive}
         open={expanded ?? false}
         onOpenChange={onToggleExpand ?? (() => {})}
-        highlightedToolNodeId={highlightedToolNodeId}
       />
     );
   }
-  return <NodeRenderer node={item.node} />;
+  return <NodeRenderer node={item.node} searchQuery={searchQuery} />;
 }
 
-function NodeRenderer({ node }: { node: TranscriptNode }): React.JSX.Element {
+function NodeRenderer({
+  node,
+  searchQuery,
+}: {
+  node: TranscriptNode;
+  searchQuery: string;
+}): React.JSX.Element {
   switch (node.role) {
     case 'user':
-      return <UserBubble node={node} />;
+      return <UserBubble node={node} searchQuery={searchQuery} />;
     case 'assistant':
-      return <AssistantBubble node={node} />;
+      return <AssistantBubble node={node} searchQuery={searchQuery} />;
     case 'tool':
-      return (
-        <div className="group">
-          <ToolBlock node={node} />
-          <MessageToolbar text={node.output} />
-        </div>
-      );
+      return <ToolBubble node={node} searchQuery={searchQuery} />;
     case 'system':
-      return <SystemBubble text={node.text} isLoading={node.isLoading} />;
+      return <SystemBubble text={node.text} isLoading={node.isLoading} searchQuery={searchQuery} />;
   }
 }
 
-function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
+function ToolBubble({
+  node,
+  searchQuery,
+}: {
+  node: ToolNode;
+  searchQuery: string;
+}): React.JSX.Element {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useHighlightTextNodes(containerRef, searchQuery);
+
+  return (
+    <div ref={containerRef} className="group">
+      <ToolBlock node={node} />
+      <MessageToolbar text={node.output} />
+    </div>
+  );
+}
+
+function UserBubble({
+  node,
+  searchQuery,
+}: {
+  node: UserNode;
+  searchQuery: string;
+}): React.JSX.Element {
   const { text } = node;
   const [expanded, setExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -744,7 +763,9 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
   }, [text, expanded]);
 
   if (skillBlock) {
-    return <SkillLinkBubble skillBlock={skillBlock} timestamp={node.sentAt} />;
+    return (
+      <SkillLinkBubble skillBlock={skillBlock} timestamp={node.sentAt} searchQuery={searchQuery} />
+    );
   }
 
   return (
@@ -770,7 +791,7 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
                   : undefined,
             }}
           >
-            {text}
+            {highlightMatches(text, searchQuery)}
           </div>
           {isOverflowing && (
             <button
@@ -844,9 +865,11 @@ function parseSkillBlock(text: string): ParsedSkillBlock | null {
 function SkillLinkBubble({
   skillBlock,
   timestamp,
+  searchQuery,
 }: {
   skillBlock: ParsedSkillBlock;
   timestamp: number;
+  searchQuery: string;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
 
@@ -876,7 +899,7 @@ function SkillLinkBubble({
               <MarkdownMessage text={skillBlock.body} />
             </PopoverContent>
           </Popover>
-          {skillBlock.userMessage && <> {skillBlock.userMessage}</>}
+          {skillBlock.userMessage && <> {highlightMatches(skillBlock.userMessage, searchQuery)}</>}
         </div>
         <div className="flex w-full items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{formatUserMessageTime(timestamp)}</span>
@@ -886,13 +909,23 @@ function SkillLinkBubble({
   );
 }
 
-function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
+function AssistantBubble({
+  node,
+  searchQuery,
+}: {
+  node: AssistantNode;
+  searchQuery: string;
+}): React.JSX.Element {
   const showThinking = node.thinking.length > 0;
   const showText = node.text.length > 0;
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useHighlightTextNodes(contentRef, searchQuery);
 
   return (
     <div className="group flex justify-start" data-testid="assistant-message">
       <div
+        ref={contentRef}
         className="w-full min-w-0 text-[15px] text-foreground"
         style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       >
@@ -930,15 +963,17 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
 function SystemBubble({
   text,
   isLoading,
+  searchQuery,
 }: {
   text: string;
   isLoading?: boolean;
+  searchQuery: string;
 }): React.JSX.Element {
   return (
     <div className="flex items-center gap-3 py-2" data-testid="system-message">
       <div className="h-px flex-1 bg-border" />
       <span className="relative shrink-0 text-sm text-muted-foreground overflow-hidden">
-        {text}
+        {highlightMatches(text, searchQuery)}
         {isLoading && (
           <span
             className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"

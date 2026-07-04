@@ -493,6 +493,34 @@ export default React.memo(function MessageList({
           for (const btn of buttons) {
             if (btn.textContent?.trim().toLowerCase() === 'show more') {
               (btn as HTMLButtonElement).click();
+              // After expansion, re-scroll to the matched text
+              const scrollToMatch = (): void => {
+                const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                while (treeWalker.nextNode()) {
+                  const textNode = treeWalker.currentNode as Text;
+                  const matchIndex = (textNode.textContent || '')
+                    .toLowerCase()
+                    .indexOf(query.toLowerCase());
+                  if (matchIndex === -1) continue;
+                  const matchRange = new Range();
+                  matchRange.setStart(textNode, matchIndex);
+                  matchRange.setEnd(textNode, matchIndex + query.length);
+                  const matchRect = matchRange.getBoundingClientRect();
+                  if (container) {
+                    const containerRect = container.getBoundingClientRect();
+                    container.scrollTo({
+                      top:
+                        container.scrollTop +
+                        matchRect.top -
+                        containerRect.top -
+                        containerRect.height / 2,
+                      behavior: 'auto',
+                    });
+                  }
+                  break;
+                }
+              };
+              requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
               break;
             }
           }

@@ -27,6 +27,7 @@
 
 ### Fixed
 
+- Scroll-to-bottom button now scrolls all the way to the last message instead of stopping a few pixels short.
 - Restored bottom spacing between message list and chat input that was lost when switching to block translation layout.
 - Reduced visual jitter when long content streams in during AI responses, especially noticeable in long thinking blocks.
 - Sidebar now automatically scrolls to the selected session when switching, expanding the project and show-more list as needed

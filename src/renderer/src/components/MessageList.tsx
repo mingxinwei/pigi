@@ -502,9 +502,21 @@ export default React.memo(function MessageList({
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
+          {/*
+           * Spacer div for the virtualizer. We add paddingBottom instead of
+           * using the virtualizer's paddingEnd option because paddingEnd
+           * feeds into getTotalSize() and triggers a measure → scroll adjust
+           * → re-render loop that causes visible flickering. paddingBottom on
+           * this spacer is invisible to the virtualizer (the items inside are
+           * position:absolute and ignore it), but it increases scrollHeight
+           * so scroll-to-bottom reaches the last item's full margin-bottom.
+           */}
           <div
             className="relative"
-            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              paddingBottom: `${MESSAGE_ROW_GAP + 16}px`,
+            }}
             data-testid="message-virtualizer"
           >
             <div

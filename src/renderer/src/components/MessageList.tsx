@@ -154,7 +154,6 @@ export default React.memo(function MessageList({
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
-    paddingEnd: 36,
   });
 
   // Disable virtualizer scroll corrections when auto-scroll is off.
@@ -363,16 +362,17 @@ export default React.memo(function MessageList({
             >
               {virtualItems.map((virtualItem) => {
                 const item = renderItems[virtualItem.index];
+                const isLast = virtualItem.index === renderItems.length - 1;
                 return (
                   <div
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualItem.index}
-                    style={{ marginBottom: `${MESSAGE_ROW_GAP}px` }}
+                    style={{ marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px` }}
                   >
                     <RenderItemRenderer
                       item={item}
-                      isLast={virtualItem.index === renderItems.length - 1}
+                      isLast={isLast}
                       sessionActive={sessionStatus !== 'idle'}
                     />
                   </div>
@@ -391,7 +391,7 @@ export default React.memo(function MessageList({
       {/* Top gradient fade */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-background to-transparent" />
       {/* Bottom gradient fade */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-background to-transparent" />
       {showScrollButton && (
         <button
           type="button"
@@ -585,7 +585,7 @@ function UserBubble({ node }: { node: UserNode }): React.JSX.Element {
             </button>
           )}
         </div>
-        <div className="flex h-6 w-full items-center justify-end gap-2 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex w-full items-center justify-end gap-2 pb-1 opacity-0 transition-opacity group-hover:opacity-100">
           <MessageToolbar text={node.text} />
           <span className="text-xs text-muted-foreground">
             {formatUserMessageTime(node.sentAt)}
@@ -681,7 +681,7 @@ function SkillLinkBubble({
           </Popover>
           {skillBlock.userMessage && <> {skillBlock.userMessage}</>}
         </div>
-        <div className="flex h-6 w-full items-center justify-end gap-2 pt-1">
+        <div className="flex w-full items-center justify-end gap-2 pb-1">
           <span className="text-xs text-muted-foreground">{formatUserMessageTime(timestamp)}</span>
         </div>
       </div>
@@ -696,7 +696,7 @@ function AssistantBubble({ node }: { node: AssistantNode }): React.JSX.Element {
   return (
     <div className="group flex justify-start" data-testid="assistant-message">
       <div
-        className="w-full min-w-0 text-[15px] leading-6 text-foreground"
+        className="w-full min-w-0 text-[15px] text-foreground"
         style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       >
         {showThinking && <ThinkingBlock text={node.thinking} />}
@@ -768,7 +768,7 @@ function MessageToolbar({ text }: { text: string }): React.JSX.Element {
   }, [text]);
 
   return (
-    <div className="flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="flex items-center gap-1 pb-1 opacity-0 transition-opacity group-hover:opacity-100">
       <button
         type="button"
         className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"

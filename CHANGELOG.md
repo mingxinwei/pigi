@@ -14,7 +14,10 @@
 
 ### Changed
 
-- Clicking a session or project in the sidebar now refreshes the session list
+- Assistant messages now use the app's default line height instead of a fixed 24px, for a tighter and more natural reading rhythm.
+- Message toolbar spacing shifted from above to below buttons, reducing visual gap between message text and action bar.
+- Bottom gradient fade shortened to avoid overlapping the chat input area.
+- Last message in the list has slightly more breathing room at the bottom.
 
 ### Fixed
 

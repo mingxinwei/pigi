@@ -465,6 +465,5 @@
 
 ::highlight(pi-search-highlights) {
   background-color: var(--search-highlight-bg);
-  border-radius: 2px;
   color: var(--foreground);
 }

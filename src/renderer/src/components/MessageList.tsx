@@ -490,40 +490,39 @@ export default React.memo(function MessageList({
           if (matchRect.bottom <= overflowRect.bottom) return;
 
           // Need to expand
-          const buttons = root.querySelectorAll('button');
-          for (const btn of buttons) {
-            if (btn.textContent?.trim().toLowerCase() === 'show more') {
-              (btn as HTMLButtonElement).click();
-              // After expansion, re-scroll to the matched text
-              const scrollToMatch = (): void => {
-                const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                while (treeWalker.nextNode()) {
-                  const textNode = treeWalker.currentNode as Text;
-                  const matchIndex = (textNode.textContent || '')
-                    .toLowerCase()
-                    .indexOf(query.toLowerCase());
-                  if (matchIndex === -1) continue;
-                  const matchRange = new Range();
-                  matchRange.setStart(textNode, matchIndex);
-                  matchRange.setEnd(textNode, matchIndex + query.length);
-                  const matchRect = matchRange.getBoundingClientRect();
-                  if (container) {
-                    const containerRect = container.getBoundingClientRect();
-                    container.scrollTo({
-                      top:
-                        container.scrollTop +
-                        matchRect.top -
-                        containerRect.top -
-                        containerRect.height / 2,
-                      behavior: 'auto',
-                    });
-                  }
-                  break;
+          const expandButton = root.querySelector<HTMLButtonElement>(
+            '[data-action="expand-overflow"]',
+          );
+          if (expandButton) {
+            expandButton.click();
+            // After expansion, re-scroll to the matched text
+            const scrollToMatch = (): void => {
+              const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+              while (treeWalker.nextNode()) {
+                const textNode = treeWalker.currentNode as Text;
+                const matchIndex = (textNode.textContent || '')
+                  .toLowerCase()
+                  .indexOf(query.toLowerCase());
+                if (matchIndex === -1) continue;
+                const matchRange = new Range();
+                matchRange.setStart(textNode, matchIndex);
+                matchRange.setEnd(textNode, matchIndex + query.length);
+                const matchRect = matchRange.getBoundingClientRect();
+                if (container) {
+                  const containerRect = container.getBoundingClientRect();
+                  container.scrollTo({
+                    top:
+                      container.scrollTop +
+                      matchRect.top -
+                      containerRect.top -
+                      containerRect.height / 2,
+                    behavior: 'auto',
+                  });
                 }
-              };
-              requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
-              break;
-            }
+                break;
+              }
+            };
+            requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
           }
         };
         // Delay for scroll + expand animations to settle, then check
@@ -539,14 +538,9 @@ export default React.memo(function MessageList({
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
-      const elements = container.querySelectorAll('[data-tool-node-id]');
-      for (const element of elements) {
-        if (element.getAttribute('data-tool-node-id') === highlightedToolNodeId) {
-          if (element instanceof HTMLElement) {
-            element.scrollIntoView({ block: 'center', behavior: 'auto' });
-          }
-          break;
-        }
+      const element = container.querySelector(`[data-tool-node-id="${highlightedToolNodeId}"]`);
+      if (element instanceof HTMLElement) {
+        element.scrollIntoView({ block: 'center', behavior: 'auto' });
       }
     });
     return () => cancelAnimationFrame(raf);
@@ -883,6 +877,7 @@ function UserBubble({
               type="button"
               onClick={() => setExpanded((current) => !current)}
               className="block w-full px-3.5 pt-1.5 pb-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+              data-action="expand-overflow"
             >
               {expanded ? 'Show less' : 'Show more'}
             </button>

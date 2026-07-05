@@ -21,6 +21,7 @@ interface MessageSearchProps {
   onJump: (target: MessageSearchTarget) => void;
   query: string;
   onQueryChange: (query: string) => void;
+  refocus: number;
 }
 
 export default function MessageSearch({
@@ -30,6 +31,7 @@ export default function MessageSearch({
   onJump,
   query,
   onQueryChange,
+  refocus,
 }: MessageSearchProps): React.JSX.Element | null {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +46,13 @@ export default function MessageSearch({
       });
     }
   }, [open]);
+
+  // Select all on Cmd+F when already open
+  useEffect(() => {
+    if (refocus > 0 && inputRef.current) {
+      inputRef.current.select();
+    }
+  }, [refocus]);
 
   const results = useMemo(() => {
     const trimmed = deferredQuery.trim().toLowerCase();
@@ -145,24 +154,24 @@ export default function MessageSearch({
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {clampedIndex + 1}/{totalMatches}
                 </span>
-              <span className="flex items-center gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => jumpTo(clampedIndex - 1)}
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                  title="Previous match (Shift+Enter)"
-                >
-                  <IconArrowUp className="size-4" stroke={1.75} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => jumpTo(clampedIndex + 1)}
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                  title="Next match (Enter)"
-                >
-                  <IconArrowDown className="size-4" stroke={1.75} />
-                </button>
-              </span>
+                <span className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(clampedIndex - 1)}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    title="Previous match (Shift+Enter)"
+                  >
+                    <IconArrowUp className="size-4" stroke={1.75} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(clampedIndex + 1)}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    title="Next match (Enter)"
+                  >
+                    <IconArrowDown className="size-4" stroke={1.75} />
+                  </button>
+                </span>
               </>
             )}
             {hasQuery && totalMatches === 0 && (

@@ -186,6 +186,7 @@ export default React.memo(function MessageList({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchRefocus, setSearchRefocus] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedToolNodeId, setHighlightedToolNodeId] = useState<string | null>(null);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
@@ -556,12 +557,16 @@ export default React.memo(function MessageList({
     function handleKeyDown(event: KeyboardEvent): void {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
         event.preventDefault();
-        setSearchOpen(true);
+        if (searchOpen) {
+          setSearchRefocus((prev) => prev + 1);
+        } else {
+          setSearchOpen(true);
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [searchOpen]);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -631,6 +636,7 @@ export default React.memo(function MessageList({
       </div>
       <MessageSearch
         key={searchOpen ? 'open' : 'closed'}
+        refocus={searchRefocus}
         open={searchOpen}
         onOpenChange={setSearchOpen}
         query={searchQuery}

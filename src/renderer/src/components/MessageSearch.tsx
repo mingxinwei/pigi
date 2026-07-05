@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { IconChevronUp, IconChevronDown, IconX, IconSearch } from '@tabler/icons-react';
+import { IconArrowUp, IconArrowDown, IconX, IconSearch } from '@tabler/icons-react';
 import { Popover, PopoverContent, PopoverAnchor } from './ui/popover';
 import { Input } from './ui/input';
 
@@ -111,15 +111,14 @@ export default function MessageSearch({
   if (!open) return null;
 
   const hasQuery = deferredQuery.trim().length > 0;
-  const empty = hasQuery && results.length === 0;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverAnchor className="absolute right-3 top-2" />
+      <PopoverAnchor className="absolute right-5 top-2" />
       <PopoverContent
         align="end"
         sideOffset={0}
-        className="w-[min(24rem,calc(100%-1.5rem))] p-0"
+        className="w-72 rounded-lg p-0"
         onInteractOutside={(event) => {
           const target = event.target;
           if (target instanceof Element && target.closest('[data-testid="message-list"]')) {
@@ -127,7 +126,7 @@ export default function MessageSearch({
           }
         }}
       >
-        <div className="flex items-center gap-1.5 px-2 py-1.5">
+        <div className="flex items-center gap-1.5 px-2 py-1">
           <IconSearch className="size-4 shrink-0 text-muted-foreground" />
           <Input
             ref={inputRef}
@@ -138,43 +137,47 @@ export default function MessageSearch({
             }}
             onKeyDown={handleKeyDown}
             placeholder="Search messages…"
-            className="h-7 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+            className="h-7 w-44 border-0 bg-transparent px-px text-sm shadow-none focus-visible:ring-0"
           />
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {hasQuery ? (totalMatches > 0 ? `${clampedIndex + 1}/${totalMatches}` : '0/0') : ''}
-          </span>
-          <button
-            type="button"
-            onClick={() => jumpTo(clampedIndex - 1)}
-            disabled={totalMatches === 0}
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-            title="Previous match (Shift+Enter)"
-          >
-            <IconChevronUp className="size-4" stroke={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={() => jumpTo(clampedIndex + 1)}
-            disabled={totalMatches === 0}
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-            title="Next match (Enter)"
-          >
-            <IconChevronDown className="size-4" stroke={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-            title="Close (Esc)"
-          >
-            <IconX className="size-4" stroke={1.75} />
-          </button>
-        </div>
-        {empty ? (
-          <div className="border-t border-border px-3 py-3 text-center text-sm text-muted-foreground">
-            No matches
+          <div className="ml-auto flex items-center gap-1.5">
+            {hasQuery && totalMatches > 0 && (
+              <>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {clampedIndex + 1}/{totalMatches}
+                </span>
+              <span className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => jumpTo(clampedIndex - 1)}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  title="Previous match (Shift+Enter)"
+                >
+                  <IconArrowUp className="size-4" stroke={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => jumpTo(clampedIndex + 1)}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  title="Next match (Enter)"
+                >
+                  <IconArrowDown className="size-4" stroke={1.75} />
+                </button>
+              </span>
+              </>
+            )}
+            {hasQuery && totalMatches === 0 && (
+              <span className="shrink-0 text-[10px] whitespace-nowrap text-red-500">NOT FOUND</span>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              title="Close (Esc)"
+            >
+              <IconX className="size-4" stroke={1.75} />
+            </button>
           </div>
-        ) : null}
+        </div>
       </PopoverContent>
     </Popover>
   );

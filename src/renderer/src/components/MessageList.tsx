@@ -21,7 +21,7 @@ import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
-import MessageSearch, { type MessageSearchTarget } from './MessageSearch';
+import MessageSearch, { type MessageSearchTarget, type OccurrenceResult } from './MessageSearch';
 import { highlightMatches, useHighlightTextNodes } from '../lib/highlightMatches';
 import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
 
@@ -191,6 +191,11 @@ export default React.memo(function MessageList({
   const [highlightedToolNodeId, setHighlightedToolNodeId] = useState<string | null>(null);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeOccurrenceInfo, setActiveOccurrenceInfo] = useState<{
+    itemId: string;
+    occurrenceIndex: number;
+    queryLength: number;
+  } | null>(null);
 
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
   const sessionStatus = useAppStore(
@@ -434,7 +439,8 @@ export default React.memo(function MessageList({
   }, []);
 
   const handleSearchJump = useCallback(
-    (target: MessageSearchTarget): void => {
+    (result: OccurrenceResult): void => {
+      const target = result.target;
       autoScrollRef.current = false;
       if (target.groupId) {
         setExpandedGroupIds((prev) => {
@@ -446,6 +452,11 @@ export default React.memo(function MessageList({
       }
       rowVirtualizer.scrollToIndex(target.renderIndex, { align: 'start', behavior: 'auto' });
       setHighlightedToolNodeId(target.toolNodeId ?? null);
+      setActiveOccurrenceInfo({
+        itemId: target.itemId,
+        occurrenceIndex: result.occurrenceIndex,
+        queryLength: searchQuery.trim().length,
+      });
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       highlightTimerRef.current = setTimeout(() => {
         setHighlightedToolNodeId(null);
@@ -467,20 +478,31 @@ export default React.memo(function MessageList({
           const overflowEl = root.querySelector<HTMLElement>('[style*="max-height"]');
           if (!overflowEl) return;
 
-          // Create a Range for the first occurrence of the query in the tool
+          // Create a Range for the specific occurrence of the query in the tool
           const query = searchQuery.trim();
           if (!query) return;
+          let occurrenceCount = -1;
           const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
           let matchRange: Range | null = null;
           while (walker.nextNode()) {
             const node = walker.currentNode as Text;
-            const idx = (node.textContent || '').toLowerCase().indexOf(query.toLowerCase());
-            if (idx !== -1) {
-              matchRange = new Range();
-              matchRange.setStart(node, idx);
-              matchRange.setEnd(node, idx + query.length);
-              break;
+            const nodeText = node.textContent || '';
+            const lower = nodeText.toLowerCase();
+            const lowerQuery = query.toLowerCase();
+            let searchIndex = 0;
+            while (searchIndex < lower.length) {
+              const idx = lower.indexOf(lowerQuery, searchIndex);
+              if (idx === -1) break;
+              occurrenceCount++;
+              if (occurrenceCount === result.occurrenceIndex) {
+                matchRange = new Range();
+                matchRange.setStart(node, idx);
+                matchRange.setEnd(node, idx + query.length);
+                break;
+              }
+              searchIndex = idx + 1;
             }
+            if (matchRange) break;
           }
           if (!matchRange) return;
 
@@ -497,29 +519,39 @@ export default React.memo(function MessageList({
             expandButton.click();
             // After expansion, re-scroll to the matched text
             const scrollToMatch = (): void => {
+              let occurrenceCount = -1;
               const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
               while (treeWalker.nextNode()) {
                 const textNode = treeWalker.currentNode as Text;
-                const matchIndex = (textNode.textContent || '')
-                  .toLowerCase()
-                  .indexOf(query.toLowerCase());
-                if (matchIndex === -1) continue;
-                const matchRange = new Range();
-                matchRange.setStart(textNode, matchIndex);
-                matchRange.setEnd(textNode, matchIndex + query.length);
-                const matchRect = matchRange.getBoundingClientRect();
-                if (container) {
-                  const containerRect = container.getBoundingClientRect();
-                  container.scrollTo({
-                    top:
-                      container.scrollTop +
-                      matchRect.top -
-                      containerRect.top -
-                      containerRect.height / 2,
-                    behavior: 'auto',
-                  });
+                const nodeText = textNode.textContent || '';
+                const lower = nodeText.toLowerCase();
+                const lowerQuery = query.toLowerCase();
+                let searchIndex = 0;
+                while (searchIndex < lower.length) {
+                  const matchIndex = lower.indexOf(lowerQuery, searchIndex);
+                  if (matchIndex === -1) break;
+                  occurrenceCount++;
+                  if (occurrenceCount !== result.occurrenceIndex) {
+                    searchIndex = matchIndex + 1;
+                    continue;
+                  }
+                  const matchRange = new Range();
+                  matchRange.setStart(textNode, matchIndex);
+                  matchRange.setEnd(textNode, matchIndex + query.length);
+                  const matchRect = matchRange.getBoundingClientRect();
+                  if (container) {
+                    const containerRect = container.getBoundingClientRect();
+                    container.scrollTo({
+                      top:
+                        container.scrollTop +
+                        matchRect.top -
+                        containerRect.top -
+                        containerRect.height / 2,
+                      behavior: 'auto',
+                    });
+                  }
+                  return;
                 }
-                break;
               }
             };
             requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
@@ -531,6 +563,48 @@ export default React.memo(function MessageList({
     },
     [rowVirtualizer, searchQuery],
   );
+
+  // Scroll to active occurrence within the message
+  useEffect(() => {
+    if (!activeOccurrenceInfo) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    requestAnimationFrame(() => {
+      const itemEl = container.querySelector(`[data-item-id="${activeOccurrenceInfo.itemId}"]`);
+      if (!itemEl) return;
+
+      let occurrenceCount = -1;
+      const walker = document.createTreeWalker(itemEl, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const textNode = walker.currentNode as Text;
+        const nodeText = textNode.textContent || '';
+        const lower = nodeText.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        let searchIndex = 0;
+        while (searchIndex < lower.length) {
+          const matchIndex = lower.indexOf(lowerQuery, searchIndex);
+          if (matchIndex === -1) break;
+          occurrenceCount++;
+          if (occurrenceCount === activeOccurrenceInfo.occurrenceIndex) {
+            const range = new Range();
+            range.setStart(textNode, matchIndex);
+            range.setEnd(textNode, matchIndex + lowerQuery.length);
+            const rect = range.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            container.scrollTo({
+              top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
+              behavior: 'auto',
+            });
+            return;
+          }
+          searchIndex = matchIndex + 1;
+        }
+      }
+    });
+  }, [activeOccurrenceInfo, searchQuery]);
 
   // When a grouped tool is highlighted, scroll it into view after the group expands
   useEffect(() => {
@@ -607,6 +681,7 @@ export default React.memo(function MessageList({
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualItem.index}
+                    data-item-id={item.id}
                     style={{ marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px` }}
                   >
                     <RenderItemRenderer
@@ -620,6 +695,8 @@ export default React.memo(function MessageList({
                       onToggleExpand={
                         item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
                       }
+                      activeOccurrenceItemId={activeOccurrenceInfo?.itemId ?? null}
+                      activeOccurrenceIndex={activeOccurrenceInfo?.occurrenceIndex ?? null}
                     />
                   </div>
                 );
@@ -762,6 +839,8 @@ function RenderItemRenderer({
   searchQuery,
   expanded,
   onToggleExpand,
+  activeOccurrenceItemId,
+  activeOccurrenceIndex,
 }: {
   item: RenderItem;
   isLast: boolean;
@@ -769,7 +848,10 @@ function RenderItemRenderer({
   searchQuery: string;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  activeOccurrenceItemId: string | null;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
+  const activeIndex = item.id === activeOccurrenceItemId ? activeOccurrenceIndex : null;
   if (item.type === 'readGroup') {
     return (
       <CollapsedReadGroup
@@ -778,40 +860,72 @@ function RenderItemRenderer({
         open={expanded ?? false}
         onOpenChange={onToggleExpand ?? (() => {})}
         searchQuery={searchQuery}
+        activeOccurrenceIndex={activeIndex}
       />
     );
   }
-  return <NodeRenderer node={item.node} searchQuery={searchQuery} />;
+  return (
+    <NodeRenderer node={item.node} searchQuery={searchQuery} activeOccurrenceIndex={activeIndex} />
+  );
 }
 
 function NodeRenderer({
   node,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   node: TranscriptNode;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   switch (node.role) {
     case 'user':
-      return <UserBubble node={node} searchQuery={searchQuery} />;
+      return (
+        <UserBubble
+          node={node}
+          searchQuery={searchQuery}
+          activeOccurrenceIndex={activeOccurrenceIndex}
+        />
+      );
     case 'assistant':
-      return <AssistantBubble node={node} searchQuery={searchQuery} />;
+      return (
+        <AssistantBubble
+          node={node}
+          searchQuery={searchQuery}
+          activeOccurrenceIndex={activeOccurrenceIndex}
+        />
+      );
     case 'tool':
-      return <ToolBubble node={node} searchQuery={searchQuery} />;
+      return (
+        <ToolBubble
+          node={node}
+          searchQuery={searchQuery}
+          activeOccurrenceIndex={activeOccurrenceIndex}
+        />
+      );
     case 'system':
-      return <SystemBubble text={node.text} isLoading={node.isLoading} searchQuery={searchQuery} />;
+      return (
+        <SystemBubble
+          text={node.text}
+          isLoading={node.isLoading}
+          searchQuery={searchQuery}
+          activeOccurrenceIndex={activeOccurrenceIndex}
+        />
+      );
   }
 }
 
 function ToolBubble({
   node,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   node: ToolNode;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  useHighlightTextNodes(containerRef, searchQuery);
+  useHighlightTextNodes(containerRef, searchQuery, activeOccurrenceIndex);
 
   return (
     <div ref={containerRef} className="group">
@@ -824,9 +938,11 @@ function ToolBubble({
 function UserBubble({
   node,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   node: UserNode;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const { text } = node;
   const [expanded, setExpanded] = useState(false);
@@ -843,7 +959,12 @@ function UserBubble({
 
   if (skillBlock) {
     return (
-      <SkillLinkBubble skillBlock={skillBlock} timestamp={node.sentAt} searchQuery={searchQuery} />
+      <SkillLinkBubble
+        skillBlock={skillBlock}
+        timestamp={node.sentAt}
+        searchQuery={searchQuery}
+        activeOccurrenceIndex={activeOccurrenceIndex}
+      />
     );
   }
 
@@ -870,7 +991,7 @@ function UserBubble({
                   : undefined,
             }}
           >
-            {highlightMatches(text, searchQuery)}
+            {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
           </div>
           {isOverflowing && (
             <button
@@ -946,10 +1067,12 @@ function SkillLinkBubble({
   skillBlock,
   timestamp,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   skillBlock: ParsedSkillBlock;
   timestamp: number;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
 
@@ -979,7 +1102,9 @@ function SkillLinkBubble({
               <MarkdownMessage text={skillBlock.body} />
             </PopoverContent>
           </Popover>
-          {skillBlock.userMessage && <> {highlightMatches(skillBlock.userMessage, searchQuery)}</>}
+          {skillBlock.userMessage && (
+            <> {highlightMatches(skillBlock.userMessage, searchQuery, activeOccurrenceIndex)}</>
+          )}
         </div>
         <div className="flex w-full items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{formatUserMessageTime(timestamp)}</span>
@@ -992,15 +1117,17 @@ function SkillLinkBubble({
 function AssistantBubble({
   node,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   node: AssistantNode;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const showThinking = node.thinking.length > 0;
   const showText = node.text.length > 0;
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useHighlightTextNodes(contentRef, searchQuery);
+  useHighlightTextNodes(contentRef, searchQuery, activeOccurrenceIndex);
 
   return (
     <div className="group flex justify-start" data-testid="assistant-message">
@@ -1044,16 +1171,18 @@ function SystemBubble({
   text,
   isLoading,
   searchQuery,
+  activeOccurrenceIndex,
 }: {
   text: string;
   isLoading?: boolean;
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   return (
     <div className="flex items-center gap-3 py-2" data-testid="system-message">
       <div className="h-px flex-1 bg-border" />
       <span className="relative shrink-0 text-sm text-muted-foreground overflow-hidden">
-        {highlightMatches(text, searchQuery)}
+        {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
         {isLoading && (
           <span
             className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"

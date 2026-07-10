@@ -4,13 +4,18 @@ import React, { useEffect, useRef } from 'react';
  * Highlight case-insensitive query matches in plain text.
  * Returns React nodes with matches wrapped in <mark>.
  */
-export function highlightMatches(text: string, query: string): React.ReactNode {
+export function highlightMatches(
+  text: string,
+  query: string,
+  activeOccurrenceIndex: number | null = null,
+): React.ReactNode {
   if (!query.trim() || !text) return text;
   const lowerText = text.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
   let key = 0;
+  let occurrenceCount = -1;
 
   while (cursor < text.length) {
     const index = lowerText.indexOf(lowerQuery, cursor);
@@ -21,11 +26,17 @@ export function highlightMatches(text: string, query: string): React.ReactNode {
     if (index > cursor) {
       nodes.push(text.slice(cursor, index));
     }
+    occurrenceCount++;
+    const isActive = activeOccurrenceIndex !== null && occurrenceCount === activeOccurrenceIndex;
     nodes.push(
       <mark
         key={key++}
         className="rounded-sm text-foreground"
-        style={{ backgroundColor: 'var(--search-highlight-bg)' }}
+        style={{
+          backgroundColor: isActive
+            ? 'color-mix(in srgb, var(--system-accent) 70%, transparent)'
+            : 'var(--search-highlight-bg)',
+        }}
       >
         {text.slice(index, index + query.length)}
       </mark>,
@@ -36,6 +47,7 @@ export function highlightMatches(text: string, query: string): React.ReactNode {
 }
 
 const HIGHLIGHT_NAME = 'pi-search-highlights';
+const ACTIVE_HIGHLIGHT_NAME = 'pi-search-active';
 
 function findRangesInContainer(container: HTMLElement, query: string): Range[] {
   const lowerQuery = query.toLowerCase();
@@ -116,6 +128,7 @@ function findRangesInContainer(container: HTMLElement, query: string): Range[] {
 export function useHighlightTextNodes(
   containerRef: React.RefObject<HTMLElement | null>,
   query: string,
+  activeOccurrenceIndex: number | null = null,
 ): void {
   // Track ranges owned by this hook instance so we can remove them on cleanup
   const ownedRangesRef = useRef<Range[]>([]);
@@ -173,6 +186,21 @@ export function useHighlightTextNodes(
       for (const range of ranges) {
         highlight.add(range);
       }
+
+      // Apply active occurrence highlight
+      try {
+        CSS.highlights.delete(ACTIVE_HIGHLIGHT_NAME);
+      } catch {
+        // CSS.highlights not supported
+      }
+      if (
+        activeOccurrenceIndex !== null &&
+        activeOccurrenceIndex >= 0 &&
+        activeOccurrenceIndex < ranges.length
+      ) {
+        const activeHighlight = new Highlight(ranges[activeOccurrenceIndex]);
+        CSS.highlights.set(ACTIVE_HIGHLIGHT_NAME, activeHighlight);
+      }
     };
 
     apply();
@@ -204,5 +232,5 @@ export function useHighlightTextNodes(
         ownedRangesRef.current = [];
       }
     };
-  }, [containerRef, query]);
+  }, [containerRef, query, activeOccurrenceIndex]);
 }

@@ -14,11 +14,21 @@ export interface MessageSearchTarget {
   preview: string;
 }
 
+export interface OccurrenceResult {
+  target: MessageSearchTarget;
+  occurrenceIndex: number;
+}
+
+export interface OccurrenceResult {
+  target: MessageSearchTarget;
+  occurrenceIndex: number;
+}
+
 interface MessageSearchProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targets: MessageSearchTarget[];
-  onJump: (target: MessageSearchTarget) => void;
+  onJump: (result: OccurrenceResult) => void;
   query: string;
   onQueryChange: (query: string) => void;
   refocus: number;
@@ -56,14 +66,32 @@ export default function MessageSearch({
 
   const results = useMemo(() => {
     const trimmed = deferredQuery.trim().toLowerCase();
-    if (!trimmed) return [] as MessageSearchTarget[];
-    const matched = targets.filter((target) => {
+    if (!trimmed) return [] as OccurrenceResult[];
+    const results: OccurrenceResult[] = [];
+    const targetCounts = new Map<MessageSearchTarget, number>();
+    for (const target of targets) {
       const lowerText = target.text.toLowerCase();
       const lowerMeta = target.meta.toLowerCase();
-      return lowerText.includes(trimmed) || lowerMeta.includes(trimmed);
-    });
-    matched.sort((a, b) => a.renderIndex - b.renderIndex);
-    return matched;
+      let searchIndex = 0;
+      while (searchIndex < lowerText.length) {
+        const matchIndex = lowerText.indexOf(trimmed, searchIndex);
+        if (matchIndex === -1) break;
+        const count = targetCounts.get(target) ?? 0;
+        targetCounts.set(target, count + 1);
+        results.push({ target, occurrenceIndex: count });
+        searchIndex = matchIndex + 1;
+      }
+      searchIndex = 0;
+      while (searchIndex < lowerMeta.length) {
+        const matchIndex = lowerMeta.indexOf(trimmed, searchIndex);
+        if (matchIndex === -1) break;
+        const count = targetCounts.get(target) ?? 0;
+        targetCounts.set(target, count + 1);
+        results.push({ target, occurrenceIndex: count });
+        searchIndex = matchIndex + 1;
+      }
+    }
+    return results;
   }, [deferredQuery, targets]);
 
   const totalMatches = results.length;

@@ -35,6 +35,7 @@ interface CollapsedReadGroupProps {
   onOpenChange: (open: boolean) => void;
   /** Current search query for text highlighting */
   searchQuery: string;
+  activeOccurrenceIndex: number | null;
 }
 
 export default function CollapsedReadGroup({
@@ -43,6 +44,7 @@ export default function CollapsedReadGroup({
   open,
   onOpenChange,
   searchQuery,
+  activeOccurrenceIndex,
 }: CollapsedReadGroupProps): React.JSX.Element {
   const count = nodes.length;
   const noun = count === 1 ? 'file' : 'files';
@@ -51,7 +53,7 @@ export default function CollapsedReadGroup({
   const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
 
   const rootRef = useRef<HTMLDivElement>(null);
-  useHighlightTextNodes(rootRef, searchQuery);
+  useHighlightTextNodes(rootRef, searchQuery, activeOccurrenceIndex);
 
   return (
     <div ref={rootRef}>

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.14] - 2026-07-10
 
 ### Added
 
@@ -10,15 +10,7 @@
 
 ### Changed
 
-- Upgraded pi SDK from v0.74.0 to v0.80.3, bringing 30+ new LLM providers and models.
-
-### Fixed
-
-- Restored bottom spacing between message list and chat input that was lost when switching to block translation layout.
-- Reduced visual jitter when long content streams in during AI responses, especially noticeable in long thinking blocks.
-
-### Changed
-
+- Upgraded pi SDK from v0.74.0 to v0.80.6, bringing 30+ new LLM providers and models.
 - Assistant messages now use the app's default line height instead of a fixed 24px, for a tighter and more natural reading rhythm.
 - Message toolbar spacing shifted from above to below buttons, reducing visual gap between message text and action bar.
 - Bottom gradient fade shortened to avoid overlapping the chat input area.
@@ -26,6 +18,8 @@
 
 ### Fixed
 
+- Restored bottom spacing between message list and chat input that was lost when switching to block translation layout.
+- Reduced visual jitter when long content streams in during AI responses, especially noticeable in long thinking blocks.
 - Sidebar now automatically scrolls to the selected session when switching, expanding the project and show-more list as needed
 
 ## [0.3.13] - 2026-07-01

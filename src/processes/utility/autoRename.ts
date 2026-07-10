@@ -8,7 +8,7 @@
  * completeSimple for a single lightweight LLM call — no agent session, no tools,
  * no extensions loaded.
  */
-import { completeSimple } from '@earendil-works/pi-ai';
+import { completeSimple } from '@earendil-works/pi-ai/compat';
 import type { Api, Model } from '@earendil-works/pi-ai';
 import type { ModelRegistry } from '@earendil-works/pi-coding-agent';
 

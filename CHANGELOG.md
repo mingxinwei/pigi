@@ -6,6 +6,11 @@
 
 - Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
 - Hovering the minimap popover highlights and scrolls the active item into view.
+- OAuth device code flow support: when a provider requires a device code, a persistent toast shows the code with a "Copy & Open" button that copies to clipboard and opens the verification page.
+
+### Changed
+
+- Upgraded pi SDK from v0.74.0 to v0.80.3, bringing 30+ new LLM providers and models.
 
 ### Fixed
 

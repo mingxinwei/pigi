@@ -620,10 +620,23 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
               dataPort.postMessage({ type: 'login_open_url', url: info.url });
             }
           },
+          onDeviceCode: (info) => {
+            if (dataPort) {
+              dataPort.postMessage({
+                type: 'login_device_code',
+                verificationUri: info.verificationUri,
+                userCode: info.userCode,
+              });
+            }
+          },
           onPrompt: async () => {
             // For now, we don't support interactive prompts in Electron.
             // The callback server should handle the redirect automatically.
             return '';
+          },
+          onSelect: async () => {
+            // Interactive selection not supported in Electron GUI yet.
+            return undefined;
           },
           onProgress: (message) => {
             if (dataPort) {

@@ -1,0 +1,16 @@
+/*
+ * CSS Custom Highlight API styles for in-page search.
+ * Kept in a separate file (no Tailwind directives) because LightningCSS,
+ * which processes main.css via the Tailwind Vite plugin, does not recognize
+ * the ::highlight() pseudo-element and warns during build.
+ */
+
+::highlight(pi-search-highlights) {
+  background-color: var(--search-highlight-bg);
+  color: var(--foreground);
+}
+
+::highlight(pi-search-active) {
+  background-color: color-mix(in srgb, var(--system-accent) 70%, transparent);
+  color: var(--foreground);
+}

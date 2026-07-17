@@ -60,7 +60,9 @@ const markdownComponents: Components = {
     if (language) {
       return (
         <>
-          <span className="markdown-code-label">{getCodeLanguageLabel(language)}</span>
+          <span className="markdown-code-label" data-search-ignore>
+            {getCodeLanguageLabel(language)}
+          </span>
           <SyntaxHighlightedCode code={code} language={language} />
         </>
       );

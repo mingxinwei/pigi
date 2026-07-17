@@ -7,6 +7,7 @@ import DiffView from './DiffView';
 import type { EditEntry, DiffLine } from '../lib/diffUtils';
 import { parseDiffString } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
+import { getToolCommandParts, cleanReadOutput, READ_IMAGE_RE } from '../lib/toolDisplay';
 
 /** Max lines shown in collapsed write preview */
 function WritePreview({
@@ -32,11 +33,6 @@ function WritePreview({
 
 interface ToolBlockProps {
   node: ToolNode;
-}
-
-interface ToolCommandParts {
-  prefix: string;
-  body: string;
 }
 
 const STATUS_CONFIG = {
@@ -101,9 +97,6 @@ const TOOL_BLOCK_MAX_HEIGHT = 300;
 /** Tools that stream output while running (shown immediately, not gated on completion) */
 const STREAMING_OUTPUT_TOOLS = new Set(['bash', 'read']);
 
-const READ_MORE_LINES_RE = /^\[\d+ more lines in file\. Use offset=\d+ to continue\.\]$/;
-const READ_IMAGE_RE = /^Read image file \[(.+)\]$/;
-
 const SECONDS_PER_MILLISECOND = 1 / 1000;
 
 /**
@@ -132,37 +125,6 @@ const FILE_EXTENSION_LANGUAGE_OVERRIDE: Record<string, string> = {
   ps1: 'powershell',
   tf: 'terraform',
 };
-
-function getToolCommandParts(node: ToolNode): ToolCommandParts {
-  const args = getToolArgs(node);
-
-  switch (node.name) {
-    case 'bash':
-      return { prefix: '$', body: String(args?.command ?? '') };
-    case 'read': {
-      const path = String(args?.path ?? '');
-      const offset = typeof args?.offset === 'number' ? args.offset : undefined;
-      const limit = typeof args?.limit === 'number' ? args.limit : undefined;
-      let body = path;
-      if (offset != null || limit != null) {
-        const from = offset ?? 1;
-        const to = limit != null ? from + limit - 1 : undefined;
-        body += to != null ? `:${from}-${to}` : `:${from}`;
-      }
-      return { prefix: node.name, body };
-    }
-    case 'write':
-      return { prefix: node.name, body: String(args?.path ?? '') };
-    case 'edit':
-      return { prefix: node.name, body: String(args?.path ?? '') };
-    default: {
-      if (!args) return { prefix: node.name, body: '' };
-      // Show the first string argument value as context
-      const firstValue = Object.values(args).find((v) => typeof v === 'string');
-      return { prefix: node.name, body: typeof firstValue === 'string' ? firstValue : '' };
-    }
-  }
-}
 
 function getToolOutputLanguage(node: ToolNode): string {
   const args = getToolArgs(node);
@@ -206,13 +168,6 @@ function formatDuration(durationMs: number | undefined): string | null {
   const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND);
   const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString();
   return `Took ${formattedSeconds}s`;
-}
-
-function cleanReadOutput(node: ToolNode): string {
-  if (node.name !== 'read') return node.output;
-  const lines = node.output.split('\n');
-  if (lines[0]?.match(READ_IMAGE_RE)) return '';
-  return lines.filter((line) => !READ_MORE_LINES_RE.test(line)).join('\n');
 }
 
 function getReadImagePath(node: ToolNode): string | null {
@@ -281,7 +236,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             </span>
             {isCommandTruncated && timeout !== undefined ? (
               <div className="ml-auto shrink-0 flex flex-col items-end">
-                <span className="text-xs font-normal text-muted-foreground">
+                <span data-search-ignore className="text-xs font-normal text-muted-foreground">
                   timeout {timeout}s
                 </span>
                 <button
@@ -304,7 +259,10 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
                   </button>
                 )}
                 {timeout !== undefined && (
-                  <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
+                  <span
+                    data-search-ignore
+                    className="ml-auto shrink-0 text-xs font-normal text-muted-foreground"
+                  >
                     timeout {timeout}s
                   </span>
                 )}
@@ -369,6 +327,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         </div>
 
         <div
+          data-search-ignore
           className={cn(
             '-mx-3 -mb-2 mt-auto flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
             statusClassName,

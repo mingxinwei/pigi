@@ -15,6 +15,7 @@ import {
   MESSAGE_ROW_GAP,
 } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
+import { getToolCommandParts, getToolSearchText } from '../lib/toolDisplay';
 import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
 import { cn } from '../lib/utils';
@@ -22,7 +23,11 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
 import MessageSearch, { type MessageSearchTarget, type OccurrenceResult } from './MessageSearch';
-import { highlightMatches, useHighlightTextNodes } from '../lib/highlightMatches';
+import {
+  highlightMatches,
+  useHighlightTextNodes,
+  findOccurrenceRanges,
+} from '../lib/highlightMatches';
 import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
 
 interface MessageListProps {
@@ -100,14 +105,10 @@ function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem
   return items;
 }
 
-/** Extract a search-friendly command string for a tool node */
+/** Extract a search-friendly command string for a tool node, matching the text rendered in the tool label. */
 function getToolSearchMeta(node: ToolNode): string {
-  const args = getToolArgs(node);
-  if (node.name === 'bash') return `$ ${String(args?.command ?? '')}`;
-  if (node.name === 'read' || node.name === 'write' || node.name === 'edit') {
-    return `${node.name} ${String(args?.path ?? '')}`;
-  }
-  return node.name;
+  const { prefix, body } = getToolCommandParts(node);
+  return `${prefix}${body}`;
 }
 
 function buildSearchTargets(items: RenderItem[]): MessageSearchTarget[] {
@@ -122,7 +123,7 @@ function buildSearchTargets(items: RenderItem[]): MessageSearchTarget[] {
           groupId: item.id,
           toolNodeId: node.id,
           role: 'tool',
-          text: node.output,
+          text: getToolSearchText(node),
           meta: getToolSearchMeta(node),
           preview: node.output || getToolSearchMeta(node),
         });
@@ -155,7 +156,7 @@ function buildSearchTargets(items: RenderItem[]): MessageSearchTarget[] {
             renderIndex,
             itemId: item.id,
             role: 'tool',
-            text: node.output,
+            text: getToolSearchText(node),
             meta: getToolSearchMeta(node),
             preview: node.output || getToolSearchMeta(node),
           });
@@ -193,8 +194,8 @@ export default React.memo(function MessageList({
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeOccurrenceInfo, setActiveOccurrenceInfo] = useState<{
     itemId: string;
+    toolNodeId: string | null;
     occurrenceIndex: number;
-    queryLength: number;
   } | null>(null);
 
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
@@ -454,8 +455,8 @@ export default React.memo(function MessageList({
       setHighlightedToolNodeId(target.toolNodeId ?? null);
       setActiveOccurrenceInfo({
         itemId: target.itemId,
+        toolNodeId: target.toolNodeId ?? null,
         occurrenceIndex: result.occurrenceIndex,
-        queryLength: searchQuery.trim().length,
       });
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       highlightTimerRef.current = setTimeout(() => {
@@ -468,94 +469,46 @@ export default React.memo(function MessageList({
         const expandIfHidden = (): void => {
           const container = containerRef.current;
           if (!container) return;
-          const selector = target.toolNodeId
+          const toolSelector = target.toolNodeId
             ? `[data-tool-node-id="${target.toolNodeId}"]`
             : `[data-index="${target.renderIndex}"]`;
-          const root = container.querySelector(selector);
-          if (!root) return;
+          const root = container.querySelector(toolSelector);
+          if (!(root instanceof HTMLElement)) return;
 
-          // Find the overflow container (has max-height inline style)
           const overflowEl = root.querySelector<HTMLElement>('[style*="max-height"]');
           if (!overflowEl) return;
 
-          // Create a Range for the specific occurrence of the query in the tool
           const query = searchQuery.trim();
           if (!query) return;
-          let occurrenceCount = -1;
-          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-          let matchRange: Range | null = null;
-          while (walker.nextNode()) {
-            const node = walker.currentNode as Text;
-            const nodeText = node.textContent || '';
-            const lower = nodeText.toLowerCase();
-            const lowerQuery = query.toLowerCase();
-            let searchIndex = 0;
-            while (searchIndex < lower.length) {
-              const idx = lower.indexOf(lowerQuery, searchIndex);
-              if (idx === -1) break;
-              occurrenceCount++;
-              if (occurrenceCount === result.occurrenceIndex) {
-                matchRange = new Range();
-                matchRange.setStart(node, idx);
-                matchRange.setEnd(node, idx + query.length);
-                break;
-              }
-              searchIndex = idx + 1;
-            }
-            if (matchRange) break;
-          }
-          if (!matchRange) return;
+          const segments = findOccurrenceRanges(root, query, result.occurrenceIndex);
+          if (!segments || segments.length === 0) return;
 
-          const matchRect = matchRange.getBoundingClientRect();
+          // Use the last segment's bottom to check if the match is hidden
+          const lastSegment = segments[segments.length - 1];
+          const matchRect = lastSegment.getBoundingClientRect();
           const overflowRect = overflowEl.getBoundingClientRect();
-          // Match is below the visible bottom of the overflow container
           if (matchRect.bottom <= overflowRect.bottom) return;
 
-          // Need to expand
+          // Match is hidden — expand, then scroll to it
           const expandButton = root.querySelector<HTMLButtonElement>(
             '[data-action="expand-overflow"]',
           );
-          if (expandButton) {
-            expandButton.click();
-            // After expansion, re-scroll to the matched text
-            const scrollToMatch = (): void => {
-              let occurrenceCount = -1;
-              const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-              while (treeWalker.nextNode()) {
-                const textNode = treeWalker.currentNode as Text;
-                const nodeText = textNode.textContent || '';
-                const lower = nodeText.toLowerCase();
-                const lowerQuery = query.toLowerCase();
-                let searchIndex = 0;
-                while (searchIndex < lower.length) {
-                  const matchIndex = lower.indexOf(lowerQuery, searchIndex);
-                  if (matchIndex === -1) break;
-                  occurrenceCount++;
-                  if (occurrenceCount !== result.occurrenceIndex) {
-                    searchIndex = matchIndex + 1;
-                    continue;
-                  }
-                  const matchRange = new Range();
-                  matchRange.setStart(textNode, matchIndex);
-                  matchRange.setEnd(textNode, matchIndex + query.length);
-                  const matchRect = matchRange.getBoundingClientRect();
-                  if (container) {
-                    const containerRect = container.getBoundingClientRect();
-                    container.scrollTo({
-                      top:
-                        container.scrollTop +
-                        matchRect.top -
-                        containerRect.top -
-                        containerRect.height / 2,
-                      behavior: 'auto',
-                    });
-                  }
-                  return;
-                }
-              }
-            };
-            requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
-          }
+          if (!expandButton) return;
+          expandButton.click();
+
+          // After the expand animation, scroll to the matched text
+          const scrollToMatch = (): void => {
+            const freshSegments = findOccurrenceRanges(root, query, result.occurrenceIndex);
+            const firstSegment = freshSegments?.[0];
+            if (!firstSegment || !container) return;
+            const rect = firstSegment.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            container.scrollTo({
+              top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
+              behavior: 'auto',
+            });
+          };
+          requestAnimationFrame(() => requestAnimationFrame(scrollToMatch));
         };
         // Delay for scroll + expand animations to settle, then check
         requestAnimationFrame(() => setTimeout(expandIfHidden, 100));
@@ -574,35 +527,25 @@ export default React.memo(function MessageList({
 
     requestAnimationFrame(() => {
       const itemEl = container.querySelector(`[data-item-id="${activeOccurrenceInfo.itemId}"]`);
-      if (!itemEl) return;
+      if (!(itemEl instanceof HTMLElement)) return;
 
-      let occurrenceCount = -1;
-      const walker = document.createTreeWalker(itemEl, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const textNode = walker.currentNode as Text;
-        const nodeText = textNode.textContent || '';
-        const lower = nodeText.toLowerCase();
-        const lowerQuery = query.toLowerCase();
-        let searchIndex = 0;
-        while (searchIndex < lower.length) {
-          const matchIndex = lower.indexOf(lowerQuery, searchIndex);
-          if (matchIndex === -1) break;
-          occurrenceCount++;
-          if (occurrenceCount === activeOccurrenceInfo.occurrenceIndex) {
-            const range = new Range();
-            range.setStart(textNode, matchIndex);
-            range.setEnd(textNode, matchIndex + lowerQuery.length);
-            const rect = range.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            container.scrollTo({
-              top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
-              behavior: 'auto',
-            });
-            return;
-          }
-          searchIndex = matchIndex + 1;
-        }
-      }
+      // Scope to the specific tool node when the match is inside a read group
+      const scopeEl = activeOccurrenceInfo.toolNodeId
+        ? (itemEl.querySelector<HTMLElement>(
+            `[data-tool-node-id="${activeOccurrenceInfo.toolNodeId}"]`,
+          ) ?? itemEl)
+        : itemEl;
+
+      const segments = findOccurrenceRanges(scopeEl, query, activeOccurrenceInfo.occurrenceIndex);
+      const firstSegment = segments?.[0];
+      if (!firstSegment) return;
+
+      const rect = firstSegment.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      container.scrollTo({
+        top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
+        behavior: 'auto',
+      });
     });
   }, [activeOccurrenceInfo, searchQuery]);
 
@@ -696,6 +639,7 @@ export default React.memo(function MessageList({
                         item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
                       }
                       activeOccurrenceItemId={activeOccurrenceInfo?.itemId ?? null}
+                      activeOccurrenceToolNodeId={activeOccurrenceInfo?.toolNodeId ?? null}
                       activeOccurrenceIndex={activeOccurrenceInfo?.occurrenceIndex ?? null}
                     />
                   </div>
@@ -840,6 +784,7 @@ function RenderItemRenderer({
   expanded,
   onToggleExpand,
   activeOccurrenceItemId,
+  activeOccurrenceToolNodeId,
   activeOccurrenceIndex,
 }: {
   item: RenderItem;
@@ -849,9 +794,11 @@ function RenderItemRenderer({
   expanded?: boolean;
   onToggleExpand?: () => void;
   activeOccurrenceItemId: string | null;
+  activeOccurrenceToolNodeId: string | null;
   activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const activeIndex = item.id === activeOccurrenceItemId ? activeOccurrenceIndex : null;
+  const activeToolNodeId = item.id === activeOccurrenceItemId ? activeOccurrenceToolNodeId : null;
   if (item.type === 'readGroup') {
     return (
       <CollapsedReadGroup
@@ -860,6 +807,7 @@ function RenderItemRenderer({
         open={expanded ?? false}
         onOpenChange={onToggleExpand ?? (() => {})}
         searchQuery={searchQuery}
+        activeToolNodeId={activeToolNodeId}
         activeOccurrenceIndex={activeIndex}
       />
     );
@@ -1006,7 +954,7 @@ function UserBubble({
         </div>
         <div className="flex w-full items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
           <MessageToolbar text={node.text} />
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground" data-search-ignore>
             {formatUserMessageTime(node.sentAt)}
           </span>
         </div>
@@ -1107,7 +1055,9 @@ function SkillLinkBubble({
           )}
         </div>
         <div className="flex w-full items-center justify-end gap-2">
-          <span className="text-xs text-muted-foreground">{formatUserMessageTime(timestamp)}</span>
+          <span className="text-xs text-muted-foreground" data-search-ignore>
+            {formatUserMessageTime(timestamp)}
+          </span>
         </div>
       </div>
     </div>
@@ -1159,7 +1109,9 @@ function AssistantBubble({
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="rounded-md bg-muted/70 px-3 py-1.5 text-muted-foreground">
-      <div className="text-[13px] font-medium">Thinking</div>
+      <div className="text-[13px] font-medium" data-search-ignore>
+        Thinking
+      </div>
       <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
         {text}
       </pre>

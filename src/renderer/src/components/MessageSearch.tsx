@@ -19,11 +19,6 @@ export interface OccurrenceResult {
   occurrenceIndex: number;
 }
 
-export interface OccurrenceResult {
-  target: MessageSearchTarget;
-  occurrenceIndex: number;
-}
-
 interface MessageSearchProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,26 +64,21 @@ export default function MessageSearch({
     if (!trimmed) return [] as OccurrenceResult[];
     const results: OccurrenceResult[] = [];
     const targetCounts = new Map<MessageSearchTarget, number>();
+    const lowerTrimmed = trimmed;
     for (const target of targets) {
-      const lowerText = target.text.toLowerCase();
-      const lowerMeta = target.meta.toLowerCase();
-      let searchIndex = 0;
-      while (searchIndex < lowerText.length) {
-        const matchIndex = lowerText.indexOf(trimmed, searchIndex);
-        if (matchIndex === -1) break;
-        const count = targetCounts.get(target) ?? 0;
-        targetCounts.set(target, count + 1);
-        results.push({ target, occurrenceIndex: count });
-        searchIndex = matchIndex + 1;
-      }
-      searchIndex = 0;
-      while (searchIndex < lowerMeta.length) {
-        const matchIndex = lowerMeta.indexOf(trimmed, searchIndex);
-        if (matchIndex === -1) break;
-        const count = targetCounts.get(target) ?? 0;
-        targetCounts.set(target, count + 1);
-        results.push({ target, occurrenceIndex: count });
-        searchIndex = matchIndex + 1;
+      // Count matches in DOM tree order: meta (tool label / thinking block) appears
+      // before text (output / markdown) in the rendered DOM.
+      for (const source of [target.meta, target.text]) {
+        const lowerSource = source.toLowerCase();
+        let searchIndex = 0;
+        while (searchIndex < lowerSource.length) {
+          const matchIndex = lowerSource.indexOf(lowerTrimmed, searchIndex);
+          if (matchIndex === -1) break;
+          const count = targetCounts.get(target) ?? 0;
+          targetCounts.set(target, count + 1);
+          results.push({ target, occurrenceIndex: count });
+          searchIndex = matchIndex + lowerTrimmed.length;
+        }
       }
     }
     return results;

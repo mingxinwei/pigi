@@ -7,6 +7,10 @@
 - Upgraded pi SDK from v0.80.6 to v0.80.10, adding Kimi K3 model support and improving credential persistence for API key and OAuth providers.
 - Improved markdown typography in assistant messages: more comfortable line height for reading, headings now visually group with their content, list items and nested lists have clearer spacing, bold text stands out properly, and code blocks and tables have more breathing room.
 
+### Fixed
+
+- Search highlights no longer disappear when navigating between matches with Enter or the arrow buttons — the active (orange) highlight now stays visible as you move from match to match, matching Chrome's find-in-page behavior.
+
 ## [0.3.14] - 2026-07-10
 
 ### Added

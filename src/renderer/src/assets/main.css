@@ -462,18 +462,3 @@
   border-radius: var(--radius-md);
   transition: background-color 200ms ease-out;
 }
-
-::highlight(pi-search-highlights) {
-  background-color: var(--search-highlight-bg);
-  color: var(--foreground);
-}
-
-::highlight(pi-search-active) {
-  background-color: color-mix(in srgb, var(--system-accent) 70%, transparent);
-  color: var(--foreground);
-}
-
-::highlight(pi-search-active) {
-  background-color: color-mix(in srgb, var(--system-accent) 70%, transparent);
-  color: var(--foreground);
-}

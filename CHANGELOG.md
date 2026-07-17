@@ -10,6 +10,7 @@
 ### Fixed
 
 - Search highlights no longer disappear when navigating between matches with Enter or the arrow buttons — the active (orange) highlight now stays visible as you move from match to match, matching Chrome's find-in-page behavior.
+- Tool output blocks with overflow-hidden content now auto-expand when you jump to a search match hidden below the fold, so the matched text becomes visible.
 
 ## [0.3.14] - 2026-07-10
 

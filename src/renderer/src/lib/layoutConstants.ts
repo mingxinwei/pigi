@@ -1,3 +1,6 @@
+/** Max height (px) for collapsible block content (tool output, thinking) before showing expand button */
+export const BLOCK_CONTENT_MAX_HEIGHT = 300;
+
 export const MESSAGE_LIST_MAX_WIDTH = 860;
 export const MESSAGE_LIST_HORIZONTAL_PADDING = 20;
 export const MESSAGE_CONTENT_MAX_WIDTH =

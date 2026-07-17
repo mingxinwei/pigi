@@ -13,6 +13,7 @@ import {
   MESSAGE_CONTENT_MAX_WIDTH,
   MESSAGE_LIST_MAX_WIDTH,
   MESSAGE_ROW_GAP,
+  BLOCK_CONTENT_MAX_HEIGHT,
 } from '../lib/layoutConstants';
 import ToolBlock from './ToolBlock';
 import { getToolCommandParts, getToolSearchText } from '../lib/toolDisplay';
@@ -28,7 +29,10 @@ import {
   useHighlightTextNodes,
   findOccurrenceRanges,
 } from '../lib/highlightMatches';
-import { isReadOnlyBashCommand } from '../lib/readOnlyCommand';
+import { buildRenderItems, type RenderItem } from '../lib/readGrouping';
+import ThinkingBlock from './thinkingBlock';
+import OverflowClamp from './overflowClamp';
+import ShimmerOverlay from './shimmerOverlay';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
@@ -50,60 +54,7 @@ const USER_MESSAGE_TRAILING_PADDING = 8;
 const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72;
 /** Max estimated height for user bubbles capped by max-h-[40vh] CSS */
 const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
-/** Max height (px) for user bubble content before showing expand button */
-const USER_MESSAGE_MAX_HEIGHT = 360;
-
-/** A render item is either a single transcript node or a collapsed group of read-only tool nodes */
-type RenderItem =
-  | { type: 'node'; node: TranscriptNode; id: string }
-  | { type: 'readGroup'; nodes: ToolNode[]; id: string };
-
-function isReadToolNode(node: TranscriptNode): boolean {
-  if (node.role !== 'tool') return false;
-  if (node.name === 'read') return true;
-  if (node.name === 'bash') {
-    const args = getToolArgs(node);
-    const command = typeof args?.command === 'string' ? args.command : '';
-    return isReadOnlyBashCommand(command);
-  }
-  return false;
-}
-
-/**
- * Groups consecutive read-only tool nodes into collapsed groups.
- * Non-read-only nodes break the consecutive sequence.
- */
-function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem[] {
-  if (!compact) {
-    return nodes.map((node) => ({ type: 'node', node, id: node.id }));
-  }
-
-  const items: RenderItem[] = [];
-  let currentGroup: ToolNode[] = [];
-
-  function flushGroup(): void {
-    if (currentGroup.length > 0) {
-      items.push({
-        type: 'readGroup',
-        nodes: currentGroup,
-        id: `group-${currentGroup[0].id}`,
-      });
-      currentGroup = [];
-    }
-  }
-
-  for (const node of nodes) {
-    if (node.role === 'tool' && isReadToolNode(node)) {
-      currentGroup.push(node);
-    } else {
-      flushGroup();
-      items.push({ type: 'node', node, id: node.id });
-    }
-  }
-  flushGroup();
-
-  return items;
-}
+const USER_MESSAGE_MAX_HEIGHT_VH = 0.4;
 
 /** Extract a search-friendly command string for a tool node, matching the text rendered in the tool label. */
 function getToolSearchMeta(node: ToolNode): string {
@@ -116,17 +67,30 @@ function buildSearchTargets(items: RenderItem[]): MessageSearchTarget[] {
   for (let renderIndex = 0; renderIndex < items.length; renderIndex++) {
     const item = items[renderIndex];
     if (item.type === 'readGroup') {
-      for (const node of item.nodes) {
-        targets.push({
-          renderIndex,
-          itemId: item.id,
-          groupId: item.id,
-          toolNodeId: node.id,
-          role: 'tool',
-          text: getToolSearchText(node),
-          meta: getToolSearchMeta(node),
-          preview: node.output || getToolSearchMeta(node),
-        });
+      for (const entry of item.entries) {
+        if (entry.kind === 'tool') {
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            groupId: item.id,
+            toolNodeId: entry.node.id,
+            role: 'tool',
+            text: getToolSearchText(entry.node),
+            meta: getToolSearchMeta(entry.node),
+            preview: entry.node.output || getToolSearchMeta(entry.node),
+          });
+        } else {
+          targets.push({
+            renderIndex,
+            itemId: item.id,
+            groupId: item.id,
+            toolNodeId: entry.node.id,
+            role: 'assistant',
+            text: entry.node.thinking,
+            meta: '',
+            preview: entry.node.thinking,
+          });
+        }
       }
     } else {
       const node = item.node;
@@ -481,11 +445,15 @@ export default React.memo(function MessageList({
           const segments = findOccurrenceRanges(root, query, result.occurrenceIndex);
           if (!segments || segments.length === 0) return;
 
-          // Use the last segment's bottom to check if the match is hidden
+          // Check if the match is fully visible (both ends within the overflow container).
+          // Content is tail-anchored (overflow clipped at the TOP), so we check
+          // the first segment's top and the last segment's bottom.
+          const firstSegment = segments[0];
           const lastSegment = segments[segments.length - 1];
-          const matchRect = lastSegment.getBoundingClientRect();
+          const firstRect = firstSegment.getBoundingClientRect();
+          const lastRect = lastSegment.getBoundingClientRect();
           const overflowRect = overflowEl.getBoundingClientRect();
-          if (matchRect.bottom <= overflowRect.bottom) return;
+          if (firstRect.top >= overflowRect.top && lastRect.bottom <= overflowRect.bottom) return;
 
           // relies on [data-action="expand-overflow"] on overflow buttons
           const expandButton = root.querySelector<HTMLButtonElement>(
@@ -512,7 +480,7 @@ export default React.memo(function MessageList({
         requestAnimationFrame(() => setTimeout(expandIfHidden, 100));
       }
     },
-    [rowVirtualizer, searchQuery],
+    [rowVirtualizer],
   );
 
   // Scroll to active occurrence within the message
@@ -675,7 +643,9 @@ const COLLAPSED_GROUP_COMMAND_LINE_HEIGHT = 16;
 function estimateRenderItemHeight(item: RenderItem | undefined): number {
   if (!item) return 96;
   if (item.type === 'readGroup') {
-    return COLLAPSED_GROUP_TRIGGER_HEIGHT + item.nodes.length * COLLAPSED_GROUP_COMMAND_LINE_HEIGHT;
+    return (
+      COLLAPSED_GROUP_TRIGGER_HEIGHT + item.entries.length * COLLAPSED_GROUP_COMMAND_LINE_HEIGHT
+    );
   }
   return estimateNodeHeight(item.node);
 }
@@ -720,19 +690,18 @@ function estimateUserHeight(text: string): number {
 }
 
 function estimateAssistantHeight(node: AssistantNode): number {
-  const textLength = node.text.length + node.thinking.length;
-  const lineCount = countLines(node.text) + countLines(node.thinking);
+  const thinkingLineCap = Math.ceil(BLOCK_CONTENT_MAX_HEIGHT / 20) + 4; // lines + header slack
+  const thinkingLineCount = Math.min(countLines(node.thinking), thinkingLineCap);
+  const textLength = node.text.length + Math.min(node.thinking.length, thinkingLineCap * 84);
+  const lineCount = countLines(node.text) + thinkingLineCount;
   return Math.max(80, Math.max(Math.ceil(textLength / 84), lineCount) * 24 + 56);
 }
-
-/** Max height used by ToolBlock for content truncation */
-const TOOL_BLOCK_CONTENT_MAX_HEIGHT = 300;
 
 function estimateToolHeight(node: ToolNode): number {
   const outputLineCount = node.output ? node.output.split('\n').length : 0;
   const commandLineCount = estimateToolCommandLineCount(node);
   const contentHeight = outputLineCount * 20;
-  const cappedContentHeight = Math.min(contentHeight, TOOL_BLOCK_CONTENT_MAX_HEIGHT);
+  const cappedContentHeight = Math.min(contentHeight, BLOCK_CONTENT_MAX_HEIGHT);
 
   return Math.max(
     96,
@@ -788,7 +757,7 @@ function RenderItemRenderer({
   if (item.type === 'readGroup') {
     return (
       <CollapsedReadGroup
-        nodes={item.nodes}
+        entries={item.entries}
         isActive={isLast && sessionActive}
         open={expanded ?? false}
         onOpenChange={onToggleExpand ?? (() => {})}
@@ -879,17 +848,18 @@ function UserBubble({
   activeOccurrenceIndex: number | null;
 }): React.JSX.Element {
   const { text } = node;
-  const [expanded, setExpanded] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  const [maxHeight, setMaxHeight] = useState(() =>
+    Math.round(window.innerHeight * USER_MESSAGE_MAX_HEIGHT_VH),
+  );
+  useEffect(() => {
+    const handleResize = (): void =>
+      setMaxHeight(Math.round(window.innerHeight * USER_MESSAGE_MAX_HEIGHT_VH));
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const skillBlock = useMemo(() => parseSkillBlock(text), [text]);
-
-  useEffect(() => {
-    if (contentRef.current) {
-      setIsOverflowing(contentRef.current.scrollHeight > USER_MESSAGE_MAX_HEIGHT);
-    }
-  }, [text, expanded]);
 
   if (skillBlock) {
     return (
@@ -905,39 +875,14 @@ function UserBubble({
   return (
     <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
       <div className="group flex max-w-[85%] flex-col items-end">
-        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-hidden')}>
-          <div
-            ref={contentRef}
-            className={cn(
-              'px-3.5 py-1.5 text-[15px] leading-6 text-foreground',
-              'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
-              'overflow-hidden',
-            )}
-            style={{
-              maxHeight: expanded ? undefined : '40vh',
-              maskImage:
-                !expanded && isOverflowing
-                  ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
-                  : undefined,
-              WebkitMaskImage:
-                !expanded && isOverflowing
-                  ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
-                  : undefined,
-            }}
+        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-clip')}>
+          <OverflowClamp
+            maxHeight={maxHeight}
+            className="px-3.5 py-1.5 text-[15px] leading-6 text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+            buttonClassName="ml-3.5 mb-1.5"
           >
             {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
-          </div>
-          {isOverflowing && (
-            <button
-              type="button"
-              onClick={() => setExpanded((current) => !current)}
-              className="block w-full px-3.5 pt-1.5 pb-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
-              // search auto-expand uses this attr to find the button
-              data-action="expand-overflow"
-            >
-              {expanded ? 'Show less' : 'Show more'}
-            </button>
-          )}
+          </OverflowClamp>
         </div>
         <div className="flex w-full items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
           <MessageToolbar text={node.text} />
@@ -1073,7 +1018,14 @@ function AssistantBubble({
         className="w-full min-w-0 text-[15px] text-foreground"
         style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       >
-        {showThinking && <ThinkingBlock text={node.thinking} />}
+        {showThinking && (
+          <ThinkingBlock
+            text={node.thinking}
+            startedAt={node.thinkingStartedAt}
+            endedAt={node.thinkingEndedAt}
+            isStreaming={node.isStreaming}
+          />
+        )}
 
         {showText && (
           <div style={{ marginTop: showThinking ? `${MESSAGE_ROW_GAP}px` : undefined }}>
@@ -1089,19 +1041,6 @@ function AssistantBubble({
 
         <MessageToolbar text={node.text || node.thinking} />
       </div>
-    </div>
-  );
-}
-
-function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
-  return (
-    <div className="rounded-md bg-muted/70 px-3 py-1.5 text-muted-foreground">
-      <div className="text-[13px] font-medium" data-search-ignore>
-        Thinking
-      </div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
-        {text}
-      </pre>
     </div>
   );
 }
@@ -1122,16 +1061,7 @@ function SystemBubble({
       <div className="h-px flex-1 bg-border" />
       <span className="relative shrink-0 text-sm text-muted-foreground overflow-hidden">
         {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
-        {isLoading && (
-          <span
-            className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"
-            style={{
-              background:
-                'linear-gradient(90deg, transparent 0%, transparent 30%, rgba(255,255,255,0.95) 50%, transparent 70%, transparent 100%)',
-              backgroundSize: '200% 100%',
-            }}
-          />
-        )}
+        {isLoading && <ShimmerOverlay />}
       </span>
       <div className="h-px flex-1 bg-border" />
     </div>

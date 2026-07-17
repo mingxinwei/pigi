@@ -36,6 +36,10 @@ export interface AssistantNode {
   stopReason?: string;
   errorMessage?: string;
   isStreaming: boolean;
+  /** Set when the first thinking delta arrives (streaming sessions only) */
+  thinkingStartedAt?: number;
+  /** Set when thinking ends (text starts, a tool call starts, or the message finalizes) */
+  thinkingEndedAt?: number;
 }
 
 export interface ToolNode {
@@ -715,6 +719,7 @@ export class TranscriptController {
     if (batch.text) {
       const assistant = this.getActiveAssistant();
       if (assistant && assistant.isStreaming) {
+        this.markThinkingEnded(assistant);
         assistant.text += batch.text;
         changed = true;
       }
@@ -723,6 +728,7 @@ export class TranscriptController {
     if (batch.thinking) {
       const assistant = this.getActiveAssistant();
       if (assistant && assistant.isStreaming) {
+        this.markThinkingStarted(assistant);
         assistant.thinking += batch.thinking;
         changed = true;
       }
@@ -789,6 +795,20 @@ export class TranscriptController {
     });
   }
 
+  /** Stamp the moment thinking starts (first thinking delta) */
+  private markThinkingStarted(assistant: AssistantNode): void {
+    if (assistant.thinkingStartedAt === undefined) {
+      assistant.thinkingStartedAt = Date.now();
+    }
+  }
+
+  /** Stamp the moment thinking ends (text starts, a tool call starts, or finalize) */
+  private markThinkingEnded(assistant: AssistantNode): void {
+    if (assistant.thinkingStartedAt !== undefined && assistant.thinkingEndedAt === undefined) {
+      assistant.thinkingEndedAt = Date.now();
+    }
+  }
+
   private getOrCreateAssistantForStream(messageId: string): AssistantNode | undefined {
     const byMessageId = this.findNode<AssistantNode>(messageId);
     if (byMessageId) {
@@ -824,6 +844,10 @@ export class TranscriptController {
 
     // Create tool node at toolcall_start for write/edit (early visual feedback while args stream)
     if (ame.type === 'toolcall_start') {
+      const activeAssistant = this.getActiveAssistant();
+      if (activeAssistant) {
+        this.markThinkingEnded(activeAssistant);
+      }
       const contentIndex = ame.contentIndex;
       if (contentIndex == null) return;
       const content = event.message.content?.[contentIndex];
@@ -892,6 +916,7 @@ export class TranscriptController {
     if (ame.type === 'text_delta' && ame.delta) {
       const assistant = this.getOrCreateAssistantForStream(event.message.id ?? nextNodeId());
       if (assistant) {
+        this.markThinkingEnded(assistant);
         assistant.text += ame.delta;
         this.setState({ nodes: [...this._state.nodes] });
       }
@@ -901,6 +926,7 @@ export class TranscriptController {
     if (ame.type === 'thinking_delta' && ame.delta) {
       const assistant = this.getOrCreateAssistantForStream(event.message.id ?? nextNodeId());
       if (assistant) {
+        this.markThinkingStarted(assistant);
         assistant.thinking += ame.delta;
         this.setState({ nodes: [...this._state.nodes] });
       }
@@ -917,6 +943,7 @@ export class TranscriptController {
 
     // Finalize the assistant node
     assistant.isStreaming = false;
+    this.markThinkingEnded(assistant);
     assistant.stopReason = endMessage.stopReason;
     assistant.model = endMessage.model?.name;
     assistant.provider = endMessage.model?.provider;
@@ -1063,6 +1090,7 @@ export class TranscriptController {
     const assistant = this.getActiveAssistant();
     if (assistant && assistant.isStreaming) {
       assistant.isStreaming = false;
+      this.markThinkingEnded(assistant);
     }
 
     // Finalize any tool nodes still in 'running' state (e.g. abort during tool execution)

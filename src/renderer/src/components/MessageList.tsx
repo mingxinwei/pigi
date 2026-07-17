@@ -189,9 +189,11 @@ export default React.memo(function MessageList({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchRefocus, setSearchRefocus] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [highlightedToolNodeId, setHighlightedToolNodeId] = useState<string | null>(null);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always reflects latest searchQuery so expandIfHidden's deferred callback
+  // doesn't read a stale closure value if the query changed in the meantime.
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
   const [activeOccurrenceInfo, setActiveOccurrenceInfo] = useState<{
     itemId: string;
     toolNodeId: string | null;
@@ -452,17 +454,11 @@ export default React.memo(function MessageList({
         });
       }
       rowVirtualizer.scrollToIndex(target.renderIndex, { align: 'start', behavior: 'auto' });
-      setHighlightedToolNodeId(target.toolNodeId ?? null);
       setActiveOccurrenceInfo({
         itemId: target.itemId,
         toolNodeId: target.toolNodeId ?? null,
         occurrenceIndex: result.occurrenceIndex,
       });
-      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-      highlightTimerRef.current = setTimeout(() => {
-        setHighlightedToolNodeId(null);
-        highlightTimerRef.current = null;
-      }, 2400);
 
       // Auto-expand overflow-hidden tool content when a match is inside
       if (target.role === 'tool') {
@@ -478,7 +474,9 @@ export default React.memo(function MessageList({
           const overflowEl = root.querySelector<HTMLElement>('[style*="max-height"]');
           if (!overflowEl) return;
 
-          const query = searchQuery.trim();
+          // Read from ref to avoid stale closure if query changed after this
+          // deferred callback was scheduled.
+          const query = searchQueryRef.current.trim();
           if (!query) return;
           const segments = findOccurrenceRanges(root, query, result.occurrenceIndex);
           if (!segments || segments.length === 0) return;
@@ -496,7 +494,7 @@ export default React.memo(function MessageList({
           if (!expandButton) return;
           expandButton.click();
 
-          // After the expand animation, scroll to the matched text
+          //     After the expand animation, scroll to the matched text
           const scrollToMatch = (): void => {
             const freshSegments = findOccurrenceRanges(root, query, result.occurrenceIndex);
             const firstSegment = freshSegments?.[0];
@@ -526,13 +524,15 @@ export default React.memo(function MessageList({
     if (!query) return;
 
     requestAnimationFrame(() => {
-      const itemEl = container.querySelector(`[data-item-id="${activeOccurrenceInfo.itemId}"]`);
+      const itemEl = container.querySelector(
+        `[data-item-id="${CSS.escape(activeOccurrenceInfo.itemId)}"]`,
+      );
       if (!(itemEl instanceof HTMLElement)) return;
 
       // Scope to the specific tool node when the match is inside a read group
       const scopeEl = activeOccurrenceInfo.toolNodeId
         ? (itemEl.querySelector<HTMLElement>(
-            `[data-tool-node-id="${activeOccurrenceInfo.toolNodeId}"]`,
+            `[data-tool-node-id="${CSS.escape(activeOccurrenceInfo.toolNodeId)}"]`,
           ) ?? itemEl)
         : itemEl;
 
@@ -548,20 +548,6 @@ export default React.memo(function MessageList({
       });
     });
   }, [activeOccurrenceInfo, searchQuery]);
-
-  // When a grouped tool is highlighted, scroll it into view after the group expands
-  useEffect(() => {
-    if (!highlightedToolNodeId) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const raf = requestAnimationFrame(() => {
-      const element = container.querySelector(`[data-tool-node-id="${highlightedToolNodeId}"]`);
-      if (element instanceof HTMLElement) {
-        element.scrollIntoView({ block: 'center', behavior: 'auto' });
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [highlightedToolNodeId]);
 
   // Cmd/Ctrl+F opens search
   useEffect(() => {

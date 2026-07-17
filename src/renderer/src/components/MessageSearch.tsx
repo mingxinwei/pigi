@@ -85,7 +85,7 @@ export default function MessageSearch({
   }, [deferredQuery, targets]);
 
   const totalMatches = results.length;
-  const clampedIndex = activeIndex >= totalMatches ? 0 : activeIndex;
+  const clampedIndex = activeIndex >= totalMatches ? Math.max(0, totalMatches - 1) : activeIndex;
 
   const jumpTo = useCallback(
     (index: number): void => {

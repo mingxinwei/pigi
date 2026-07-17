@@ -49,40 +49,57 @@ export function highlightMatches(
 const HIGHLIGHT_NAME = 'pi-search-highlights';
 const ACTIVE_HIGHLIGHT_NAME = 'pi-search-active';
 
-function findRangesInContainer(container: HTMLElement, query: string): Range[] {
-  const lowerQuery = query.toLowerCase();
+/**
+ * Ownership token for the shared ACTIVE highlight registry entry. Only the
+ * hook instance that most recently set the active highlight may clear it.
+ * Without this, every other instance (virtualized list mounts, mutation
+ * observer re-applies) would wipe the entry with its own re-apply, since all
+ * instances share the same global CSS.highlights registry.
+ */
+let activeHighlightOwner: symbol | null = null;
 
-  // Collect all text nodes with their accumulated offsets
-  interface Entry {
-    node: Text;
-    offset: number;
-  }
-  const entries: Entry[] = [];
-  let totalOffset = 0;
-
+/** Collect text nodes eligible for search highlighting, in tree order. */
+function collectSearchableTextNodes(container: HTMLElement): Text[] {
+  const nodes: Text[] = [];
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
-      if (parent?.closest('button,input,textarea,select,[contenteditable]')) {
+      if (parent?.closest('button,input,textarea,select,[contenteditable],[data-search-ignore]')) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;
     },
   });
-
   while (walker.nextNode()) {
-    const textNode = walker.currentNode as Text;
-    entries.push({ node: textNode, offset: totalOffset });
-    totalOffset += textNode.textContent?.length ?? 0;
+    nodes.push(walker.currentNode as Text);
+  }
+  return nodes;
+}
+
+/**
+ * Find all case-insensitive, non-overlapping matches of query inside a
+ * container. Returns one entry per match; each entry holds one Range per text
+ * node the match spans. Splitting is required so that text between the nodes
+ * which is not part of the concatenated search text (e.g. inside rejected
+ * button subtrees) is not painted as part of the match.
+ */
+function findMatchesInContainer(container: HTMLElement, query: string): Range[][] {
+  const lowerQuery = query.toLowerCase();
+  const nodes = collectSearchableTextNodes(container);
+  if (nodes.length === 0) return [];
+
+  // Accumulated offsets of each text node in the concatenated search text
+  const offsets: number[] = [];
+  let totalOffset = 0;
+  for (const node of nodes) {
+    offsets.push(totalOffset);
+    totalOffset += node.textContent?.length ?? 0;
   }
 
-  if (entries.length === 0) return [];
-
-  // Build concatenated text and find all match positions
-  const fullText = entries.map((e) => e.node.textContent ?? '').join('');
+  const fullText = nodes.map((node) => node.textContent ?? '').join('');
   const lowerFull = fullText.toLowerCase();
 
-  const ranges: Range[] = [];
+  const matches: Range[][] = [];
   let searchPos = 0;
 
   while (searchPos < fullText.length) {
@@ -92,38 +109,59 @@ function findRangesInContainer(container: HTMLElement, query: string): Range[] {
     // Map concatenated position back to text nodes
     let remaining = query.length;
     let pos = matchStart;
+    const segments: Range[] = [];
 
-    for (const entry of entries) {
-      const nodeLen = entry.node.textContent?.length ?? 0;
-      if (pos + remaining <= entry.offset) break;
-      if (pos >= entry.offset + nodeLen) continue;
+    for (let index = 0; index < nodes.length && remaining > 0; index++) {
+      const node = nodes[index];
+      const nodeLength = node.textContent?.length ?? 0;
+      const nodeStart = offsets[index];
+      if (pos >= nodeStart + nodeLength) continue;
 
-      const localStart = Math.max(0, pos - entry.offset);
-      const localEnd = Math.min(nodeLen, pos + remaining - entry.offset);
+      const localStart = Math.max(0, pos - nodeStart);
+      const localEnd = Math.min(nodeLength, pos + remaining - nodeStart);
+      if (localEnd <= localStart) continue;
 
       const range = new Range();
-      range.setStart(entry.node, localStart);
-      range.setEnd(entry.node, localEnd);
-      ranges.push(range);
+      range.setStart(node, localStart);
+      range.setEnd(node, localEnd);
+      segments.push(range);
 
-      const taken = localEnd - localStart;
-      remaining -= taken;
-      pos += taken;
-      if (remaining <= 0) break;
+      remaining -= localEnd - localStart;
+      pos += localEnd - localStart;
     }
 
+    if (segments.length > 0) {
+      matches.push(segments);
+    }
     searchPos = matchStart + query.length;
-    if (remaining > 0) searchPos = matchStart + 1; // safety: partial match at end, advance by 1
   }
 
-  return ranges;
+  return matches;
+}
+
+/**
+ * Locate the ranges of one specific occurrence (0-based, tree order) of query
+ * inside a container. Uses the same occurrence indexing as
+ * useHighlightTextNodes, so scroll targets stay aligned with highlights.
+ * Returns null when the occurrence does not exist.
+ */
+export function findOccurrenceRanges(
+  container: HTMLElement,
+  query: string,
+  occurrenceIndex: number,
+): Range[] | null {
+  const trimmed = query.trim();
+  if (!trimmed || occurrenceIndex < 0) return null;
+  return findMatchesInContainer(container, trimmed)[occurrenceIndex] ?? null;
 }
 
 /**
  * Hook that uses the CSS Custom Highlights API to highlight query matches
  * across all text content inside a container. Multiple instances share the
  * same highlight registry — each adds its own ranges without overwriting
- * others. Falls back to a no-op if the API is unavailable.
+ * others. The active occurrence highlight is owned: only the instance that
+ * set it may replace or clear it. Falls back to a no-op if the API is
+ * unavailable.
  */
 export function useHighlightTextNodes(
   containerRef: React.RefObject<HTMLElement | null>,
@@ -132,7 +170,10 @@ export function useHighlightTextNodes(
 ): void {
   // Track ranges owned by this hook instance so we can remove them on cleanup
   const ownedRangesRef = useRef<Range[]>([]);
-  const observerRef = useRef<MutationObserver | null>(null);
+  const ownerTokenRef = useRef<symbol | null>(null);
+  if (ownerTokenRef.current === null) {
+    ownerTokenRef.current = Symbol('search-active-highlight-owner');
+  }
 
   useEffect(() => {
     const container = containerRef.current;
@@ -140,26 +181,11 @@ export function useHighlightTextNodes(
 
     const trimmed = query.trim();
     const available = typeof CSS !== 'undefined' && 'highlights' in CSS;
+    const ownerToken = ownerTokenRef.current;
 
-    // Remove this instance's old ranges from the shared highlight
-    if (available && ownedRangesRef.current.length > 0) {
-      const existing = CSS.highlights.get(HIGHLIGHT_NAME);
-      if (existing) {
-        for (const range of ownedRangesRef.current) {
-          try {
-            existing.delete(range);
-          } catch {
-            /* detached */
-          }
-        }
-      }
-      ownedRangesRef.current = [];
-    }
-
-    if (!trimmed || !available) return;
-
-    const apply = (): void => {
-      // Remove previous ranges (ignore errors from detached text nodes)
+    // Remove this instance's ranges from the shared highlight
+    const removeOwnedRanges = (): void => {
+      if (!available) return;
       const existing = CSS.highlights.get(HIGHLIGHT_NAME);
       if (existing) {
         for (const range of ownedRangesRef.current) {
@@ -170,67 +196,81 @@ export function useHighlightTextNodes(
           }
         }
       }
+      ownedRangesRef.current = [];
+    };
 
-      // Find new ranges
-      const ranges = findRangesInContainer(container, trimmed);
-      ownedRangesRef.current = ranges;
-
-      if (ranges.length === 0) return;
-
-      // Add to shared highlight, creating it if needed
-      let highlight = CSS.highlights.get(HIGHLIGHT_NAME);
-      if (!highlight) {
-        highlight = new Highlight();
-        CSS.highlights.set(HIGHLIGHT_NAME, highlight);
-      }
-      for (const range of ranges) {
-        highlight.add(range);
-      }
-
-      // Apply active occurrence highlight
+    // Clear the shared active highlight, but only if this instance owns it
+    const releaseActiveIfOwner = (): void => {
+      if (!available || activeHighlightOwner !== ownerToken) return;
+      activeHighlightOwner = null;
       try {
         CSS.highlights.delete(ACTIVE_HIGHLIGHT_NAME);
       } catch {
-        // CSS.highlights not supported
+        /* CSS.highlights not supported */
       }
-      if (
-        activeOccurrenceIndex !== null &&
-        activeOccurrenceIndex >= 0 &&
-        activeOccurrenceIndex < ranges.length
-      ) {
-        const activeHighlight = new Highlight(ranges[activeOccurrenceIndex]);
-        CSS.highlights.set(ACTIVE_HIGHLIGHT_NAME, activeHighlight);
+    };
+
+    const apply = (): void => {
+      removeOwnedRanges();
+
+      if (!trimmed || !available) {
+        releaseActiveIfOwner();
+        return;
+      }
+
+      const matches = findMatchesInContainer(container, trimmed);
+      const ranges = matches.flat();
+      ownedRangesRef.current = ranges;
+
+      if (ranges.length > 0) {
+        // Add to shared highlight, creating it if needed
+        let highlight = CSS.highlights.get(HIGHLIGHT_NAME);
+        if (!highlight) {
+          highlight = new Highlight();
+          CSS.highlights.set(HIGHLIGHT_NAME, highlight);
+        }
+        for (const range of ranges) {
+          highlight.add(range);
+        }
+      }
+
+      // Apply active occurrence highlight and take ownership
+      const activeSegments =
+        activeOccurrenceIndex !== null && activeOccurrenceIndex >= 0
+          ? matches[activeOccurrenceIndex]
+          : undefined;
+      if (activeSegments) {
+        CSS.highlights.set(ACTIVE_HIGHLIGHT_NAME, new Highlight(...activeSegments));
+        activeHighlightOwner = ownerToken;
+      } else {
+        releaseActiveIfOwner();
       }
     };
 
     apply();
 
-    observerRef.current = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      // Skip mutations inside ignored chrome (e.g. status footers with
+      // ticking timers) — they cannot change the searchable text.
+      const onlyIgnored = mutations.every((mutation) => {
+        const target = mutation.target;
+        const element = target instanceof Element ? target : target.parentElement;
+        return element?.closest('[data-search-ignore]') != null;
+      });
+      if (onlyIgnored) return;
       // Defer to next frame so Shiki async render has completed
       requestAnimationFrame(() => apply());
     });
-    observerRef.current.observe(container, {
+    observer.observe(container, {
       childList: true,
       subtree: true,
       characterData: true,
     });
 
     return () => {
-      observerRef.current?.disconnect();
-      // Remove this instance's ranges
-      if (available) {
-        const existing = CSS.highlights.get(HIGHLIGHT_NAME);
-        if (existing) {
-          for (const range of ownedRangesRef.current) {
-            try {
-              existing.delete(range);
-            } catch {
-              /* detached */
-            }
-          }
-        }
-        ownedRangesRef.current = [];
-      }
+      observer.disconnect();
+      removeOwnedRanges();
+      releaseActiveIfOwner();
     };
   }, [containerRef, query, activeOccurrenceIndex]);
 }

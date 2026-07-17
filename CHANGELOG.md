@@ -5,6 +5,7 @@
 ### Changed
 
 - Upgraded pi SDK from v0.80.6 to v0.80.10, adding Kimi K3 model support and improving credential persistence for API key and OAuth providers.
+- Improved markdown typography in assistant messages: more comfortable line height for reading, headings now visually group with their content, list items and nested lists have clearer spacing, bold text stands out properly, and code blocks and tables have more breathing room.
 
 ## [0.3.14] - 2026-07-10
 

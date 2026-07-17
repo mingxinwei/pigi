@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
-import { cn } from '../lib/utils';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
 
 interface MarkdownMessageProps {
@@ -33,6 +32,8 @@ const CODE_LANGUAGE_LABELS: Record<string, string> = {
   yml: 'YAML',
 };
 
+// Only elements needing behavior or structure get an override; all typographic
+// styling lives in the `.markdown-body` rules in main.css.
 const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a
@@ -46,29 +47,12 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
-  p: ({ children }) => <p className="mb-3 break-words last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="mb-3 list-disc pl-5 last:mb-0">{children}</ul>,
-  ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 last:mb-0">{children}</ol>,
-  li: ({ children }) => <li className="pl-1">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="mb-3 border-l-2 border-border pl-3 text-muted-foreground last:mb-0">
-      {children}
-    </blockquote>
-  ),
-  hr: () => <hr className="my-4 border-border" />,
-  h1: ({ children }) => (
-    <h1 className="mb-4 text-[26px] font-semibold leading-9 last:mb-0">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="mb-3 text-[19px] font-semibold leading-7 last:mb-0">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="mb-2 text-[17px] font-semibold leading-6 last:mb-0">{children}</h3>
-  ),
-  pre: ({ children }) => (
-    <pre className="mb-3 w-full max-w-full overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-[14px] leading-5 text-foreground last:mb-0 [&_code]:bg-transparent [&_code]:p-0">
-      {children}
-    </pre>
+  // Scroll wrapper so wide tables overflow horizontally instead of
+  // stretching the message layout.
+  table: ({ children }) => (
+    <div className="markdown-table-wrapper">
+      <table>{children}</table>
+    </div>
   ),
   code: ({ className, children }) => {
     const language = getCodeLanguage(className);
@@ -76,47 +60,14 @@ const markdownComponents: Components = {
     if (language) {
       return (
         <>
-          <span className="mb-2 block text-[12px] font-normal text-muted-foreground">
-            {getCodeLanguageLabel(language)}
-          </span>
+          <span className="markdown-code-label">{getCodeLanguageLabel(language)}</span>
           <SyntaxHighlightedCode code={code} language={language} />
         </>
       );
     }
 
-    return (
-      <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-[14px]', className)}>
-        {children}
-      </code>
-    );
+    return <code className={className}>{children}</code>;
   },
-  // Table rendered with border-collapse: separate + border-spacing: 0 because
-  // border-radius does NOT work with border-collapse: collapse (per CSS spec).
-  // Instead of cell borders merging into one, each cell gets independent
-  // border-right + border-bottom so adjacent cells each contribute one edge
-  // — forming a clean 1px grid with no double borders. The table's own border
-  // provides the outer border, and overflow-hidden + rounded-md clips corners.
-  // Last column removes border-r, last row removes border-b to avoid overlapping
-  // the table's outer border.
-  table: ({ children }) => (
-    <div className="mb-3 overflow-x-auto last:mb-0">
-      <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-md border border-border text-left text-[14px] [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0 [&_tbody_tr:last-child_td]:border-b-0">
-        {children}
-      </table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="border-b border-r border-border bg-muted/60 px-2 py-1 font-medium">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="border-b border-r border-border bg-background px-2 py-1">{children}</td>
-  ),
-  strong: ({ children }) => <strong className="font-medium">{children}</strong>,
-  img: ({ src, alt, title }) => (
-    <img src={src} alt={alt ?? ''} title={title} className="my-3 max-w-full rounded-md" />
-  ),
 };
 
 function getCodeLanguage(className: string | undefined): string | null {
@@ -137,7 +88,7 @@ function getCodeLanguageLabel(language: string): string {
 
 export default function MarkdownMessage({ text }: MarkdownMessageProps): React.JSX.Element {
   return (
-    <div className="w-full min-w-0 break-words">
+    <div className="markdown-body">
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSanitize]}

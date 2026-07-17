@@ -189,6 +189,228 @@
   }
 }
 
+@layer components {
+  /* Markdown typographic system for assistant messages.
+     15px base text × 1.7 line-height = 25.5px line box, with two rhythm
+     tokens: block spacing (14px) between block-level elements, item spacing
+     (4px) between list items and nested lists. Every selector carries exactly
+     one class of specificity, so the cascade is plain file order — no
+     specificity wars, no arbitrary-variant hacks in components. */
+  .markdown-body {
+    --markdown-block-spacing: 0.875rem;
+    --markdown-item-spacing: 0.25rem;
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: break-word;
+    line-height: 1.7;
+  }
+
+  .markdown-body > :first-child {
+    margin-top: 0;
+  }
+
+  .markdown-body > :last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-body p {
+    margin-bottom: var(--markdown-block-spacing);
+  }
+
+  /* Headings: top margin ≥ 2× bottom margin so a heading binds to the
+     section it introduces instead of floating between sections. */
+  .markdown-body h1 {
+    margin: 2rem 0 0.75rem;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 2rem;
+  }
+
+  .markdown-body h2 {
+    margin: 1.75rem 0 0.625rem;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.75rem;
+  }
+
+  .markdown-body h3 {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.5rem;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    margin-bottom: var(--markdown-block-spacing);
+    padding-left: 1.25rem;
+  }
+
+  .markdown-body ul {
+    list-style: disc;
+  }
+
+  .markdown-body ol {
+    list-style: decimal;
+  }
+
+  /* The bullet already signals "new item", so the gap only needs to
+     separate wrapped lines: 4px ≈ 16% over the 25.5px line box. */
+  .markdown-body li {
+    padding-left: 0.25rem;
+  }
+
+  .markdown-body li + li {
+    margin-top: var(--markdown-item-spacing);
+  }
+
+  .markdown-body li > ul,
+  .markdown-body li > ol {
+    margin: var(--markdown-item-spacing) 0;
+  }
+
+  .markdown-body li > ul:last-child,
+  .markdown-body li > ol:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Loose lists: react-markdown wraps li content in <p>; collapse its block
+     margin so items don't pick up an extra 14px. */
+  .markdown-body li > p {
+    margin-bottom: var(--markdown-item-spacing);
+  }
+
+  .markdown-body li > p:last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-body blockquote {
+    margin-bottom: var(--markdown-block-spacing);
+    border-left: 2px solid var(--border);
+    padding-left: 0.75rem;
+    color: var(--muted-foreground);
+  }
+
+  .markdown-body hr {
+    margin: 1.5rem 0;
+    border-color: var(--border);
+  }
+
+  .markdown-body pre {
+    margin-bottom: var(--markdown-block-spacing);
+    max-width: 100%;
+    overflow-x: auto;
+    border-radius: calc(var(--radius) * 0.8);
+    background: var(--muted);
+    padding: 10px 14px;
+    font-family: var(
+      --font-mono,
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace
+    );
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--foreground);
+  }
+
+  .markdown-code-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+
+  /* Inline code: em-relative size scales with surrounding text;
+     box-decoration-break keeps the pill intact across line wraps. */
+  .markdown-body code {
+    border-radius: 0.25rem;
+    background: var(--muted);
+    padding: 2px 4px;
+    font-family: var(
+      --font-mono,
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace
+    );
+    font-size: 0.875em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .markdown-body pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .markdown-body strong {
+    font-weight: 600;
+  }
+
+  .markdown-body img {
+    margin: var(--markdown-block-spacing) 0;
+    max-width: 100%;
+    border-radius: calc(var(--radius) * 0.8);
+  }
+
+  .markdown-table-wrapper {
+    margin-bottom: var(--markdown-block-spacing);
+    overflow-x: auto;
+  }
+
+  /* border-collapse: separate + border-spacing: 0 because border-radius does
+     NOT work with collapsed borders (per CSS spec). Each cell contributes its
+     right/bottom edge to form a clean 1px grid with no double borders; last
+     column/row drop theirs to avoid overlapping the table's outer border,
+     and overflow: hidden clips cell backgrounds to the rounded corners. */
+  .markdown-body table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) * 0.8);
+    text-align: left;
+    font-size: 14px;
+  }
+
+  .markdown-body th,
+  .markdown-body td {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 10px;
+  }
+
+  .markdown-body th {
+    background: color-mix(in srgb, var(--muted) 60%, transparent);
+    font-weight: 500;
+  }
+
+  .markdown-body td {
+    background: var(--background);
+  }
+
+  .markdown-body th:last-child,
+  .markdown-body td:last-child {
+    border-right: 0;
+  }
+
+  .markdown-body tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
 @layer utilities {
   .no-scrollbar {
     scrollbar-width: none;

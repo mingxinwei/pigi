@@ -2,21 +2,24 @@
 
 ## [0.3.15] - 2026-07-17
 
+### Added
+
+- Message search via Cmd+F / Ctrl+F: fuzzy-search across all messages and tool outputs, with keyboard-driven match navigation (Enter/arrows), per-occurrence active highlight like Chrome's find-in-page, and auto-expand for grouped read blocks and overflow-hidden tool content.
+
 ### Changed
 
 - Upgraded pi SDK from v0.80.6 to v0.80.10, adding Kimi K3 model support and improving credential persistence for API key and OAuth providers.
-- Improved markdown typography in assistant messages: more comfortable line height for reading, headings now visually group with their content, list items and nested lists have clearer spacing, bold text stands out properly, and code blocks and tables have more breathing room.
+- Improved markdown typography in assistant messages: more comfortable line height for reading, headings now visually group with their content, and code blocks have better spacing.
 
 ### Fixed
 
-- Search highlights no longer disappear when navigating between matches with Enter or the arrow buttons — the active (orange) highlight now stays visible as you move from match to match, matching Chrome's find-in-page behavior.
-- Tool output blocks with overflow-hidden content now auto-expand when you jump to a search match hidden below the fold, so the matched text becomes visible.
+- Search highlights no longer disappear when navigating between matches — the active highlight now stays visible throughout paging.
+- Tool output blocks with overflow-hidden content now auto-expand when jumping to a search match below the fold.
+- Scroll-to-bottom button now scrolls all the way to the last message.
 
 ## [0.3.14] - 2026-07-10
 
 ### Added
-
-- Message search via Cmd+F / Ctrl+F: fuzzy-search across all messages and tool outputs, with keyboard-driven match navigation and auto-expand for grouped read blocks.
 
 - Message minimap now highlights the bar closest to your current scroll position with a blue indicator.
 - Hovering the minimap popover highlights and scrolls the active item into view.

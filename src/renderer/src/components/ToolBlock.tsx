@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { cn } from '../lib/utils';
 import { type ToolNode, getToolArgs } from '../state/transcriptController';
-import { MESSAGE_CONTENT_MAX_WIDTH } from '../lib/layoutConstants';
+import { MESSAGE_CONTENT_MAX_WIDTH, BLOCK_CONTENT_MAX_HEIGHT } from '../lib/layoutConstants';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
 import DiffView from './DiffView';
 import type { EditEntry, DiffLine } from '../lib/diffUtils';
 import { parseDiffString } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
 import { getToolCommandParts, cleanReadOutput, READ_IMAGE_RE } from '../lib/toolDisplay';
+import OverflowClamp from './overflowClamp';
 
 /** Max lines shown in collapsed write preview */
 function WritePreview({
@@ -90,9 +91,6 @@ function ElapsedTimer({ startedAt }: { startedAt?: number }): React.JSX.Element 
 
 /** Min height for running tool blocks to reserve space and reduce layout shift */
 const TOOL_BLOCK_RUNNING_MIN_HEIGHT = '80px';
-
-/** Max height for tool block content before showing expand button */
-const TOOL_BLOCK_MAX_HEIGHT = 300;
 
 /** Tools that stream output while running (shown immediately, not gated on completion) */
 const STREAMING_OUTPUT_TOOLS = new Set(['bash', 'read']);
@@ -179,11 +177,8 @@ function getReadImagePath(node: ToolNode): string | null {
 }
 
 export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element | null {
-  const [expanded, setExpanded] = useState(false);
   const [commandExpanded, setCommandExpanded] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
   const commandRef = useRef<HTMLSpanElement>(null);
-  const [isOverflowing, setIsOverflowing] = useState(false);
   const [isCommandTruncated, setIsCommandTruncated] = useState(false);
 
   // For read tool: filter hint lines and detect images
@@ -191,13 +186,10 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   const imagePath = useMemo(() => getReadImagePath(node), [node]);
 
   useEffect(() => {
-    if (contentRef.current) {
-      setIsOverflowing(contentRef.current.scrollHeight > TOOL_BLOCK_MAX_HEIGHT);
-    }
     if (commandRef.current) {
       setIsCommandTruncated(commandRef.current.scrollHeight > commandRef.current.clientHeight);
     }
-  }, [node, expanded]);
+  }, [node, commandExpanded]);
 
   // Read tool returns fast — skip rendering the running state to avoid flicker
   if (node.name === 'read' && node.status === 'running') return null;
@@ -215,7 +207,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   return (
     <>
       <div
-        className="overflow-hidden rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground flex flex-col"
+        className="overflow-clip rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground flex flex-col"
         style={{
           maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
           minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,
@@ -276,21 +268,10 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           </div>
         )}
 
-        <div
-          ref={contentRef}
-          className="overflow-hidden"
-          style={{
-            maxHeight: expanded ? undefined : `${TOOL_BLOCK_MAX_HEIGHT}px`,
-            minHeight: node.name === 'edit' ? '1px' : undefined,
-            maskImage:
-              !expanded && isOverflowing
-                ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
-                : undefined,
-            WebkitMaskImage:
-              !expanded && isOverflowing
-                ? 'linear-gradient(to bottom, black calc(100% - 16px), transparent)'
-                : undefined,
-          }}
+        <OverflowClamp
+          maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
+          contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
+          buttonClassName="mb-2"
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
             <DiffView lines={editDiffFromDetails} />
@@ -312,20 +293,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
                 <SyntaxHighlightedCode code={cleanedOutput} language={outputLanguage} />
               </pre>
             )}
-        </div>
-
-        <div className="mb-2">
-          {isOverflowing && (
-            <button
-              type="button"
-              data-action="expand-overflow" // search auto-expand relies on this attr
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-1 text-left text-xs text-muted-foreground hover:text-foreground"
-            >
-              {expanded ? 'Show less' : 'Show more'}
-            </button>
-          )}
-        </div>
+        </OverflowClamp>
 
         <div
           data-search-ignore

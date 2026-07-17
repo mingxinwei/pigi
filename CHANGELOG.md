@@ -1,6 +1,21 @@
 # Changelog
 
-## [0.3.15] - 2026-07-17
+## [Unreleased]
+
+### Added
+
+- Long block content (tool outputs, thinking text, user messages) now auto-collapses at 300px with a "Show more" button. Expanded blocks show a "Show less" button that floats at the viewport bottom while scrolling, with a subtle frosted-glass background when floating. Collapsed blocks show the last lines of content so recent output stays visible.
+- Consecutive read-only tool calls (read, grep, ls) now auto-group into a compact collapsed row like "Looked into 3 files". Each row shows a status icon (green check, red cross, grey dash) and monospace command label. When the group is still growing, a shimmer "Working…" row appears below. Expanding the group shows full tool outputs with search highlight support.
+- Thinking blocks inside read groups are now shown as compact rows with a check icon, label preview, and real-time duration ticking during live streaming. Standalone thinking blocks also display the thinking duration in the header.
+
+### Changed
+
+- Tool block command labels are now truncated more gracefully, avoiding awkward mid-word breaks.
+- Sidebar "Show less" sticky button now has an opaque background instead of translucent.
+
+### Fixed
+
+- Search matches hidden behind clamped content now auto-expand the block to reveal the match.
 
 ### Added
 

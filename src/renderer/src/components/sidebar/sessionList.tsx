@@ -201,64 +201,73 @@ export function SessionList({
   const showList = isExpanded || isCollapsedWithPinned;
 
   return (
-    <div
-      aria-hidden={!showList}
-      className={
-        showList
-          ? 'grid grid-rows-[1fr] translate-y-0 opacity-100 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
-          : 'grid grid-rows-[0fr] -translate-y-1 opacity-0 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]'
-      }
-    >
-      <div className="min-h-0 overflow-hidden">
-        <SidebarMenuSub className="mx-0 border-l-0 px-0">
-          {projectSessions.length === 0 ? (
-            <SidebarMenuSubItem>
-              <SidebarMenuSubButton
-                asChild
-                className="w-full justify-start pl-6 text-left text-muted-foreground"
-              >
-                <span aria-disabled>No chats yet</span>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          ) : (
-            visibleSessions.map((session) => (
-              <SessionItem
-                key={session.path}
-                session={session}
-                isActive={session.path === selectedSessionPath}
-                isRunning={isSessionRunning(session.path, sessions)}
-                relativeTimeBase={relativeTimeBase}
-                onSwitch={() => handleSessionSwitch(session)}
-                onRename={(name) => onRenameSession(session.path, name)}
-              />
-            ))
-          )}
-          {hiddenCount > 0 && !isCollapsedWithPinned && (
-            <SidebarMenuSubItem>
-              <SidebarMenuSubButton
-                asChild
-                className="w-full justify-start pl-6 text-left text-muted-foreground"
-              >
-                <button type="button" onClick={() => setShowAll(true)}>
-                  <span>Show more</span>
-                </button>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          )}
-          {showAll && sessionsToRender.length > visibleSessionCount && !isCollapsedWithPinned && (
-            <SidebarMenuSubItem>
-              <SidebarMenuSubButton
-                asChild
-                className="w-full justify-start pl-6 text-left text-muted-foreground"
-              >
-                <button type="button" onClick={() => setShowAll(false)}>
-                  <span>Show less</span>
-                </button>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          )}
-        </SidebarMenuSub>
+    <>
+      <div
+        aria-hidden={!showList}
+        className={
+          showList
+            ? 'grid grid-rows-[1fr] translate-y-0 opacity-100 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
+            : 'grid grid-rows-[0fr] -translate-y-1 opacity-0 transition-[grid-template-rows,opacity,transform] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]'
+        }
+      >
+        <div className="min-h-0 overflow-hidden">
+          <SidebarMenuSub className="mx-0 border-l-0 px-0">
+            {projectSessions.length === 0 ? (
+              <SidebarMenuSubItem>
+                <SidebarMenuSubButton
+                  asChild
+                  className="w-full justify-start pl-6 text-left text-muted-foreground"
+                >
+                  <span aria-disabled>No chats yet</span>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ) : (
+              visibleSessions.map((session) => (
+                <SessionItem
+                  key={session.path}
+                  session={session}
+                  isActive={session.path === selectedSessionPath}
+                  isRunning={isSessionRunning(session.path, sessions)}
+                  relativeTimeBase={relativeTimeBase}
+                  onSwitch={() => handleSessionSwitch(session)}
+                  onRename={(name) => onRenameSession(session.path, name)}
+                />
+              ))
+            )}
+            {hiddenCount > 0 && !isCollapsedWithPinned && (
+              <SidebarMenuSubItem>
+                <SidebarMenuSubButton
+                  asChild
+                  className="w-full justify-start pl-6 text-left text-muted-foreground"
+                >
+                  <button type="button" onClick={() => setShowAll(true)}>
+                    <span>Show more</span>
+                  </button>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            )}
+          </SidebarMenuSub>
+        </div>
       </div>
-    </div>
+      {showList &&
+        showAll &&
+        sessionsToRender.length > visibleSessionCount &&
+        !isCollapsedWithPinned && (
+          <div className="sticky bottom-0 z-10 bg-sidebar-solid">
+            <SidebarMenuSub className="mx-0 border-l-0 px-0">
+              <SidebarMenuSubItem>
+                <SidebarMenuSubButton
+                  asChild
+                  className="w-full justify-start pl-6 text-left text-muted-foreground"
+                >
+                  <button type="button" onClick={() => setShowAll(false)}>
+                    <span>Show less</span>
+                  </button>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            </SidebarMenuSub>
+          </div>
+        )}
+    </>
   );
 }

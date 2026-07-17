@@ -1,8 +1,18 @@
-import { IconChevronRight, IconChevronDown } from '@tabler/icons-react';
+import {
+  IconChevronRight,
+  IconChevronDown,
+  IconCheck,
+  IconX,
+  IconMinus,
+  IconLoader2,
+} from '@tabler/icons-react';
 import { useRef } from 'react';
 import { type ToolNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
+import type { ReadGroupEntry } from '../lib/readGrouping';
 import ToolBlock from './ToolBlock';
+import ThinkingBlock, { ThinkingDuration } from './thinkingBlock';
+import ShimmerOverlay from './shimmerOverlay';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { useHighlightTextNodes } from '../lib/highlightMatches';
 
@@ -26,8 +36,14 @@ function getCommandLabel(node: ToolNode): string {
   return node.name;
 }
 
+const ENTRY_STATUS_ICON = {
+  success: { Icon: IconCheck, className: 'text-[#166534]' },
+  error: { Icon: IconX, className: 'text-[#991b1b]' },
+  cancelled: { Icon: IconMinus, className: 'text-[#3f3f46]' },
+} as const;
+
 interface CollapsedReadGroupProps {
-  nodes: ToolNode[];
+  entries: ReadGroupEntry[];
   /** True when this group is still potentially growing (last group + agent active) */
   isActive: boolean;
   /** Controlled open state */
@@ -41,29 +57,31 @@ interface CollapsedReadGroupProps {
   activeOccurrenceIndex: number | null;
 }
 
-/** Wraps a single tool node with its own highlight scope, so occurrence
+/** Wraps an entry with its own highlight scope, so occurrence
  *  indices are scoped per-node and match the search-target results. */
-function HighlightedToolNode({
-  node,
+function HighlightedEntry({
+  nodeId,
   searchQuery,
   activeOccurrenceIndex,
+  children,
 }: {
-  node: ToolNode;
+  nodeId: string;
   searchQuery: string;
   activeOccurrenceIndex: number | null;
+  children: React.ReactNode;
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   useHighlightTextNodes(containerRef, searchQuery, activeOccurrenceIndex);
 
   return (
-    <div ref={containerRef} data-tool-node-id={node.id} className="group">
-      <ToolBlock node={node} />
+    <div ref={containerRef} data-tool-node-id={nodeId} className="group">
+      {children}
     </div>
   );
 }
 
 export default function CollapsedReadGroup({
-  nodes,
+  entries,
   isActive,
   open,
   onOpenChange,
@@ -71,11 +89,12 @@ export default function CollapsedReadGroup({
   activeToolNodeId,
   activeOccurrenceIndex,
 }: CollapsedReadGroupProps): React.JSX.Element {
-  const count = nodes.length;
-  const noun = count === 1 ? 'file' : 'files';
-  const label = isActive ? `Looking into ${count} ${noun}` : `Looked into ${count} ${noun}`;
-
-  const latestNodeId = isActive ? nodes[nodes.length - 1].id : null;
+  const toolCount = entries.reduce(
+    (count, entry) => (entry.kind === 'tool' ? count + 1 : count),
+    0,
+  );
+  const noun = toolCount === 1 ? 'file' : 'files';
+  const label = isActive ? `Looking into ${toolCount} ${noun}` : `Looked into ${toolCount} ${noun}`;
 
   return (
     <Collapsible className="group/collapsible mb-2" open={open} onOpenChange={onOpenChange}>
@@ -87,39 +106,87 @@ export default function CollapsedReadGroup({
             <IconChevronDown className="chevron-down size-3.5 shrink-0" />
           </CollapsibleTrigger>
           <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
-            {nodes.map((node) => (
-              <div
-                key={node.id}
-                className={`relative truncate font-mono text-[14px] overflow-hidden ${
-                  node.id === latestNodeId ? 'text-foreground' : 'text-foreground/70'
-                }`}
-              >
-                {getCommandLabel(node)}
-                {node.id === latestNodeId && (
-                  <span
-                    className="absolute inset-0 animate-[shimmer_2.5s_linear_infinite]"
-                    style={{
-                      background:
-                        'linear-gradient(90deg, transparent 0%, transparent 30%, rgba(255,255,255,0.95) 50%, transparent 70%, transparent 100%)',
-                      backgroundSize: '200% 100%',
-                    }}
-                  />
-                )}
-              </div>
-            ))}
+            {entries.map((entry) => {
+              if (entry.kind === 'thinking') {
+                const thinkingNode = entry.node;
+                const snippet = thinkingNode.thinking.trim().split('\n', 1)[0];
+                const thinkingInProgress =
+                  thinkingNode.isStreaming && thinkingNode.thinkingEndedAt === undefined;
+                return (
+                  <div
+                    key={thinkingNode.id}
+                    className={`flex items-center gap-1.5 ${thinkingInProgress ? 'text-foreground' : 'text-foreground/70'}`}
+                    data-search-ignore
+                  >
+                    {thinkingInProgress ? (
+                      <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
+                    ) : (
+                      <IconCheck className="size-3.5 shrink-0 text-[#166534]" />
+                    )}
+                    <span className="truncate font-mono text-[14px]">thinking {snippet}</span>
+                    <ThinkingDuration
+                      startedAt={thinkingNode.thinkingStartedAt}
+                      endedAt={thinkingNode.thinkingEndedAt}
+                      isStreaming={thinkingNode.isStreaming}
+                      className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground"
+                    />
+                  </div>
+                );
+              }
+              const node = entry.node;
+              const statusConfig =
+                node.status === 'running' ? null : ENTRY_STATUS_ICON[node.status];
+              const Icon = statusConfig?.Icon;
+              return (
+                <div
+                  key={node.id}
+                  className={`flex items-center gap-1.5 ${node.status === 'running' ? 'text-foreground' : 'text-foreground/70'}`}
+                >
+                  {node.status === 'running' ? (
+                    <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
+                  ) : (
+                    Icon && (
+                      <Icon className={`size-3.5 shrink-0 ${statusConfig?.className ?? ''}`} />
+                    )
+                  )}
+                  <span className="truncate font-mono text-[14px]">{getCommandLabel(node)}</span>
+                </div>
+              );
+            })}
           </div>
+          {isActive && (
+            <div className="mt-0.5 flex items-center" data-search-ignore>
+              <span className="relative overflow-hidden text-[13px] text-muted-foreground">
+                Working...
+                <ShimmerOverlay />
+              </span>
+            </div>
+          )}
         </div>
         <CollapsibleContent
           className="flex flex-col px-3 pb-1.5"
           style={{ gap: `${MESSAGE_ROW_GAP * 3}px`, marginTop: `${MESSAGE_ROW_GAP * 3}px` }}
         >
-          {nodes.map((node) => (
-            <HighlightedToolNode
-              key={node.id}
-              node={node}
+          {entries.map((entry) => (
+            <HighlightedEntry
+              key={entry.node.id}
+              nodeId={entry.node.id}
               searchQuery={searchQuery}
-              activeOccurrenceIndex={node.id === activeToolNodeId ? activeOccurrenceIndex : null}
-            />
+              activeOccurrenceIndex={
+                entry.node.id === activeToolNodeId ? activeOccurrenceIndex : null
+              }
+            >
+              {entry.kind === 'tool' ? (
+                <ToolBlock node={entry.node} />
+              ) : (
+                <ThinkingBlock
+                  text={entry.node.thinking}
+                  startedAt={entry.node.thinkingStartedAt}
+                  endedAt={entry.node.thinkingEndedAt}
+                  isStreaming={entry.node.isStreaming}
+                />
+              )}
+            </HighlightedEntry>
           ))}
         </CollapsibleContent>
       </div>

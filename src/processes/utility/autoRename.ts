@@ -10,7 +10,8 @@
  */
 import { completeSimple } from '@earendil-works/pi-ai/compat';
 import type { Api, Model } from '@earendil-works/pi-ai';
-import type { ModelRegistry } from '@earendil-works/pi-coding-agent';
+import { ModelRegistry } from '@earendil-works/pi-coding-agent';
+import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -108,9 +109,10 @@ async function tryGenerate(
  */
 export async function generateSessionTitle(
   messages: Message[],
-  modelRegistry: ModelRegistry,
+  modelRuntime: ModelRuntime,
   sessionProvider?: string,
 ): Promise<string | null> {
+  const modelRegistry = new ModelRegistry(modelRuntime);
   const candidates = getCandidatesByCost(modelRegistry);
   if (candidates.length === 0) return null;
 

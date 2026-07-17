@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded pi SDK from v0.80.6 to v0.80.10, adding Kimi K3 model support and improving credential persistence for API key and OAuth providers.
+
 ## [0.3.14] - 2026-07-10
 
 ### Added

@@ -18,6 +18,7 @@ import {
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionServices,
   getAgentDir,
+  ModelRegistry,
   SessionManager,
   SettingsManager,
   type WriteToolInput,
@@ -280,10 +281,10 @@ let snippets: Array<{ role: 'user' | 'assistant'; text: string }> = [];
 function autoRenameOnce(
   event: AgentSessionEvent & { type: 'message_end' },
   session: AgentSessionRuntime['session'],
-  rt: AgentSessionRuntime & { services?: AgentSessionServices },
+  rt: AgentSessionRuntime,
   push: (msg: PiPush) => void,
 ): void {
-  if (hasAutoRenamed || !rt.services?.modelRegistry) {
+  if (hasAutoRenamed) {
     return;
   }
 
@@ -311,7 +312,7 @@ function autoRenameOnce(
   const capturedSessionManager = session.sessionManager;
   const capturedCwd = process.cwd();
   const capturedSnippets = snippets;
-  void generateSessionTitle(capturedSnippets, rt.services.modelRegistry, sessionProvider).then(
+  void generateSessionTitle(capturedSnippets, rt.services.modelRuntime, sessionProvider).then(
     (title) => {
       if (title && runtime?.session.sessionManager === capturedSessionManager) {
         capturedSessionManager.appendSessionInfo(title);
@@ -486,14 +487,16 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
 
     case 'get_session_options': {
       const session = runtime.session;
-      session.modelRegistry.refresh();
+      const modelRegistry = new ModelRegistry(runtime.services.modelRuntime);
+      // Reload models.json in the background; reads below use the current snapshot.
+      void modelRegistry.refresh().catch(() => undefined);
       const scopedModels = session.scopedModels.filter((scoped) =>
-        session.modelRegistry.hasConfiguredAuth(scoped.model),
+        modelRegistry.hasConfiguredAuth(scoped.model),
       );
       const models =
         scopedModels.length > 0
           ? scopedModels.map((scoped) => toModelInfo(scoped.model))
-          : (await session.modelRegistry.getAvailable()).map(toModelInfo);
+          : modelRegistry.getAvailable().map(toModelInfo);
       const skills = runtime.services.resourceLoader.getSkills().skills.map((skill) => ({
         name: `skill:${skill.name}`,
         description: skill.description,
@@ -516,7 +519,7 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
       return runtime.session.cycleThinkingLevel();
 
     case 'set_model': {
-      const model = runtime.session.modelRegistry.find(command.provider, command.modelId);
+      const model = runtime.services.modelRuntime.getModel(command.provider, command.modelId);
       if (!model) {
         return { success: false, error: `model not found: ${command.provider}/${command.modelId}` };
       }
@@ -538,8 +541,7 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
 
     case 'debug': {
       const session = runtime.session;
-      const models = runtime.services.modelRegistry;
-      const available = await models.getAvailable();
+      const available = runtime.services.modelRuntime.getAvailableSnapshot();
       const extensions = runtime.services.resourceLoader.getExtensions();
       return {
         model: session.model
@@ -558,93 +560,72 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
     }
 
     case 'get_auth_providers': {
-      const modelRegistry = runtime.services.modelRegistry;
-      const authStorage = modelRegistry?.authStorage;
-      if (!authStorage) {
-        return { success: false, error: 'Auth storage not initialized' };
-      }
+      const modelRuntime = runtime.services.modelRuntime;
+      const providers: AuthProviderInfo[] = [];
 
-      // OAuth providers
-      const oauthProviders = authStorage.getOAuthProviders();
-      const oauthProviderIds = new Set(oauthProviders.map((p) => p.id));
-      const seenProviderIds = new Set<string>(oauthProviderIds);
-
-      const providers: AuthProviderInfo[] = oauthProviders.map((p) => {
-        const status = authStorage.getAuthStatus(p.id);
-        return {
-          id: p.id,
-          name: p.name,
-          hasAuth: authStorage.hasAuth(p.id),
-          authStatus: status,
-          authType: 'oauth' as const,
-        };
-      });
-
-      // API key providers from model registry (providers with models that are not OAuth)
-      const modelProviders = modelRegistry.getAll().map((m) => m.provider);
-      for (const providerId of new Set(modelProviders)) {
-        if (seenProviderIds.has(providerId)) continue;
-        seenProviderIds.add(providerId);
-        const displayName = modelRegistry.getProviderDisplayName(providerId);
-        providers.push({
-          id: providerId,
-          name: displayName,
-          hasAuth: authStorage.hasAuth(providerId),
-          authStatus: authStorage.getAuthStatus(providerId),
-          authType: 'api_key' as const,
-        });
+      for (const provider of modelRuntime.getProviders()) {
+        const authStatus = modelRuntime.getProviderAuthStatus(provider.id);
+        if (provider.auth.oauth) {
+          providers.push({
+            id: provider.id,
+            name: provider.auth.oauth.name,
+            hasAuth: authStatus.configured,
+            authStatus,
+            authType: 'oauth' as const,
+          });
+        } else if (provider.auth.apiKey) {
+          providers.push({
+            id: provider.id,
+            name: provider.auth.apiKey.name,
+            hasAuth: authStatus.configured,
+            authStatus,
+            authType: 'api_key' as const,
+          });
+        }
       }
 
       return { success: true, providers };
     }
 
     case 'login_oauth': {
-      const authStorage = runtime.services.modelRegistry?.authStorage;
-      if (!authStorage) {
-        return { success: false, error: 'Auth storage not initialized' };
-      }
       const providerId = command.providerId;
-      // Check if this is a registered OAuth provider
-      const oauthProviders = authStorage.getOAuthProviders();
-      const isOAuthProvider = oauthProviders.some((p) => p.id === providerId);
-      if (!isOAuthProvider) {
+      const provider = runtime.services.modelRuntime.getProvider(providerId);
+      if (!provider?.auth.oauth) {
         return {
           success: false,
           error: `"${providerId}" is not an OAuth provider. Use API key authentication instead.`,
         };
       }
       try {
-        await authStorage.login(providerId, {
-          onAuth: (info) => {
-            if (dataPort) {
-              dataPort.postMessage({ type: 'login_open_url', url: info.url });
+        await runtime.services.modelRuntime.login(providerId, 'oauth', {
+          notify: (event) => {
+            switch (event.type) {
+              case 'auth_url':
+                if (dataPort) {
+                  dataPort.postMessage({ type: 'login_open_url', url: event.url });
+                }
+                break;
+              case 'device_code':
+                if (dataPort) {
+                  dataPort.postMessage({
+                    type: 'login_device_code',
+                    verificationUri: event.verificationUri,
+                    userCode: event.userCode,
+                  });
+                }
+                break;
+              case 'progress':
+                if (dataPort) {
+                  dataPort.postMessage({ type: 'login_progress', message: event.message });
+                }
+                break;
             }
           },
-          onDeviceCode: (info) => {
-            if (dataPort) {
-              dataPort.postMessage({
-                type: 'login_device_code',
-                verificationUri: info.verificationUri,
-                userCode: info.userCode,
-              });
-            }
-          },
-          onPrompt: async () => {
-            // For now, we don't support interactive prompts in Electron.
-            // The callback server should handle the redirect automatically.
+          prompt: async () => {
+            // Interactive prompts not supported in Electron GUI yet
             return '';
           },
-          onSelect: async () => {
-            // Interactive selection not supported in Electron GUI yet.
-            return undefined;
-          },
-          onProgress: (message) => {
-            if (dataPort) {
-              dataPort.postMessage({ type: 'login_progress', message });
-            }
-          },
         });
-        runtime.services.modelRegistry.refresh();
         if (dataPort) {
           dataPort.postMessage({ type: 'login_complete', providerId });
         }
@@ -662,12 +643,19 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
       if (!command.providerId?.trim() || !command.apiKey?.trim()) {
         return { success: false, error: 'Provider and API key must not be empty' };
       }
-      const authStorage = runtime.services.modelRegistry?.authStorage;
-      if (!authStorage) {
-        return { success: false, error: 'Auth storage not initialized' };
+      try {
+        // login() persists the credential to disk; setRuntimeApiKey() is session-only.
+        await runtime.services.modelRuntime.login(command.providerId, 'api_key', {
+          prompt: async () => command.apiKey,
+          notify: () => undefined,
+        });
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        if (dataPort) {
+          dataPort.postMessage({ type: 'login_error', error });
+        }
+        return { success: false, error };
       }
-      authStorage.set(command.providerId, { type: 'api_key', key: command.apiKey });
-      runtime.services.modelRegistry.refresh();
       if (dataPort) {
         dataPort.postMessage({ type: 'login_complete', providerId: command.providerId });
       }
@@ -675,12 +663,7 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
     }
 
     case 'logout': {
-      const authStorage = runtime.services.modelRegistry?.authStorage;
-      if (!authStorage) {
-        return { success: false, error: 'Auth storage not initialized' };
-      }
-      authStorage.logout(command.providerId);
-      runtime.services.modelRegistry.refresh();
+      await runtime.services.modelRuntime.logout(command.providerId);
       return { success: true };
     }
 
@@ -737,8 +720,9 @@ async function warmUp(cwds: string[]): Promise<void> {
     const cwd = cwds[0] || process.cwd();
     const services = await getServices(cwd);
     // Report available models and thinking levels back to main.
-    services.modelRegistry.refresh();
-    const available = services.modelRegistry.getAvailable();
+    const modelRegistry = new ModelRegistry(services.modelRuntime);
+    await modelRegistry.refresh();
+    const available = modelRegistry.getAvailable();
     const models = available.map(toModelInfo);
     sendToMain({ type: 'warm_ready', models });
   } catch (err) {

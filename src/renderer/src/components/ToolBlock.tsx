@@ -318,6 +318,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           {isOverflowing && (
             <button
               type="button"
+              data-action="expand-overflow" // search auto-expand relies on this attr
               onClick={() => setExpanded((v) => !v)}
               className="mt-1 text-left text-xs text-muted-foreground hover:text-foreground"
             >

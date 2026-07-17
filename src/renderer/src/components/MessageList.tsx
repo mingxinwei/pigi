@@ -489,7 +489,7 @@ export default React.memo(function MessageList({
           const overflowRect = overflowEl.getBoundingClientRect();
           if (matchRect.bottom <= overflowRect.bottom) return;
 
-          // Match is hidden — expand, then scroll to it
+          // relies on [data-action="expand-overflow"] on overflow buttons
           const expandButton = root.querySelector<HTMLButtonElement>(
             '[data-action="expand-overflow"]',
           );
@@ -946,6 +946,7 @@ function UserBubble({
               type="button"
               onClick={() => setExpanded((current) => !current)}
               className="block w-full px-3.5 pt-1.5 pb-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+              // search auto-expand uses this attr to find the button
               data-action="expand-overflow"
             >
               {expanded ? 'Show less' : 'Show more'}

@@ -456,9 +456,3 @@
     background-position: -100% 0;
   }
 }
-
-.search-highlight {
-  background-color: var(--search-highlight-bg);
-  border-radius: var(--radius-md);
-  transition: background-color 200ms ease-out;
-}

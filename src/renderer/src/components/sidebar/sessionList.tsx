@@ -253,20 +253,21 @@ export function SessionList({
         showAll &&
         sessionsToRender.length > visibleSessionCount &&
         !isCollapsedWithPinned && (
-          <div className="sticky bottom-0 z-10 bg-sidebar-solid">
-            <SidebarMenuSub className="mx-0 border-l-0 px-0">
-              <SidebarMenuSubItem>
-                <SidebarMenuSubButton
-                  asChild
-                  className="w-full justify-start pl-6 text-left text-muted-foreground"
-                >
-                  <button type="button" onClick={() => setShowAll(false)}>
-                    <span>Show less</span>
-                  </button>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
-            </SidebarMenuSub>
-          </div>
+          <SidebarMenuSub
+            data-show-all
+            className="sticky bottom-0 z-10 mx-0 border-l-0 px-0 py-0 gap-0 bg-muted rounded-md hover:bg-[#e5e5e5]"
+          >
+            <SidebarMenuSubItem>
+              <SidebarMenuSubButton
+                asChild
+                className="w-full justify-start pl-6 text-left text-muted-foreground hover:bg-transparent"
+              >
+                <button type="button" onClick={() => setShowAll(false)}>
+                  <span>Show less</span>
+                </button>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          </SidebarMenuSub>
         )}
     </>
   );

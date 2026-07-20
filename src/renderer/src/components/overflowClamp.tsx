@@ -111,7 +111,7 @@ export default function OverflowClamp({
             data-action="expand-overflow" // search auto-expand relies on this attr
             onClick={() => setExpanded((current) => !current)}
             className={cn(
-              'sticky bottom-4 z-10 mt-1 w-fit rounded-full px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground',
+              'sticky bottom-4 z-10 mt-1 w-fit rounded-full py-0.5 text-[14px] text-muted-foreground transition-colors hover:text-foreground',
               isStuck && 'bg-background/70 shadow-sm backdrop-blur-sm',
               buttonClassName,
             )}

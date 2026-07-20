@@ -433,6 +433,12 @@
     -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 16px), transparent);
   }
 
+  /* When a sticky footer (Show less) is present, remove the bottom fade */
+  .content-fade-bottom:has([data-show-all]) {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
   .sidebar-surface {
     position: relative;
   }

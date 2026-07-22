@@ -147,7 +147,7 @@ export default function CollapsedReadGroup({
   );
   const noun = toolCount === 1 ? 'file' : 'files';
   const thinkNoun = thinkingCount === 1 ? 'time' : 'times';
-  const thinkVerb = isActive ? 'thinking' : 'thinked';
+  const thinkVerb = isActive ? 'thinking' : 'thought';
   const parts = [`Looked into ${toolCount} ${noun}`];
   if (thinkingCount > 0) parts.push(`${thinkVerb} ${thinkingCount} ${thinkNoun}`);
   const label = isActive ? `Looking into ${toolCount} ${noun}` : parts.join(', ');

@@ -83,9 +83,9 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
   for (const node of nodes) {
     if (node.role === 'tool' && isReadToolNode(node)) {
       currentGroup.push({ kind: 'tool', node });
-    } else if (isThinkingOnlyNode(node) && currentGroup.length > 0) {
-      // Thinking-only messages are transparent to grouping —
-      // absorb them directly into the current read group.
+    } else if (node.role === 'assistant' && node.thinking.length > 0 && currentGroup.length > 0) {
+      // Thinking messages between read tools stay in the group
+      // even if they later gain text (e.g. at message_end).
       currentGroup.push({ kind: 'thinking', node });
     } else {
       flushGroup();

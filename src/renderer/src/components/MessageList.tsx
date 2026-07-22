@@ -394,6 +394,7 @@ export default React.memo(function MessageList({
   );
 
   const toggleGroupExpand = useCallback((groupId: string) => {
+    autoScrollRef.current = false;
     setExpandedGroupIds((prev) => {
       const next = new Set(prev);
       if (next.has(groupId)) {
@@ -875,11 +876,11 @@ function UserBubble({
   return (
     <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
       <div className="group flex max-w-[85%] flex-col items-end">
-        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-clip')}>
+        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-clip p-3.5')}>
           <OverflowClamp
             maxHeight={maxHeight}
-            className="px-3.5 py-1.5 text-[15px] leading-6 text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-            buttonClassName="ml-3.5 mb-1.5"
+            tailAnchor={false}
+            className="text-[15px] leading-6 text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
           >
             {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
           </OverflowClamp>

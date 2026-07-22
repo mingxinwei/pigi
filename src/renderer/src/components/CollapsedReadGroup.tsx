@@ -82,12 +82,10 @@ function HighlightedEntry({
 }
 
 /** A thinking row inside a collapsed read group. Shows a header with
- *  duration and chevron, plus a preview of the latest thinking content.
- *  Clicking expands/collapses the full thinking block inline. */
+ *  duration and chevron. Clicking expands/collapses the full thinking block inline. */
 function ThinkingGroupRow({ node }: { node: AssistantNode }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const thinkingInProgress = node.isStreaming && node.thinkingEndedAt === undefined;
-  const lastLine = node.thinking.trim().split('\n').pop() ?? '';
 
   return (
     <div className="flex flex-col">
@@ -110,15 +108,12 @@ function ThinkingGroupRow({ node }: { node: AssistantNode }): React.JSX.Element 
           startedAt={node.thinkingStartedAt}
           endedAt={node.thinkingEndedAt}
           isStreaming={node.isStreaming}
-          className="ml-1 shrink-0 text-xs text-muted-foreground"
+          className="ml-0.5 shrink-0 text-xs text-muted-foreground"
         />
         <IconChevronRight
-          className={`ml-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
+          className={`-ml-1 size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
       </button>
-      {!expanded && lastLine && (
-        <div className="ml-5 truncate text-[14px] text-muted-foreground/70">{lastLine}</div>
-      )}
       {expanded && (
         <div className="mt-1 ml-5">
           <ThinkingBlock
@@ -192,14 +187,6 @@ export default function CollapsedReadGroup({
               );
             })}
           </div>
-          {isActive && (
-            <div className="mt-0.5 flex items-center" data-search-ignore>
-              <span className="relative overflow-hidden text-[15px] text-muted-foreground">
-                Working...
-                <ShimmerOverlay />
-              </span>
-            </div>
-          )}
         </div>
         <CollapsibleContent
           className="flex flex-col px-3 pb-1.5"
@@ -226,6 +213,14 @@ export default function CollapsedReadGroup({
               )}
             </HighlightedEntry>
           ))}
+          {isActive && (
+            <div className="flex items-center" data-search-ignore>
+              <span className="relative overflow-hidden text-[15px] text-muted-foreground">
+                Working...
+                <ShimmerOverlay />
+              </span>
+            </div>
+          )}
         </CollapsibleContent>
       </div>
     </Collapsible>

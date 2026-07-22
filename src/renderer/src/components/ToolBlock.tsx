@@ -215,7 +215,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/50">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground bg-muted/60 border-b border-border/50">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -226,43 +226,18 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             >
               {command.body}
             </span>
-            {isCommandTruncated && timeout !== undefined ? (
-              <div className="ml-auto shrink-0 flex flex-col items-end">
-                <span data-search-ignore className="text-xs font-normal text-muted-foreground">
-                  timeout {timeout}s
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCommandExpanded((v) => !v)}
-                  className="text-xs font-normal text-muted-foreground hover:text-foreground"
-                >
-                  {commandExpanded ? 'less' : 'more'}
-                </button>
-              </div>
-            ) : (
-              <>
-                {isCommandTruncated && (
-                  <button
-                    type="button"
-                    onClick={() => setCommandExpanded((v) => !v)}
-                    className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
-                  >
-                    {commandExpanded ? 'less' : 'more'}
-                  </button>
-                )}
-                {timeout !== undefined && (
-                  <span
-                    data-search-ignore
-                    className="ml-auto shrink-0 text-xs font-normal text-muted-foreground"
-                  >
-                    timeout {timeout}s
-                  </span>
-                )}
-              </>
+            {(isCommandTruncated || commandExpanded) && (
+              <button
+                type="button"
+                onClick={() => setCommandExpanded((v) => !v)}
+                className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
+              >
+                {commandExpanded ? 'less' : 'more'}
+              </button>
             )}
           </div>
         ) : (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/50">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground bg-muted/60 border-b border-border/50">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>
@@ -272,7 +247,6 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
           className="py-1"
           contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
-          buttonClassName="mt-1 -mb-1"
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
             <DiffView lines={editDiffFromDetails} />
@@ -299,16 +273,19 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         <div
           data-search-ignore
           className={cn(
-            '-mx-3 -mb-2 mt-auto flex items-center justify-start gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
+            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
             statusClassName,
           )}
           style={statusStyle}
         >
-          {node.status === 'running' ? (
-            <ElapsedTimer startedAt={node.startedAt} />
-          ) : (
-            <>{durationLabel && <span>{durationLabel}</span>}</>
-          )}
+          <span>
+            {node.status === 'running' ? (
+              <ElapsedTimer startedAt={node.startedAt} />
+            ) : (
+              <>{durationLabel && <span>{durationLabel}</span>}</>
+            )}
+          </span>
+          {timeout !== undefined && <span data-search-ignore>timeout {timeout}s</span>}
         </div>
       </div>
       {imagePath && <ImagePreview src={`local-file://${imagePath}`} alt={imagePath} />}

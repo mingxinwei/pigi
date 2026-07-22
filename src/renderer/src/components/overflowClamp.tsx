@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { cn } from '../lib/utils';
 
 /** Fade applied at the top edge where tail-anchored content is clipped */
@@ -64,8 +65,9 @@ export default function OverflowClamp({
 
     let raf = 0;
     const check = (): void => {
-      // When stuck, the button is shifted up and the sentinel trails below it
-      setIsStuck(sentinel.getBoundingClientRect().top > button.getBoundingClientRect().bottom);
+      // When stuck, the button is pulled down by sticky positioning,
+      // creating a gap between the sentinel (natural position) and the button
+      setIsStuck(button.getBoundingClientRect().top - sentinel.getBoundingClientRect().bottom > 8);
     };
     const scheduleCheck = (): void => {
       cancelAnimationFrame(raf);
@@ -86,6 +88,35 @@ export default function OverflowClamp({
 
   return (
     <>
+      {isOverflowing && (
+        <>
+          {/* marks the button's natural position for stuck detection */}
+          <div ref={sentinelRef} aria-hidden className="h-0" />
+          <button
+            ref={buttonRef}
+            type="button"
+            data-action="expand-overflow" // search auto-expand relies on this attr
+            onClick={() => setExpanded((current) => !current)}
+            className={cn(
+              'sticky bottom-4 z-10 mb-1 flex w-fit items-center gap-1 rounded-full py-0.5 text-[14px] text-muted-foreground transition-colors hover:text-foreground',
+              isStuck && 'bg-background/70 shadow-sm backdrop-blur-sm',
+              buttonClassName,
+            )}
+          >
+            {expanded ? (
+              <>
+                Show less
+                <IconChevronDown className="size-4" />
+              </>
+            ) : (
+              <>
+                Show more
+                <IconChevronUp className="size-4" />
+              </>
+            )}
+          </button>
+        </>
+      )}
       <div
         className={cn('flex flex-col justify-end overflow-hidden', className)}
         style={{
@@ -101,25 +132,6 @@ export default function OverflowClamp({
           {children}
         </div>
       </div>
-      {isOverflowing && (
-        <>
-          {/* marks the button's natural position for stuck detection */}
-          <div ref={sentinelRef} aria-hidden className="h-0" />
-          <button
-            ref={buttonRef}
-            type="button"
-            data-action="expand-overflow" // search auto-expand relies on this attr
-            onClick={() => setExpanded((current) => !current)}
-            className={cn(
-              'sticky bottom-4 z-10 mt-1 w-fit rounded-full py-0.5 text-[14px] text-muted-foreground transition-colors hover:text-foreground',
-              isStuck && 'bg-background/70 shadow-sm backdrop-blur-sm',
-              buttonClassName,
-            )}
-          >
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        </>
-      )}
     </>
   );
 }

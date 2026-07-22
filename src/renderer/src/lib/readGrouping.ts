@@ -37,25 +37,15 @@ function isThinkingOnlyNode(node: TranscriptNode): node is AssistantNode {
 }
 
 /**
- * Folds thinking-only assistant messages sandwiched between two read groups
- * into the surrounding group, so the collapsed view renders the thought as a
- * single row ("thinking ...") instead of a separate block. Group identity is
- * preserved (first group's id) so expanded state survives the merge.
+ * Absorbs any remaining thinking-only assistant messages that follow a
+ * read group (edge case: thinking arrives after group flush).
  */
 function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
   const result: RenderItem[] = [];
-  for (let index = 0; index < items.length; index++) {
-    const item = items[index];
+  for (const item of items) {
     const previous = result[result.length - 1];
-    const next = items[index + 1];
-    if (
-      item.type === 'node' &&
-      isThinkingOnlyNode(item.node) &&
-      previous?.type === 'readGroup' &&
-      next?.type === 'readGroup'
-    ) {
-      previous.entries.push({ kind: 'thinking', node: item.node }, ...next.entries);
-      index++; // skip the merged-away group
+    if (item.type === 'node' && isThinkingOnlyNode(item.node) && previous?.type === 'readGroup') {
+      previous.entries.push({ kind: 'thinking', node: item.node });
       continue;
     }
     result.push(item);
@@ -65,8 +55,9 @@ function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
 
 /**
  * Groups consecutive read-only tool nodes into collapsed groups.
- * Non-read-only nodes break the consecutive sequence. Thinking-only
- * assistant messages between two groups are absorbed into the group.
+ * Thinking-only assistant messages between reads are absorbed directly
+ * into the group (transparent to grouping). Non-read, non-thinking nodes
+ * break the consecutive sequence.
  */
 export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem[] {
   if (!compact) {
@@ -74,14 +65,16 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
   }
 
   const items: RenderItem[] = [];
-  let currentGroup: ToolNode[] = [];
+  let currentGroup: ReadGroupEntry[] = [];
 
   function flushGroup(): void {
     if (currentGroup.length > 0) {
+      const first = currentGroup[0];
+      const firstNode = first.kind === 'tool' ? first.node : first.node;
       items.push({
         type: 'readGroup',
-        entries: currentGroup.map((node) => ({ kind: 'tool', node })),
-        id: `group-${currentGroup[0].id}`,
+        entries: currentGroup,
+        id: `group-${firstNode.id}`,
       });
       currentGroup = [];
     }
@@ -89,7 +82,11 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
 
   for (const node of nodes) {
     if (node.role === 'tool' && isReadToolNode(node)) {
-      currentGroup.push(node);
+      currentGroup.push({ kind: 'tool', node });
+    } else if (isThinkingOnlyNode(node) && currentGroup.length > 0) {
+      // Thinking-only messages are transparent to grouping —
+      // absorb them directly into the current read group.
+      currentGroup.push({ kind: 'thinking', node });
     } else {
       flushGroup();
       items.push({ type: 'node', node, id: node.id });

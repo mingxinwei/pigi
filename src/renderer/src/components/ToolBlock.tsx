@@ -207,7 +207,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   return (
     <>
       <div
-        className="overflow-clip rounded-md border border-border/65 bg-muted/25 px-3 py-1.5 text-sm text-muted-foreground flex flex-col"
+        className="overflow-clip rounded-md border border-border/65 bg-muted/25 px-3 pt-0 pb-1.5 text-sm text-muted-foreground flex flex-col"
         style={{
           maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px`,
           minHeight: node.status === 'running' ? TOOL_BLOCK_RUNNING_MIN_HEIGHT : undefined,
@@ -215,7 +215,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="flex items-start gap-1 rounded py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/50">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -262,7 +262,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
           </div>
         ) : (
-          <div className="flex items-start gap-1 rounded py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/50">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>
@@ -270,8 +270,9 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
         <OverflowClamp
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
+          className="py-1"
           contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
-          buttonClassName="mb-2"
+          buttonClassName="mt-1 -mb-1"
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
             <DiffView lines={editDiffFromDetails} />
@@ -289,7 +290,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
           {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
             hasOutput &&
             ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
-              <pre className="mt-2 overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+              <pre className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
                 <SyntaxHighlightedCode code={cleanedOutput} language={outputLanguage} />
               </pre>
             )}

@@ -64,17 +64,7 @@ export default function OverflowClamp({
 
     let raf = 0;
     const check = (): void => {
-      if (tailAnchor) {
-        // Button above content: stuck when it's pulled below the sentinel
-        setIsStuck(
-          button.getBoundingClientRect().top - sentinel.getBoundingClientRect().bottom > 8,
-        );
-      } else {
-        // Button below content: stuck when it's pushed above the sentinel
-        setIsStuck(
-          sentinel.getBoundingClientRect().top - button.getBoundingClientRect().bottom > 8,
-        );
-      }
+      setIsStuck(button.getBoundingClientRect().top - sentinel.getBoundingClientRect().bottom > 8);
     };
     const scheduleCheck = (): void => {
       cancelAnimationFrame(raf);

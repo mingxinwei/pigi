@@ -26,7 +26,7 @@ function hexToOklch(hex: string): string {
   const B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_;
   const C = Math.sqrt(A * A + B * B);
   const H = (Math.atan2(B, A) * 180) / Math.PI + (Math.atan2(B, A) < 0 ? 360 : 0);
-  return `oklch(${L.toFixed(3)} ${C.toFixed(3)} ${H.toFixed(3)})`;
+  return `oklch(${(L * 0.75).toFixed(3)} ${C.toFixed(3)} ${H.toFixed(3)})`;
 }
 
 // Inject system accent color as CSS variable before first paint.

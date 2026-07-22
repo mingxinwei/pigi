@@ -59,7 +59,7 @@
 }
 
 :root {
-  --system-accent: oklch(0.623 0.214 259.815);
+  --system-accent: oklch(0.48 0.22 259);
   --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(1 0 0);
   --foreground: #1a1c1f;
@@ -98,7 +98,7 @@
 }
 
 .dark {
-  --system-accent: oklch(0.623 0.214 259.815);
+  --system-accent: oklch(0.55 0.22 259);
   --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

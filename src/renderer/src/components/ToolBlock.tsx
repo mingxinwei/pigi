@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { IconCheck, IconX, IconMinus } from '@tabler/icons-react';
 import { cn } from '../lib/utils';
 import { type ToolNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_CONTENT_MAX_WIDTH, BLOCK_CONTENT_MAX_HEIGHT } from '../lib/layoutConstants';
@@ -37,17 +36,44 @@ interface ToolBlockProps {
   node: ToolNode;
 }
 
-const STATUS_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  success: IconCheck,
-  error: IconX,
-  cancelled: IconMinus,
-};
-
-const STATUS_TEXT: Record<string, string> = {
-  success: 'text-[#166534]',
-  error: 'text-[#991b1b]',
-  cancelled: 'text-[#3f3f46]',
-};
+const STATUS_CONFIG = {
+  running: {
+    label: 'Running',
+    className: 'text-[#92400e]',
+    style: {
+      background: 'linear-gradient(180deg, #fef3c7, #fffbeb)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
+  },
+  success: {
+    label: 'Succeeded',
+    className: 'text-[#166534]',
+    style: {
+      background: 'linear-gradient(180deg, #dcfce7, #f0fdf4)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
+  },
+  error: {
+    label: 'Failed',
+    className: 'text-[#991b1b]',
+    style: {
+      background: 'linear-gradient(180deg, #fee2e2, #fef2f2)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+    },
+  },
+  cancelled: {
+    label: 'Cancelled',
+    className: 'text-[#3f3f46]',
+    style: {
+      background: 'linear-gradient(180deg, #f4f4f5, #fafafa)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
+      textShadow: '0 1px 0 rgba(255,255,255,0.2)',
+    },
+  },
+} as const;
 
 function ElapsedTimer({ startedAt }: { startedAt?: number }): React.JSX.Element {
   const [startMs] = useState(() => startedAt ?? Date.now());
@@ -60,7 +86,7 @@ function ElapsedTimer({ startedAt }: { startedAt?: number }): React.JSX.Element 
     return () => clearInterval(interval);
   }, [startMs]);
 
-  return <span className="tabular-nums">{elapsed.toFixed(1)}s</span>;
+  return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>;
 }
 
 /** Min height for running tool blocks to reserve space and reduce layout shift */
@@ -142,13 +168,6 @@ function formatDuration(durationMs: number | undefined): string | null {
   return `Took ${formattedSeconds}s`;
 }
 
-function formatDurationSeconds(durationMs: number | undefined): string | null {
-  if (durationMs === undefined || !Number.isFinite(durationMs)) return null;
-  const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND);
-  const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString();
-  return `${formattedSeconds}s`;
-}
-
 function getReadImagePath(node: ToolNode): string | null {
   if (node.name !== 'read') return null;
   const lines = node.output.split('\n');
@@ -175,6 +194,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   // Read tool returns fast — skip rendering the running state to avoid flicker
   if (node.name === 'read' && node.status === 'running') return null;
 
+  const { className: statusClassName, style: statusStyle } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
@@ -195,7 +215,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground bg-muted/60">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -206,32 +226,6 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             >
               {command.body}
             </span>
-            {node.status !== 'running' && durationLabel && (
-              <span
-                data-search-ignore
-                className={`ml-auto flex shrink-0 items-center gap-1 text-xs font-normal ${STATUS_TEXT[node.status] ?? 'text-muted-foreground'}`}
-              >
-                {(() => {
-                  const Icon = STATUS_ICON[node.status];
-                  return Icon ? <Icon className="size-3.5" /> : null;
-                })()}
-                {formatDurationSeconds(node.durationMs)}
-                {timeout !== undefined && (
-                  <span className="text-muted-foreground/60"> (timeout {timeout}s)</span>
-                )}
-              </span>
-            )}
-            {node.status === 'running' && (
-              <span
-                data-search-ignore
-                className="ml-auto flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground"
-              >
-                <ElapsedTimer startedAt={node.startedAt} />
-                {timeout !== undefined && (
-                  <span className="text-muted-foreground/60"> (timeout {timeout}s)</span>
-                )}
-              </span>
-            )}
             {(isCommandTruncated || commandExpanded) && (
               <button
                 type="button"
@@ -243,26 +237,15 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
           </div>
         ) : (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground bg-muted/60">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
-            {node.status === 'running' && (
-              <span
-                data-search-ignore
-                className="ml-auto flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground"
-              >
-                <ElapsedTimer startedAt={node.startedAt} />
-                {timeout !== undefined && (
-                  <span className="text-muted-foreground/60"> (timeout {timeout}s)</span>
-                )}
-              </span>
-            )}
           </div>
         )}
 
         <OverflowClamp
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
-          className="py-2"
+          className="py-1"
           contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
@@ -286,6 +269,24 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
               </pre>
             )}
         </OverflowClamp>
+
+        <div
+          data-search-ignore
+          className={cn(
+            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
+            statusClassName,
+          )}
+          style={statusStyle}
+        >
+          <span>
+            {node.status === 'running' ? (
+              <ElapsedTimer startedAt={node.startedAt} />
+            ) : (
+              <>{durationLabel && <span>{durationLabel}</span>}</>
+            )}
+          </span>
+          {timeout !== undefined && <span data-search-ignore>timeout {timeout}s</span>}
+        </div>
       </div>
       {imagePath && <ImagePreview src={`local-file://${imagePath}`} alt={imagePath} />}
     </>

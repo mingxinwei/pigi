@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import OverflowClamp from './overflowClamp';
-import { BLOCK_CONTENT_MAX_HEIGHT } from '../lib/layoutConstants';
 import { cn } from '../lib/utils';
 
 /**
@@ -80,7 +79,7 @@ export default function ThinkingBlock({
           className="font-normal"
         />
       </div>
-      <OverflowClamp maxHeight={BLOCK_CONTENT_MAX_HEIGHT}>
+      <OverflowClamp maxHeight={120}>
         <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
           {text}
         </pre>

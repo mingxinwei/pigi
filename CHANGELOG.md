@@ -4,24 +4,27 @@
 
 ### Added
 
-- Long block content (tool outputs, thinking text, user messages) now auto-collapses at 300px with a "Show more" button. Expanded blocks show a "Show less" button that floats at the viewport bottom while scrolling, with a subtle frosted-glass background when floating. Collapsed blocks show the last lines of content so recent output stays visible.
-- Consecutive read-only tool calls (read, grep, ls) now auto-group into a compact collapsed row like "Looked into 3 files". Each row shows a status icon (green check, red cross, grey dash) and monospace command label. When the group is still growing, a shimmer "Working…" row appears below. Expanding the group shows full tool outputs with search highlight support.
-- Thinking blocks inside read groups are now shown as compact rows with a brain icon, label preview, and real-time duration ticking during live streaming. Clicking the row expands the full thinking block inline. Standalone thinking blocks also display the thinking duration in the header.
+- Long block content (tool outputs, thinking text, user messages) now auto-collapses at 300px with a "Show more" / "Show less" button. For streaming tool output, the button floats above the content with a frosted-glass background while scrolling. For static content like user messages, the button sits below the clamped area.
+- Consecutive read-only tool calls (read, grep, ls) now auto-group into a compact collapsed row like "Looked into 3 files". Expanding the group shows full tool outputs with search highlight support. The "Working..." shimmer row now appears at the end of expanded content inside the group.
+- Thinking blocks inside read groups are shown as compact rows with a brain icon, duration, and chevron to expand the full block inline. Thinking blocks stay inside the group even after the thinking message finishes.
+- Thinking blocks now display the thinking duration in the header, with live ticking during streaming.
+- Tool block title rows now have a gray background for visual separation from the output body.
 
 ### Changed
 
-- Redesigned "Show more" / "Show less" button: moved above clamped content for better visibility in tail-anchored views, uses chevron icons (chevron-up to expand, chevron-down to collapse), and has a frosted-glass background when sticky at the viewport bottom.
-- Tool block title rows now have a full-width bottom border separating the command from output, without rounded corners.
-- Tool block command labels are now truncated more gracefully, avoiding awkward mid-word breaks.
-- Sidebar "Show less" button is now opaque gray that darkens on hover, and the bottom content fade disappears when the button is visible.
-- Thinking duration format: sub-second durations now show as `0.xs` instead of `<1s`.
-- Live streaming thinking duration is now anchored to the message start time rather than the first delta's arrival, avoiding zero durations when deltas are batched.
+- Tool block command timeout is now shown in the status bar (next to "Took Xs") instead of the title row.
+- Show more/less chevron direction adapts to whether the button is above or below content.
+- User message bubble spacing is now managed by a single container padding instead of individual margins.
+- Thinking block collapsed max height reduced to 120px.
+- Thinking duration format: sub-second durations show as `0.xs` instead of `<1s`.
+- Live streaming thinking duration anchors to message start time rather than first delta, avoiding zero durations when deltas are batched.
+- Tool block command truncation button no longer disappears after expanding.
+- Expanding a read group no longer auto-scrolls to the bottom of the conversation.
 
 ### Fixed
 
-- History thinking duration was missing when opening a chat from a previous session. Messages now carry the outer persistence timestamp, so the renderer can accurately compute the real thinking duration.
-- Thinking blocks between read tools are now transparent to read grouping and appear as compact rows inside the group, instead of breaking the group into separate fragments.
-- Tool block collapsed content now has consistent 4px spacing between the "Show more" button and the content below it.
+- History thinking duration was missing when opening a previous session. Messages now carry the outer persistence timestamp for accurate duration calculation.
+- Thinking blocks between read tools are transparent to grouping and appear inside the group instead of breaking it apart.
 - Thinking deltas arriving in bursts no longer produce zero or missing durations during live streaming.
 
 ### Fixed

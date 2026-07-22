@@ -41,36 +41,28 @@ const STATUS_CONFIG = {
     label: 'Running',
     className: 'text-[#92400e]',
     style: {
-      background: 'linear-gradient(180deg, #fef3c7, #fffbeb)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
-      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+      background: '#fef3c7',
     },
   },
   success: {
     label: 'Succeeded',
     className: 'text-[#166534]',
     style: {
-      background: 'linear-gradient(180deg, #dcfce7, #f0fdf4)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
-      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+      background: '#dcfce7',
     },
   },
   error: {
     label: 'Failed',
     className: 'text-[#991b1b]',
     style: {
-      background: 'linear-gradient(180deg, #fee2e2, #fef2f2)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
-      textShadow: '0 1px 0 rgba(255,255,255,0.25)',
+      background: '#fee2e2',
     },
   },
   cancelled: {
     label: 'Cancelled',
     className: 'text-[#3f3f46]',
     style: {
-      background: 'linear-gradient(180deg, #f4f4f5, #fafafa)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.03)',
-      textShadow: '0 1px 0 rgba(255,255,255,0.2)',
+      background: '#f4f4f5',
     },
   },
 } as const;
@@ -215,7 +207,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/80">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -237,7 +229,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
           </div>
         ) : (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground">
+          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/80">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>
@@ -245,7 +237,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
         <OverflowClamp
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
-          className="py-1"
+          className="py-2"
           contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
@@ -273,7 +265,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         <div
           data-search-ignore
           className={cn(
-            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md',
+            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md border-t border-border/80',
             statusClassName,
           )}
           style={statusStyle}

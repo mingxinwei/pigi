@@ -5,9 +5,10 @@ import {
   IconX,
   IconMinus,
   IconLoader2,
+  IconBrain,
 } from '@tabler/icons-react';
-import { useRef } from 'react';
-import { type ToolNode, getToolArgs } from '../state/transcriptController';
+import { useRef, useState } from 'react';
+import { type ToolNode, type AssistantNode, getToolArgs } from '../state/transcriptController';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
 import type { ReadGroupEntry } from '../lib/readGrouping';
 import ToolBlock from './ToolBlock';
@@ -80,6 +81,58 @@ function HighlightedEntry({
   );
 }
 
+/** A thinking row inside a collapsed read group. Shows a header with
+ *  duration and chevron, plus a preview of the latest thinking content.
+ *  Clicking expands/collapses the full thinking block inline. */
+function ThinkingGroupRow({ node }: { node: AssistantNode }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const thinkingInProgress = node.isStreaming && node.thinkingEndedAt === undefined;
+  const lastLine = node.thinking.trim().split('\n').pop() ?? '';
+
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1.5 text-left"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {thinkingInProgress ? (
+          <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
+        ) : (
+          <IconBrain className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span
+          className={`text-[14px] ${thinkingInProgress ? 'text-foreground' : 'text-foreground/70'}`}
+        >
+          Thinking
+        </span>
+        <ThinkingDuration
+          startedAt={node.thinkingStartedAt}
+          endedAt={node.thinkingEndedAt}
+          isStreaming={node.isStreaming}
+          className="ml-1 shrink-0 text-xs text-muted-foreground"
+        />
+        <IconChevronRight
+          className={`ml-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
+        />
+      </button>
+      {!expanded && lastLine && (
+        <div className="ml-5 truncate text-[14px] text-muted-foreground/70">{lastLine}</div>
+      )}
+      {expanded && (
+        <div className="mt-1 ml-5">
+          <ThinkingBlock
+            text={node.thinking}
+            startedAt={node.thinkingStartedAt}
+            endedAt={node.thinkingEndedAt}
+            isStreaming={node.isStreaming}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CollapsedReadGroup({
   entries,
   isActive,
@@ -93,11 +146,19 @@ export default function CollapsedReadGroup({
     (count, entry) => (entry.kind === 'tool' ? count + 1 : count),
     0,
   );
+  const thinkingCount = entries.reduce(
+    (count, entry) => (entry.kind === 'thinking' ? count + 1 : count),
+    0,
+  );
   const noun = toolCount === 1 ? 'file' : 'files';
-  const label = isActive ? `Looking into ${toolCount} ${noun}` : `Looked into ${toolCount} ${noun}`;
+  const thinkNoun = thinkingCount === 1 ? 'time' : 'times';
+  const thinkVerb = isActive ? 'thinking' : 'thinked';
+  const parts = [`Looked into ${toolCount} ${noun}`];
+  if (thinkingCount > 0) parts.push(`${thinkVerb} ${thinkingCount} ${thinkNoun}`);
+  const label = isActive ? `Looking into ${toolCount} ${noun}` : parts.join(', ');
 
   return (
-    <Collapsible className="group/collapsible mb-2" open={open} onOpenChange={onOpenChange}>
+    <Collapsible className="group/collapsible mb-[22px]" open={open} onOpenChange={onOpenChange}>
       <div className="rounded-md border border-border/65 bg-muted/25">
         <div className="rounded-t-md px-3 py-1.5">
           <CollapsibleTrigger className="inline-flex items-center gap-1 text-[15px] leading-6 text-foreground hover:text-foreground cursor-pointer transition-colors [&[data-state=open]>svg.chevron-right]:hidden [&[data-state=closed]>svg.chevron-down]:hidden">
@@ -108,30 +169,7 @@ export default function CollapsedReadGroup({
           <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
             {entries.map((entry) => {
               if (entry.kind === 'thinking') {
-                const thinkingNode = entry.node;
-                const snippet = thinkingNode.thinking.trim().split('\n', 1)[0];
-                const thinkingInProgress =
-                  thinkingNode.isStreaming && thinkingNode.thinkingEndedAt === undefined;
-                return (
-                  <div
-                    key={thinkingNode.id}
-                    className={`flex items-center gap-1.5 ${thinkingInProgress ? 'text-foreground' : 'text-foreground/70'}`}
-                    data-search-ignore
-                  >
-                    {thinkingInProgress ? (
-                      <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
-                    ) : (
-                      <IconCheck className="size-3.5 shrink-0 text-[#166534]" />
-                    )}
-                    <span className="truncate font-mono text-[14px]">thinking {snippet}</span>
-                    <ThinkingDuration
-                      startedAt={thinkingNode.thinkingStartedAt}
-                      endedAt={thinkingNode.thinkingEndedAt}
-                      isStreaming={thinkingNode.isStreaming}
-                      className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground"
-                    />
-                  </div>
-                );
+                return <ThinkingGroupRow key={entry.node.id} node={entry.node} />;
               }
               const node = entry.node;
               const statusConfig =
@@ -156,7 +194,7 @@ export default function CollapsedReadGroup({
           </div>
           {isActive && (
             <div className="mt-0.5 flex items-center" data-search-ignore>
-              <span className="relative overflow-hidden text-[13px] text-muted-foreground">
+              <span className="relative overflow-hidden text-[15px] text-muted-foreground">
                 Working...
                 <ShimmerOverlay />
               </span>

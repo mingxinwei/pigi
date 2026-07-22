@@ -4,14 +4,15 @@ import { BLOCK_CONTENT_MAX_HEIGHT } from '../lib/layoutConstants';
 import { cn } from '../lib/utils';
 
 /**
- * Format a thinking duration: seconds under a minute, `m ss` under an hour,
- * `h mm` beyond that (hours are the largest unit shown).
+ * Format a thinking duration: sub-second as `0.x s`, seconds under a
+ * minute, `m ss` under an hour, `h mm` beyond that.
  */
 function formatThinkingDuration(durationMs: number): string {
-  const totalSeconds = Math.floor(durationMs / 1000);
-  if (totalSeconds < 1) {
-    return '<1s';
+  if (durationMs < 1000) {
+    const seconds = durationMs / 1000;
+    return `${seconds.toFixed(1)}s`;
   }
+  const totalSeconds = Math.floor(durationMs / 1000);
   if (totalSeconds < 60) {
     return `${totalSeconds}s`;
   }

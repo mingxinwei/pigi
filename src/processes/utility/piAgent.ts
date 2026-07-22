@@ -345,6 +345,9 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
 
     switch (event.type) {
       case 'message_start': {
+        // Flush pending deltas so they apply to the previous message's nodes
+        // before the new assistant node becomes active.
+        batch.flushNow();
         push({ type: 'event', event });
         break;
       }
@@ -377,6 +380,9 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
           batch.appendThinking(assistantMessageEvent.delta);
           return;
         }
+        // Flush pending text/thinking deltas before ordered events so the
+        // renderer applies them before toolcall_start / toolcall_end.
+        batch.flushNow();
         push({ type: 'event', event });
         break;
       }

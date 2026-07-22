@@ -40,6 +40,8 @@ export interface AssistantNode {
   thinkingStartedAt?: number;
   /** Set when thinking ends (text starts, a tool call starts, or the message finalizes) */
   thinkingEndedAt?: number;
+  /** Timestamp of the assistant message_start event (streaming sessions) */
+  messageStartedAt?: number;
 }
 
 export interface ToolNode {
@@ -347,6 +349,9 @@ export class TranscriptController {
         content?: unknown[];
         model?: { name?: string; provider?: string };
         timestamp?: number | string;
+        /** Outer persistence timestamp (ISO string), attached by utility
+         *  process from the session branch entry. */
+        pigiPersistedAt?: string;
         stopReason?: string;
         errorMessage?: string;
       };
@@ -391,6 +396,7 @@ export class TranscriptController {
           } = extractAssistantContent(parsed.content);
           const assistantError = parsed.errorMessage || contentError;
           const assistantTimestamp = tryNormalizeTimestamp(parsed.timestamp);
+          const persistedAt = tryNormalizeTimestamp(parsed.pigiPersistedAt);
           for (const toolCall of assistantToolCalls) {
             toolCalls.set(toolCall.id, {
               name: toolCall.name,
@@ -399,7 +405,7 @@ export class TranscriptController {
             });
           }
           if (text || thinking || assistantError) {
-            nodes.push({
+            const node: AssistantNode = {
               id: parsed.id || nextNodeId(),
               role: 'assistant',
               text,
@@ -409,7 +415,10 @@ export class TranscriptController {
               stopReason: parsed.stopReason,
               errorMessage: assistantError,
               isStreaming: false,
-            });
+              thinkingStartedAt: thinking ? assistantTimestamp : undefined,
+              thinkingEndedAt: thinking ? persistedAt : undefined,
+            };
+            nodes.push(node);
           }
           break;
         }
@@ -787,6 +796,7 @@ export class TranscriptController {
       text: '',
       thinking: '',
       isStreaming: true,
+      messageStartedAt: Date.now(),
     };
     this.setState({
       nodes: [...this._state.nodes, node],
@@ -795,15 +805,24 @@ export class TranscriptController {
     });
   }
 
-  /** Stamp the moment thinking starts (first thinking delta) */
+  /** Stamp the moment thinking starts. Thinking is always the first content
+   *  of an assistant message, and thinking deltas may be delivered in a burst
+   *  (batched or provider-buffered), so anchor to the message_start time
+   *  instead of the first delta's arrival. */
   private markThinkingStarted(assistant: AssistantNode): void {
     if (assistant.thinkingStartedAt === undefined) {
-      assistant.thinkingStartedAt = Date.now();
+      assistant.thinkingStartedAt = assistant.messageStartedAt ?? Date.now();
     }
   }
 
-  /** Stamp the moment thinking ends (text starts, a tool call starts, or finalize) */
+  /** Stamp the moment thinking ends (text starts, a tool call starts, or finalize).
+   *  Non-batched events (toolcall_start, message_end) can arrive before the
+   *  pending thinking batch is flushed, so backfill startedAt from the
+   *  message_start time when that happens. */
   private markThinkingEnded(assistant: AssistantNode): void {
+    if (assistant.thinkingStartedAt === undefined) {
+      assistant.thinkingStartedAt = assistant.messageStartedAt;
+    }
     if (assistant.thinkingStartedAt !== undefined && assistant.thinkingEndedAt === undefined) {
       assistant.thinkingEndedAt = Date.now();
     }

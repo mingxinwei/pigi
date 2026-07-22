@@ -89,6 +89,16 @@ process.parentPort?.on('message', async (messageEvent) => {
         const sessionManager = SessionManager.open(command.sessionPath);
         const { messages, thinkingLevel, model } = sessionManager.buildSessionContext();
         const entries = sessionManager.getEntries();
+        // Attach outer (persistence) timestamp from entries to each regular
+        // LLM message so the renderer can compute real thinking duration.
+        // buildSessionContext pushes entry.message directly for message-type
+        // entries, so they share the same object reference.
+        const msgSet = new Set(messages);
+        for (const entry of entries) {
+          if (entry.type === 'message' && msgSet.has(entry.message)) {
+            (entry.message as unknown as Record<string, unknown>).pigiPersistedAt = entry.timestamp;
+          }
+        }
         const compactionCount = entries.filter((entry) => entry.type === 'compaction').length;
         sendToMain({
           type: 'session_messages_result',

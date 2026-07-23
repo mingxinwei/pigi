@@ -99,6 +99,10 @@ function App(): React.JSX.Element {
   const [restoreText, setRestoreText] = useState<string | null>(null);
   const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
   const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
+  // Identifies the current draft that is polling the warm process for options.
+  // Bumped each time a new draft starts, so an older draft's in-flight warm
+  // poll can detect it has been superseded and stop writing option state.
+  const draftOptionsGenerationRef = useRef(0);
   // State mirrors of refs for render access (updated alongside refs).
   const [lastModelSnapshot, setLastModelSnapshot] = useState<{
     provider: string;
@@ -182,10 +186,19 @@ function App(): React.JSX.Element {
   const refreshSessionOptions = useCallback(async (sessionId: string): Promise<void> => {
     try {
       const options = await getSessionOptions(sessionId);
+      // Only write if this session still owns the shared option state. A refresh
+      // that resolves after the user switched sessions or entered a draft must
+      // not clobber the new owner's picker.
+      if (useAppStore.getState().activeSessionPath !== sessionId) {
+        return;
+      }
       setModelOptions(options.models);
       setThinkingLevelOptions(options.thinkingLevels);
       setSkillOptions(options.skills);
     } catch (err) {
+      if (useAppStore.getState().activeSessionPath !== sessionId) {
+        return;
+      }
       console.error('Failed to refresh session options:', err);
       setModelOptions([]);
       setThinkingLevelOptions([]);
@@ -631,10 +644,26 @@ function App(): React.JSX.Element {
     setActiveSession(null);
     setIsDraftChat(true);
     setPendingSelectedPath(null);
-    // Fetch model info from warm process (retry if not ready yet, max 10 attempts)
+    // Fetch model info from the warm process. The warm process publishes an
+    // initial list and re-publishes once slow providers such as
+    // Booking-Gateway/radius finish loading, marking the final emission
+    // `complete`. Poll until complete (or retries exhausted) so the picker is
+    // not frozen on a partial list, and guard every write with this draft's
+    // generation so a poll that outlives the draft cannot overwrite another
+    // owner's option state.
+    const generation = ++draftOptionsGenerationRef.current;
     let warmRetryCount = 0;
+    const MAX_WARM_RETRIES = 12;
     const fetchWarmOptions = (): void => {
       void getWarmSessionOptions().then((options) => {
+        if (
+          draftOptionsGenerationRef.current !== generation ||
+          useAppStore.getState().activeSessionPath !== null
+        ) {
+          // A newer draft started, or a session became active — either way this
+          // draft no longer owns the option state.
+          return;
+        }
         if (options.models.length > 0) {
           setModelOptions(options.models);
           // Derive thinkingLevels from the last-used model if available
@@ -645,16 +674,14 @@ function App(): React.JSX.Element {
                   m.provider === lastModelRef.current!.provider,
               )
             : null;
-          if (matchedModel) {
-            setThinkingLevelOptions(matchedModel.thinkingLevels);
-          } else {
-            // Fallback: use first model's thinkingLevels
-            setThinkingLevelOptions(options.models[0].thinkingLevels);
-          }
+          setThinkingLevelOptions(
+            matchedModel ? matchedModel.thinkingLevels : options.models[0].thinkingLevels,
+          );
         }
-        // If empty, warm process isn't ready yet — retry after a short delay
-        if (options.models.length === 0 && warmRetryCount < 10) {
-          warmRetryCount++;
+        warmRetryCount++;
+        // Keep polling until the warm process reports it finished refreshing, or
+        // retries are exhausted. Empty/partial lists keep polling.
+        if (!options.complete && warmRetryCount < MAX_WARM_RETRIES) {
           setTimeout(fetchWarmOptions, 500);
         }
       });

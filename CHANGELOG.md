@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- New sessions sometimes opened with an incomplete model list (notably missing Booking-Gateway models) when a provider was slow to load. The model picker now keeps refreshing until the full list is available, and it updates on its own right after you log in or out.
+- The message list and the scroll-to-bottom button sometimes stopped just short of the real bottom. Auto-scroll now lands exactly at the bottom.
+
 ## [0.3.16] - 2026-07-22
 
 ### Added

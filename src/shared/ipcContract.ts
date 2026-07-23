@@ -355,4 +355,5 @@ export type UtilityResponse =
   | { type: 'session_created'; sessionId: string; sessionPath: string }
   | { type: 'session_error'; error: string }
   | { type: 'session_busy_changed'; isBusy: boolean }
-  | { type: 'warm_ready'; models: ModelInfo[] };
+  | { type: 'warm_ready'; models: ModelInfo[]; complete: boolean }
+  | { type: 'credentials_changed' };

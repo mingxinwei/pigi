@@ -58,7 +58,7 @@ interface PiApi {
   // Utilities
   getCwd: () => string;
   openExternal: (url: string) => void;
-  getWarmSessionOptions: () => Promise<{ models: ModelInfo[] }>;
+  getWarmSessionOptions: () => Promise<{ models: ModelInfo[]; complete: boolean }>;
 
   // Keyboard shortcuts
   getShortcuts: () => Promise<ShortcutDefinition[]>;

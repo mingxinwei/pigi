@@ -156,6 +156,14 @@ async function attemptSpawnSessionProcess(
         return;
       }
 
+      // A login/logout in this session process changed stored credentials.
+      // Rebuild the warm process so the draft model picker (which reads the
+      // warm process cache) reflects the new auth instead of a stale snapshot.
+      if (message.type === 'credentials_changed') {
+        processPool.respawnWarmProcess();
+        return;
+      }
+
       // Ignore warm_ready during session setup (it's from the warm phase)
       if (message.type === 'warm_ready') {
         return;

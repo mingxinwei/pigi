@@ -12,6 +12,8 @@ interface WarmProcess {
   process: Electron.UtilityProcess;
   ready: boolean;
   models: ModelInfo[];
+  /** True once the warm process has finished refreshing (no retry pending). */
+  complete: boolean;
 }
 
 const MAX_IDLE_SESSION_PROCESS_COUNT = 3;
@@ -44,12 +46,13 @@ export class PiAgentProcessPool {
   }
 
   /** Get model/thinking options from the warm process (empty if not yet ready). */
-  getWarmSessionOptions(): { models: ModelInfo[] } {
+  getWarmSessionOptions(): { models: ModelInfo[]; complete: boolean } {
     if (!this.warmProcess || !this.warmProcess.ready) {
-      return { models: [] };
+      return { models: [], complete: false };
     }
     return {
       models: this.warmProcess.models,
+      complete: this.warmProcess.complete,
     };
   }
 
@@ -72,6 +75,20 @@ export class PiAgentProcessPool {
     // Spawn replacement immediately
     this.spawnWarmProcess();
     return proc;
+  }
+
+  /**
+   * Rebuild the warm process from scratch. Used after a credential change: the
+   * existing warm process caches an in-memory auth snapshot that refresh() will
+   * not reload, so a fresh process is the reliable way to pick up new/removed
+   * credentials (and thus the correct model catalog) from disk.
+   */
+  respawnWarmProcess(): void {
+    if (this.warmProcess) {
+      this.warmProcess.process.kill();
+      this.warmProcess = null;
+    }
+    this.spawnWarmProcess();
   }
 
   // ===========================================================================
@@ -172,6 +189,7 @@ export class PiAgentProcessPool {
       process: proc,
       ready: false,
       models: [],
+      complete: false,
     };
     proc.on('exit', () => {
       if (this.warmProcess?.process === proc) {
@@ -179,10 +197,11 @@ export class PiAgentProcessPool {
       }
     });
     // Listen for warm_ready response
-    proc.on('message', (message: { type: string; models?: unknown[] }) => {
+    proc.on('message', (message: { type: string; models?: unknown[]; complete?: boolean }) => {
       if (message.type === 'warm_ready' && this.warmProcess?.process === proc) {
         this.warmProcess.ready = true;
         this.warmProcess.models = (message.models ?? []) as ModelInfo[];
+        this.warmProcess.complete = message.complete ?? false;
       }
     });
     // Send warm_up command to initialize services

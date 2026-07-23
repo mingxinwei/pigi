@@ -227,13 +227,16 @@ export default React.memo(function MessageList({
   }, [displayNodes]);
 
   // Auto-scroll + wheel handler. ResizeObserver on the scroll container
-  // detects when content height changes (virtualizer spacer div grows).
+  // detects when it shrinks (e.g. StreamingQueue appears). Content-growth
+  // scrolling is handled by the useLayoutEffect below (keyed on total size),
+  // which pins the bottom synchronously after the height commit — avoiding the
+  // RAF race where scrollTop was set against a stale (smaller) scrollHeight and
+  // stopped short of the true bottom.
   // Stable effect — never re-created.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    let lastScrollHeight = container.scrollHeight;
     let pendingRaf = 0;
 
     function scrollToBottom(): void {
@@ -241,19 +244,10 @@ export default React.memo(function MessageList({
       container!.scrollTop = container!.scrollHeight;
     }
 
-    const ro = new ResizeObserver(() => {
-      if (container!.scrollHeight !== lastScrollHeight) {
-        lastScrollHeight = container!.scrollHeight;
-        if (pendingRaf) cancelAnimationFrame(pendingRaf);
-        pendingRaf = requestAnimationFrame(scrollToBottom);
-      }
-    });
-    // Observe the first child (the content wrapper whose height changes)
-    const content = container.firstElementChild;
-    if (content) ro.observe(content);
-
-    // Also observe the container itself — when it shrinks (e.g. StreamingQueue appears)
-    // we need to scroll to bottom so content isn't hidden.
+    // Observe the container itself — when it shrinks (e.g. StreamingQueue appears)
+    // we need to scroll to bottom so content isn't hidden. Container resizes do
+    // not change the virtualizer total size, so the layout effect below won't
+    // fire for them.
     const containerRo = new ResizeObserver(() => {
       if (autoScrollRef.current) {
         if (pendingRaf) cancelAnimationFrame(pendingRaf);
@@ -286,7 +280,6 @@ export default React.memo(function MessageList({
     scrollToBottom();
 
     return () => {
-      ro.disconnect();
       containerRo.disconnect();
       if (pendingRaf) cancelAnimationFrame(pendingRaf);
       container.removeEventListener('wheel', handleWheel, { capture: true });
@@ -344,6 +337,27 @@ export default React.memo(function MessageList({
   }, [sessionPath]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+
+  // Pin to the bottom whenever the virtualizer's total content size changes
+  // (new messages, streaming deltas, or late item re-measurements). Running in
+  // useLayoutEffect — synchronously after the spacer height is committed and
+  // before paint — guarantees scrollHeight is final, so a single assignment
+  // reaches the true bottom instead of a stale, too-small height. Re-runs on
+  // every size change, so streaming keeps following the bottom exactly.
+  const scrollSessionRef = useRef(sessionPath);
+  useLayoutEffect(() => {
+    // On session switch the restore effect owns initial positioning; skip the
+    // pin for that render so a restored mid-scroll position isn't flashed to the
+    // bottom first.
+    const sessionChanged = scrollSessionRef.current !== sessionPath;
+    scrollSessionRef.current = sessionPath;
+    if (sessionChanged) return;
+    if (!autoScrollRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [totalSize, sessionPath]);
 
   // Derive active user message from visible virtual items — no scroll listener needed
   // because the virtualizer already triggers re-renders on scroll.
@@ -380,6 +394,13 @@ export default React.memo(function MessageList({
     if (!container) return;
     autoScrollRef.current = true;
     container.scrollTop = container.scrollHeight;
+    // Re-assert next frame in case an item measurement lands right after the
+    // click and grows scrollHeight; autoScrollRef stays true so this is safe.
+    requestAnimationFrame(() => {
+      if (autoScrollRef.current && containerRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      }
+    });
     setShowScrollButton(false);
   }
 
@@ -562,7 +583,7 @@ export default React.memo(function MessageList({
           <div
             className="relative"
             style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
+              height: `${totalSize}px`,
               paddingBottom: `${MESSAGE_ROW_GAP + 16}px`,
             }}
             data-testid="message-virtualizer"

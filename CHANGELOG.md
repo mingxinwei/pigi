@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Tightened spacing in rendered messages: paragraphs and lists now share a single, more compact line-height, so bullet and numbered lists no longer feel loosely spaced.
+
 ### Fixed
 
 - New sessions sometimes opened with an incomplete model list (notably missing Booking-Gateway models) when a provider was slow to load. The model picker now keeps refreshing until the full list is available, and it updates on its own right after you log in or out.

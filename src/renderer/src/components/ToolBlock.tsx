@@ -187,6 +187,12 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   if (node.name === 'read' && node.status === 'running') return null;
 
   const { className: statusClassName, style: statusStyle } = STATUS_CONFIG[node.status];
+  // A successful edit already shows its result via the diff, so its green
+  // footer fill clashes with the diff's green. Keep the footer bar and its
+  // green text, but drop the background for this case; other statuses stay
+  // fully colored.
+  const isSuccessfulEdit = node.name === 'edit' && node.status === 'success';
+  const footerStyle = isSuccessfulEdit ? undefined : statusStyle;
   const command = getToolCommandParts(node);
   const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
@@ -268,7 +274,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md border-t border-border/80',
             statusClassName,
           )}
-          style={statusStyle}
+          style={footerStyle}
         >
           <span>
             {node.status === 'running' ? (

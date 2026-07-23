@@ -79,7 +79,7 @@ export default function ThinkingBlock({
           className="font-normal"
         />
       </div>
-      <OverflowClamp maxHeight={120}>
+      <OverflowClamp maxHeight={120} tailAnchor>
         <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-5 text-muted-foreground">
           {text}
         </pre>

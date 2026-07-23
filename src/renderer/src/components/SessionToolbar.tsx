@@ -76,7 +76,7 @@ export default React.memo(function SessionToolbar({
   );
 
   return (
-    <div className="flex shrink-0 items-center gap-2 px-5 h-10 border-b border-border">
+    <div className="flex shrink-0 items-center gap-2 px-5 h-10 border-b-[0.5px] border-foreground/27">
       {isEditing ? (
         <input
           type="text"

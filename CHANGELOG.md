@@ -8,6 +8,7 @@
 
 ### Changed
 
+- The title bar's bottom border is now a hairline that matches the sidebar divider, instead of the thicker, heavier line it used before.
 - A successful edit no longer fills its status footer with green, so it no longer blends into the green of the diff above it. The footer bar and timing stay; only the background is dropped.
 
 ## [0.3.17] - 2026-07-23

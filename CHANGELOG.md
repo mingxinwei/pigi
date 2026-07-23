@@ -5,6 +5,7 @@
 ### Changed
 
 - Tightened spacing in rendered messages: paragraphs and lists now share a single, more compact line-height, so bullet and numbered lists no longer feel loosely spaced.
+- Thinking blocks and long tool output now stay anchored to their latest lines when collapsed, with the Show more button above the content. Edit diffs still show from the top.
 
 ### Fixed
 

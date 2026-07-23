@@ -224,7 +224,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
                 onClick={() => setCommandExpanded((v) => !v)}
                 className="shrink-0 self-end text-xs font-normal text-muted-foreground hover:text-foreground"
               >
-                {commandExpanded ? 'less' : 'more'}
+                {commandExpanded ? 'Less' : 'More'}
               </button>
             )}
           </div>
@@ -238,7 +238,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         <OverflowClamp
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
           className="py-2"
-          contentStyle={{ minHeight: node.name === 'edit' ? '1px' : undefined }}
+          tailAnchor={node.name !== 'edit'}
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
             <DiffView lines={editDiffFromDetails} />

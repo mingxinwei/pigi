@@ -205,11 +205,13 @@
      specificity wars, no arbitrary-variant hacks in components. */
   .markdown-body {
     --markdown-block-spacing: 0.875rem;
-    --markdown-item-spacing: 0.25rem;
+    --markdown-item-spacing: 0.1875rem;
     width: 100%;
     min-width: 0;
     overflow-wrap: break-word;
-    line-height: 1.7;
+    /* One line-height for prose and lists so they share a consistent rhythm;
+       1.5 keeps paragraphs readable while making list rows feel compact. */
+    line-height: 1.5;
   }
 
   .markdown-body > :first-child {
@@ -261,8 +263,6 @@
     list-style: decimal;
   }
 
-  /* The bullet already signals "new item", so the gap only needs to
-     separate wrapped lines: 4px ≈ 16% over the 25.5px line box. */
   .markdown-body li {
     padding-left: 0.25rem;
   }

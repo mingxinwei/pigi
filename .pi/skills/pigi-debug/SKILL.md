@@ -67,6 +67,14 @@ document.querySelectorAll('[data-testid^=tool-block]').length(
 )();
 ```
 
+## Component Preview
+
+To show the user a visual preview of a design choice (color swatches, spacing
+options, skeleton states, side-by-side variants) without reproducing the exact
+app state, use the `pigi-ui-preview` skill. It builds on the CDP setup here:
+`capture` also takes an optional clip rect, e.g.
+`node scripts/cdp.mjs capture /tmp/region.png '{"x":40,"y":60,"width":800,"height":260}'`.
+
 ## HMR Limitations
 
 - UI components (ToolBlock, DiffView, etc.) hot-reload fine

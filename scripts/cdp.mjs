@@ -5,6 +5,7 @@
  *   node scripts/cdp.mjs eval 'document.body.innerText'
  *   node scripts/cdp.mjs snapshot
  *   node scripts/cdp.mjs capture /tmp/pigi.png
+ *   node scripts/cdp.mjs capture /tmp/region.png '{"x":40,"y":60,"width":800,"height":260}'
  *   node scripts/cdp.mjs console [seconds]
  *   node scripts/cdp.mjs type <text>
  */
@@ -131,7 +132,22 @@ try {
   } else if (cmd === 'capture') {
     const session = await createCdpSession();
     const path = args[0] || '/tmp/pigi-capture.png';
-    const result = await session.call('Page.captureScreenshot', { format: 'png' });
+    const params = { format: 'png' };
+    // Optional second arg: a JSON clip rect {"x","y","width","height","scale"?}
+    // for capturing just one region (e.g. an injected preview panel). scale
+    // defaults to 2 for crisp high-DPI crops.
+    if (args[1]) {
+      const clip = JSON.parse(args[1]);
+      params.clip = {
+        x: clip.x,
+        y: clip.y,
+        width: clip.width,
+        height: clip.height,
+        scale: clip.scale ?? 2,
+      };
+      params.captureBeyondViewport = true;
+    }
+    const result = await session.call('Page.captureScreenshot', params);
     fs.writeFileSync(path, Buffer.from(result.data, 'base64'));
     console.log(`Saved to ${path}`);
     session.close();
@@ -215,7 +231,7 @@ try {
     session.close();
   } else {
     console.log(
-      'Usage: cdp.mjs eval <expr> | snapshot | capture [path] | console [seconds] | type <text>',
+      'Usage: cdp.mjs eval <expr> | snapshot | capture [path] [clipJson] | console [seconds] | type <text>',
     );
   }
 } catch (err) {

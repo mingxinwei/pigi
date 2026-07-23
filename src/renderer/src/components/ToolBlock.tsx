@@ -9,6 +9,7 @@ import { parseDiffString } from '../lib/diffUtils';
 import ImagePreview from './ImagePreview';
 import { getToolCommandParts, cleanReadOutput, READ_IMAGE_RE } from '../lib/toolDisplay';
 import OverflowClamp from './overflowClamp';
+import { Skeleton } from './ui/skeleton';
 
 /** Max lines shown in collapsed write preview */
 function WritePreview({
@@ -28,6 +29,61 @@ function WritePreview({
         <SyntaxHighlightedCode code={trimmed} language={language} />
         {isStreaming && <span className="animate-pulse text-muted-foreground/50">▋</span>}
       </pre>
+    </div>
+  );
+}
+
+/** Diff-styled placeholder shown while an edit is still running */
+function DiffSkeleton(): React.JSX.Element {
+  // Faint add/remove tints so the placeholder reads as an upcoming diff
+  const rows = [
+    { tint: '', width: 'w-2/3' },
+    { tint: 'bg-red-500/10', width: 'w-1/2' },
+    { tint: 'bg-red-500/10', width: 'w-2/5' },
+    { tint: 'bg-green-500/10', width: 'w-3/4' },
+    { tint: 'bg-green-500/10', width: 'w-2/5' },
+    { tint: '', width: 'w-3/5' },
+    { tint: '', width: 'w-1/2' },
+    { tint: 'bg-green-500/10', width: 'w-4/5' },
+  ];
+  return (
+    <div className="overflow-hidden rounded font-mono text-[13px] leading-5" aria-hidden>
+      {rows.map((row, index) => (
+        <div key={index} className={cn('flex h-7 items-center gap-2 px-2', row.tint)}>
+          <Skeleton className="h-4 w-6 shrink-0" />
+          <Skeleton className={cn('h-4', row.width)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** File-content placeholder shown while a write is still streaming */
+function WriteSkeleton(): React.JSX.Element {
+  const widths = ['w-1/2', 'w-4/5', 'w-2/3', 'w-3/4', 'w-1/3', 'w-3/5'];
+  return (
+    <div className="mt-2 flex flex-col font-mono text-[13px] leading-5" aria-hidden>
+      {widths.map((width, index) => (
+        <div key={index} className="flex h-7 items-center gap-2">
+          <Skeleton className="h-4 w-6 shrink-0" />
+          <Skeleton className={cn('h-4', width)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Terminal-output placeholder shown while a bash command runs with no output yet.
+ *  No line-number gutter, unlike WriteSkeleton, to read as log/terminal lines. */
+function BashSkeleton(): React.JSX.Element {
+  const widths = ['w-3/4', 'w-2/3'];
+  return (
+    <div className="flex flex-col font-mono text-[14px] leading-5" aria-hidden>
+      {widths.map((width, index) => (
+        <div key={index} className="flex h-7 items-center">
+          <Skeleton className={cn('h-4', width)} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -197,6 +253,13 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
   const hasOutput = cleanedOutput.length > 0;
+  // While running, the body is empty until content loads; show a skeleton
+  // instead of a blank card. Each tool gets a placeholder matching its real
+  // output: a diff for edit, file lines for write, terminal lines for bash.
+  const showEditSkeleton = node.name === 'edit' && node.status === 'running';
+  const showWriteSkeleton =
+    node.name === 'write' && node.status === 'running' && (writeEntries?.length ?? 0) === 0;
+  const showBashSkeleton = node.name === 'bash' && node.status === 'running' && !hasOutput;
   const outputLanguage = getToolOutputLanguage(node);
   const durationLabel = formatDuration(node.durationMs);
   const args = getToolArgs(node);
@@ -250,6 +313,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             <DiffView lines={editDiffFromDetails} />
           )}
 
+          {showEditSkeleton && <DiffSkeleton />}
+
           {/* Write preview shown during running (streaming) unlike edit which waits for completion */}
           {writeEntries && writeEntries.length > 0 && node.status !== 'error' && (
             <WritePreview
@@ -259,6 +324,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             />
           )}
 
+          {showWriteSkeleton && <WriteSkeleton />}
+
           {(node.status !== 'running' || STREAMING_OUTPUT_TOOLS.has(node.name)) &&
             hasOutput &&
             ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
@@ -266,6 +333,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
                 <SyntaxHighlightedCode code={cleanedOutput} language={outputLanguage} />
               </pre>
             )}
+
+          {showBashSkeleton && <BashSkeleton />}
         </OverflowClamp>
 
         <div

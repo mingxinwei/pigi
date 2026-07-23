@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Edit, write, and bash tool cards now show a placeholder skeleton while they run, instead of a blank card, so it's clear content is still loading.
+
 ### Changed
 
 - A successful edit no longer fills its status footer with green, so it no longer blends into the green of the diff above it. The footer bar and timing stay; only the background is dropped.

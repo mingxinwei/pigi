@@ -85,6 +85,10 @@ class TerminalController {
       cursorBlink: true,
       // Thin vertical beam instead of the default solid block.
       cursorStyle: 'bar',
+      // Treat Option as the Meta key so every Option shortcut emits the
+      // ESC-prefixed sequence shells expect (M-b, M-d, M-f, M-Backspace, ...).
+      // Trade-off: Option can no longer type accented characters in the terminal.
+      macOptionIsMeta: true,
       fontSize: FONT_SIZE,
       fontFamily: FONT_FAMILY,
       allowProposedApi: true,
@@ -100,10 +104,11 @@ class TerminalController {
       // WebGL unavailable — xterm falls back to the DOM renderer automatically.
     }
 
-    // macOS Cmd/Option line-editing shortcuts. xterm doesn't forward Cmd combos
-    // to the shell, and Option+Arrow/Backspace don't emit word-motion escapes by
-    // default, so translate the common ones ourselves. Everything else falls
-    // through (return true) so app shortcuts (Cmd+J, Cmd+[/]) and copy/paste work.
+    // Command shortcuts (which xterm never forwards to the shell) plus Option+
+    // Arrow word motion (arrows go through the cursor-key path, so macOptionIsMeta
+    // doesn't turn them into word motion). All other Option keys are handled by
+    // macOptionIsMeta above; everything else falls through (return true) so app
+    // shortcuts (Cmd+J, Cmd+[/]) and copy/paste keep working.
     terminal.attachCustomKeyEventHandler((event) => this.handleMacKeyBindings(event));
 
     terminal.onData((data) => window.piApi.terminal.write(data));
@@ -147,16 +152,15 @@ class TerminalController {
       return true; // let Cmd+J, Cmd+[/], copy/paste, etc. through
     }
 
-    // Option: move/kill by word.
+    // Option+Arrow: move by word (Option+Backspace and other Meta bindings are
+    // covered by macOptionIsMeta, so they don't need an explicit mapping here).
     if (altKey && !metaKey && !ctrlKey) {
       const sequence =
         key === 'ArrowLeft'
           ? '\x1bb' // backward word (ESC b)
           : key === 'ArrowRight'
             ? '\x1bf' // forward word (ESC f)
-            : key === 'Backspace'
-              ? '\x1b\x7f' // backward-kill-word (ESC DEL)
-              : null;
+            : null;
       if (sequence) {
         event.preventDefault();
         window.piApi.terminal.write(sequence);

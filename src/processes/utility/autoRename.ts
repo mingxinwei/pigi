@@ -4,13 +4,10 @@
  * Strategy: try the cheapest models first (by cost). If 2 attempts fail,
  * fall back to the cheapest model from the session's own provider (known to work).
  *
- * Uses ModelRegistry (which knows custom providers + auth state) and pi-ai's
- * completeSimple for a single lightweight LLM call — no agent session, no tools,
- * no extensions loaded.
+ * Routes the LLM call through ModelRuntime.completeSimple, which resolves auth
+ * and provider routing the same way the real agent does.
  */
-import { completeSimple } from '@earendil-works/pi-ai/compat';
 import type { Api, Model } from '@earendil-works/pi-ai';
-import { ModelRegistry } from '@earendil-works/pi-coding-agent';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 
 interface Message {
@@ -26,12 +23,10 @@ const EXCLUDED_APIS = new Set(['openai-codex-responses']);
 const MAX_GLOBAL_ATTEMPTS = 2;
 
 /**
- * Get candidate models sorted by cost (cheapest first).
+ * Sort candidate models by cost (cheapest first).
  * Models with non-zero cost come before zero-cost ones.
  */
-function getCandidatesByCost(modelRegistry: ModelRegistry): Model<Api>[] {
-  const available = modelRegistry.getAvailable();
-
+function getCandidatesByCost(available: readonly Model<Api>[]): Model<Api>[] {
   const candidates = available.filter((m) => {
     if (!m.input.includes('text')) return false;
     if (EXCLUDED_APIS.has(m.api)) return false;
@@ -66,21 +61,16 @@ function getCheapestSameProvider(
 async function tryGenerate(
   model: Model<Api>,
   conversationText: string,
-  modelRegistry: ModelRegistry,
+  modelRuntime: ModelRuntime,
 ): Promise<string | null> {
-  const resolved = await modelRegistry.getApiKeyAndHeaders(model);
-  if (!resolved.ok) return null;
-
   try {
-    const result = await completeSimple(
+    const result = await modelRuntime.completeSimple(
       model,
       {
         systemPrompt: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: conversationText, timestamp: Date.now() }],
       },
       {
-        apiKey: resolved.apiKey,
-        headers: resolved.headers,
         maxTokens: 30,
         temperature: 0.3,
       },
@@ -112,8 +102,8 @@ export async function generateSessionTitle(
   modelRuntime: ModelRuntime,
   sessionProvider?: string,
 ): Promise<string | null> {
-  const modelRegistry = new ModelRegistry(modelRuntime);
-  const candidates = getCandidatesByCost(modelRegistry);
+  const available = await modelRuntime.getAvailable();
+  const candidates = getCandidatesByCost(available);
   if (candidates.length === 0) return null;
 
   const conversationText = messages
@@ -132,7 +122,7 @@ export async function generateSessionTitle(
     tried.add(key);
     attempts++;
 
-    const title = await tryGenerate(model, conversationText, modelRegistry);
+    const title = await tryGenerate(model, conversationText, modelRuntime);
     if (title) return title;
   }
 
@@ -140,7 +130,7 @@ export async function generateSessionTitle(
   if (sessionProvider) {
     const fallback = getCheapestSameProvider(candidates, sessionProvider);
     if (fallback && !tried.has(fallback.provider + '/' + fallback.id)) {
-      return tryGenerate(fallback, conversationText, modelRegistry);
+      return tryGenerate(fallback, conversationText, modelRuntime);
     }
   }
 

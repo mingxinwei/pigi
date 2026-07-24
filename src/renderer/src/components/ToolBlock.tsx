@@ -43,8 +43,6 @@ function DiffSkeleton(): React.JSX.Element {
     { tint: 'bg-green-500/10', width: 'w-3/4' },
     { tint: 'bg-green-500/10', width: 'w-2/5' },
     { tint: '', width: 'w-3/5' },
-    { tint: '', width: 'w-1/2' },
-    { tint: 'bg-green-500/10', width: 'w-4/5' },
   ];
   return (
     <div className="overflow-hidden rounded font-mono text-[13px] leading-5" aria-hidden>

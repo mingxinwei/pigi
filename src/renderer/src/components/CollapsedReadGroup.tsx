@@ -37,6 +37,29 @@ function getCommandLabel(node: ToolNode): string {
   return node.name;
 }
 
+/** Characters kept at the end of an over-long command label. The head shrinks
+ *  with an ellipsis and this tail stays visible, so the label ellipsizes in the
+ *  middle rather than the end — the end of a path/command is usually the useful
+ *  part (filename, line range, final args). */
+const COMMAND_LABEL_TAIL_CHARS = 20;
+
+/** A command label that ellipsizes in the middle instead of the end. Splits the
+ *  text into a shrinking head (end-truncated) and a fixed tail that always shows.
+ *  As the row widens, more of the head becomes visible; when it fits, head + tail
+ *  reconstruct the original string seamlessly. */
+function MiddleTruncatedLabel({ text }: { text: string }): React.JSX.Element {
+  if (text.length <= COMMAND_LABEL_TAIL_CHARS) {
+    return <span className="truncate font-mono text-[14px]">{text}</span>;
+  }
+  const splitAt = text.length - COMMAND_LABEL_TAIL_CHARS;
+  return (
+    <span className="flex min-w-0 flex-1 font-mono text-[14px]">
+      <span className="truncate">{text.slice(0, splitAt)}</span>
+      <span className="shrink-0 whitespace-pre">{text.slice(splitAt)}</span>
+    </span>
+  );
+}
+
 const ENTRY_STATUS_ICON = {
   success: { Icon: IconCheck, className: 'text-[#166534]' },
   error: { Icon: IconX, className: 'text-[#991b1b]' },
@@ -182,7 +205,7 @@ export default function CollapsedReadGroup({
                       <Icon className={`size-3.5 shrink-0 ${statusConfig?.className ?? ''}`} />
                     )
                   )}
-                  <span className="truncate font-mono text-[14px]">{getCommandLabel(node)}</span>
+                  <MiddleTruncatedLabel text={getCommandLabel(node)} />
                 </div>
               );
             })}

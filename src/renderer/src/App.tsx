@@ -54,7 +54,7 @@ import Sidebar from './components/Sidebar';
 import SessionToolbar from './components/SessionToolbar';
 import MessageList from './components/MessageList';
 import TerminalPanel from './components/TerminalPanel';
-import ChatInput from './components/ChatInput';
+import ChatInput, { type ChatInputHandle } from './components/ChatInput';
 import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
 import SessionSwitcher from './components/SessionSwitcher';
@@ -104,6 +104,15 @@ function App(): React.JSX.Element {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
   const [restoreText, setRestoreText] = useState<string | null>(null);
+  const chatInputRef = useRef<ChatInputHandle>(null);
+  const prevTerminalOpenRef = useRef(terminalOpen);
+  // When the terminal closes, move focus back to the chat input.
+  useEffect(() => {
+    if (prevTerminalOpenRef.current && !terminalOpen) {
+      chatInputRef.current?.focus();
+    }
+    prevTerminalOpenRef.current = terminalOpen;
+  }, [terminalOpen]);
   const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
   const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
   // Identifies the current draft that is polling the warm process for options.
@@ -1166,6 +1175,7 @@ function App(): React.JSX.Element {
                   onEditQueuedMessage={handleEditQueuedMessage}
                 />
                 <ChatInput
+                  ref={chatInputRef}
                   onSend={handleSend}
                   onFollowUp={handleFollowUp}
                   onAbort={handleAbort}

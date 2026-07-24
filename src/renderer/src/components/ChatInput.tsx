@@ -1,4 +1,13 @@
-import { useRef, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import {
+  useRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type Ref,
+} from 'react';
 import fuzzysort from 'fuzzysort';
 import {
   IconArrowUp,
@@ -40,7 +49,12 @@ import { CHAT_INPUT_MAX_WIDTH } from '../lib/layoutConstants';
 import { cn } from '../lib/utils';
 import { getAllSlashCommands, matchSlashCommands, type SlashCommand } from '../lib/slashCommands';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
+export interface ChatInputHandle {
+  focus: () => void;
+}
+
 interface ChatInputProps {
+  ref?: Ref<ChatInputHandle>;
   onSend: (message: string) => void;
   onFollowUp: (message: string) => void;
   onAbort: () => void;
@@ -80,6 +94,7 @@ const NEW_SESSION_PLACEHOLDER = 'Type # to quick change project.';
 const NEW_SESSION_HEADING = 'Here we go!';
 
 export default function ChatInput({
+  ref,
   onSend,
   onFollowUp,
   onAbort,
@@ -101,6 +116,7 @@ export default function ChatInput({
   onSelectProject,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(ref, () => ({ focus: () => textareaRef.current?.focus() }), []);
   const draftsRef = useRef<Map<string, string>>(new Map());
   const prevSessionIdRef = useRef<string | null>(null);
   const [slashMatches, setSlashMatches] = useState<{

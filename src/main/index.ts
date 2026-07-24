@@ -20,6 +20,7 @@ import { createMainWindow } from './windows/createMainWindow';
 import { stopAllProcesses, registerIpcHandlers } from './ipc/piAgentBridge';
 import { registerProjectHandlers } from './ipc/projectHandlers';
 import { registerShortcutHandlers } from './ipc/shortcutHandlers';
+import { registerTerminalHandlers, stopTerminalProcess } from './terminal/terminalManager';
 import { PiChannel } from '../shared/ipcContract';
 import { configureDebugPanel } from './debugConfig';
 import { initializeShellEnv } from './processes/shellEnvResolver';
@@ -110,6 +111,7 @@ app.whenReady().then(() => {
   registerIpcHandlers();
   registerProjectHandlers();
   registerShortcutHandlers();
+  registerTerminalHandlers();
 
   ipcMain.on(PiChannel.OpenExternal, (_event, url: string) => {
     if (typeof url !== 'string') return;
@@ -141,4 +143,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopAllProcesses();
+  stopTerminalProcess();
 });

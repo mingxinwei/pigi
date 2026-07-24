@@ -14,10 +14,15 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
+        // node-pty is a native module: keep it external so it loads its
+        // rebuilt .node binary from node_modules at runtime instead of being
+        // bundled (which would break the native require).
+        external: ['node-pty'],
         input: {
           index: resolve('src/main/index.ts'),
           'processes/utility/piAgent': resolve('src/processes/utility/piAgent.ts'),
           'processes/utility/sessionWorker': resolve('src/processes/utility/sessionWorker.ts'),
+          'processes/utility/terminal': resolve('src/processes/utility/terminal.ts'),
         },
         output: {
           format: 'es',

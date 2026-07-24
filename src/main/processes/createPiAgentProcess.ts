@@ -17,3 +17,10 @@ export function createSessionWorkerProcess(): Electron.UtilityProcess {
     env: { ...process.env },
   });
 }
+
+export function createTerminalProcess(): Electron.UtilityProcess {
+  const modulePath = join(__dirname, 'processes/utility/terminal.js');
+  return utilityProcess.fork(modulePath, [], {
+    env: { ...process.env },
+  });
+}

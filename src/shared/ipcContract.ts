@@ -277,7 +277,34 @@ export enum PiChannel {
   SetShortcut = 'pi:set_shortcut',
   /** renderer → main: get model options from warm (pre-spawned) process */
   GetWarmSessionOptions = 'pi:get_warm_session_options',
+  /** renderer → main: ensure the terminal process is running and deliver its data MessagePort */
+  TerminalStart = 'pi:terminal_start',
+  /** main → renderer: deliver the terminal's data MessagePort */
+  TerminalPort = 'pi:terminal_port',
+  /** main → renderer: the terminal process exited */
+  TerminalExit = 'pi:terminal_exit',
 }
+
+// =============================================================================
+// Terminal panel (bottom PTY) — high-volume I/O flows over a data MessagePort,
+// mirroring the session architecture. Main only spawns the process and hands
+// off the port.
+// =============================================================================
+
+/** renderer → terminal utility, over the terminal data MessagePort */
+export type TerminalInboundMessage =
+  | { type: 'input'; data: string }
+  | { type: 'resize'; cols: number; rows: number };
+
+/** terminal utility → renderer, over the terminal data MessagePort */
+export type TerminalOutboundMessage =
+  | { type: 'output'; data: string }
+  | { type: 'exit'; exitCode: number };
+
+/** main → terminal utility, over parentPort (lifecycle only) */
+export type TerminalUtilityCommand =
+  | { type: 'start_terminal'; cwd: string; cols: number; rows: number }
+  | { type: 'attach_terminal_port' };
 
 // =============================================================================
 // Keyboard Shortcuts

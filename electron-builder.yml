@@ -13,6 +13,8 @@ files:
   - '!.pi'
 asarUnpack:
   - resources/**
+  # Native module: its .node binary must live outside the asar to be require-able.
+  - node_modules/node-pty/**
 win:
   executableName: pigi
 nsis:

@@ -1,11 +1,15 @@
 /**
- * Terminal controller - owns the single xterm.js instance for the app lifetime,
+ * Terminal controller - owns the xterm.js instances for the app lifetime,
  * decoupled from React's component lifecycle.
  *
- * The React panel only positions the terminal's DOM node (via `mount`) and asks
- * the controller to fit/focus. Because the xterm instance and its PTY wiring
- * live here (not in a component), they survive React remounts (StrictMode, HMR)
- * and panel show/hide without losing scrollback or the shell process.
+ * There is one terminal per working directory, cached as an LRU of the 5 most
+ * recent (see MAX_TERMINALS). The React panel positions whichever terminal is
+ * active (via `mount`/`ensureStarted`) and asks the controller to fit/focus.
+ * Because the xterm instances and their PTY wiring live here (not in a
+ * component), they survive React remounts (StrictMode, HMR) and panel show/hide
+ * without losing scrollback or the shell process. Switching back to a cached
+ * cwd restores that terminal exactly; the least-recently-used one is evicted
+ * (its shell killed) when a 6th distinct cwd is opened.
  */
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -16,6 +20,8 @@ import './terminalTheme.css';
 
 const FONT_FAMILY = "ui-monospace, SFMono-Regular, Menlo, Monaco, 'Courier New', monospace";
 const FONT_SIZE = 15;
+/** Number of most-recently-used terminals kept alive (per working directory). */
+const MAX_TERMINALS = 5;
 
 type TerminalTheme = NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'];
 
@@ -67,16 +73,33 @@ function readTerminalTheme(): TerminalTheme {
   };
 }
 
-class TerminalController {
-  private terminal: Terminal | null = null;
-  private fitAddon: FitAddon | null = null;
+/** One cached terminal, bound to a working directory. */
+interface TerminalInstance {
+  cwd: string;
+  terminal: Terminal;
+  fitAddon: FitAddon;
   /** Persistent element xterm renders into; re-parented into the React container. */
-  private host: HTMLDivElement | null = null;
-  private started = false;
+  host: HTMLDivElement;
+  started: boolean;
+  /** Removes the preload data/exit subscriptions for this cwd. */
+  disposeData: () => void;
+}
 
-  private ensure(): void {
-    if (this.terminal) return;
+class TerminalController {
+  /** cwd -> terminal instance. */
+  private readonly instances = new Map<string, TerminalInstance>();
+  /** cwd list ordered least- to most-recently-used (last = MRU). */
+  private recency: string[] = [];
+  /** cwd of the terminal currently shown in the panel container. */
+  private activeCwd: string | null = null;
+  /** The React panel container the active terminal is parented into. */
+  private container: HTMLElement | null = null;
 
+  private get active(): TerminalInstance | null {
+    return this.activeCwd ? (this.instances.get(this.activeCwd) ?? null) : null;
+  }
+
+  private createInstance(cwd: string): TerminalInstance {
     const host = document.createElement('div');
     host.style.width = '100%';
     host.style.height = '100%';
@@ -104,25 +127,80 @@ class TerminalController {
       // WebGL unavailable — xterm falls back to the DOM renderer automatically.
     }
 
+    const instance: TerminalInstance = {
+      cwd,
+      terminal,
+      fitAddon,
+      host,
+      started: false,
+      disposeData: () => {},
+    };
+
     // Command shortcuts (which xterm never forwards to the shell) plus Option+
     // Arrow word motion (arrows go through the cursor-key path, so macOptionIsMeta
     // doesn't turn them into word motion). All other Option keys are handled by
     // macOptionIsMeta above; everything else falls through (return true) so app
     // shortcuts (Cmd+J, Cmd+[/]) and copy/paste keep working.
-    terminal.attachCustomKeyEventHandler((event) => this.handleMacKeyBindings(event));
+    terminal.attachCustomKeyEventHandler((event) => this.handleMacKeyBindings(cwd, event));
 
-    terminal.onData((data) => window.piApi.terminal.write(data));
-    window.piApi.terminal.onData((data) => terminal.write(data));
-    window.piApi.terminal.onExit((exitCode) => {
+    terminal.onData((data) => window.piApi.terminal.write(cwd, data));
+    const offData = window.piApi.terminal.onData(cwd, (data) => terminal.write(data));
+    const offExit = window.piApi.terminal.onExit(cwd, (exitCode) => {
       const suffix = exitCode != null ? ` (${exitCode})` : '';
       terminal.write(`\r\n\x1b[2m[process exited${suffix}]\x1b[0m\r\n`);
-      // Allow the shell to be respawned the next time the panel is shown.
-      this.started = false;
+      // Allow the shell to be respawned the next time this cwd is activated.
+      instance.started = false;
     });
+    instance.disposeData = () => {
+      offData();
+      offExit();
+    };
 
-    this.terminal = terminal;
-    this.fitAddon = fitAddon;
-    this.host = host;
+    return instance;
+  }
+
+  /** Dispose a cached terminal: detach its DOM, free xterm, and kill its shell. */
+  private disposeInstance(cwd: string): void {
+    const instance = this.instances.get(cwd);
+    if (!instance) return;
+    instance.disposeData();
+    instance.host.parentElement?.removeChild(instance.host);
+    instance.terminal.dispose();
+    this.instances.delete(cwd);
+    this.recency = this.recency.filter((c) => c !== cwd);
+    if (this.activeCwd === cwd) this.activeCwd = null;
+    void window.piApi.terminal.stop(cwd);
+  }
+
+  /**
+   * Make `cwd`'s terminal the active one, creating it (and evicting the LRU when
+   * at capacity) if needed, and parent its DOM node into the container.
+   */
+  private activate(cwd: string): void {
+    let instance = this.instances.get(cwd);
+    if (!instance) {
+      if (this.instances.size >= MAX_TERMINALS) {
+        const lruCwd = this.recency[0];
+        if (lruCwd !== undefined) this.disposeInstance(lruCwd);
+      }
+      instance = this.createInstance(cwd);
+      this.instances.set(cwd, instance);
+    }
+
+    // Mark most-recently-used.
+    this.recency = this.recency.filter((c) => c !== cwd);
+    this.recency.push(cwd);
+
+    if (this.activeCwd !== cwd) {
+      const previous = this.active;
+      if (previous && this.container && previous.host.parentElement === this.container) {
+        this.container.removeChild(previous.host);
+      }
+      this.activeCwd = cwd;
+    }
+    if (this.container && instance.host.parentElement !== this.container) {
+      this.container.appendChild(instance.host);
+    }
   }
 
   /**
@@ -130,7 +208,7 @@ class TerminalController {
    * sequences a shell understands. Returns false when handled (xterm should not
    * also process the key), true otherwise so the event bubbles to app shortcuts.
    */
-  private handleMacKeyBindings(event: KeyboardEvent): boolean {
+  private handleMacKeyBindings(cwd: string, event: KeyboardEvent): boolean {
     if (event.type !== 'keydown') return true;
     const { metaKey, altKey, ctrlKey, key } = event;
 
@@ -146,7 +224,7 @@ class TerminalController {
               : null;
       if (sequence) {
         event.preventDefault();
-        window.piApi.terminal.write(sequence);
+        window.piApi.terminal.write(cwd, sequence);
         return false;
       }
       return true; // let Cmd+J, Cmd+[/], copy/paste, etc. through
@@ -163,7 +241,7 @@ class TerminalController {
             : null;
       if (sequence) {
         event.preventDefault();
-        window.piApi.terminal.write(sequence);
+        window.piApi.terminal.write(cwd, sequence);
         return false;
       }
     }
@@ -171,41 +249,44 @@ class TerminalController {
     return true;
   }
 
-  /** Place the terminal's DOM node inside the given container. */
+  /** Remember the container the active terminal should be parented into. */
   mount(container: HTMLElement): void {
-    this.ensure();
-    if (this.host && this.host.parentElement !== container) {
-      container.appendChild(this.host);
+    this.container = container;
+    const active = this.active;
+    if (active && active.host.parentElement !== container) {
+      container.appendChild(active.host);
     }
   }
 
-  /** Start (or restart, after an exit) the shell in the given working directory. */
+  /**
+   * Show the terminal for `cwd` (creating/evicting as needed) and start its
+   * shell if it isn't running yet.
+   */
   ensureStarted(cwd: string): void {
-    this.ensure();
-    if (this.started) return;
-    this.started = true;
-    const terminal = this.terminal;
-    if (!terminal) return;
+    this.activate(cwd);
+    const instance = this.instances.get(cwd);
+    if (!instance || instance.started) return;
+    instance.started = true;
     this.fit();
-    void window.piApi.terminal.start(cwd, terminal.cols, terminal.rows);
+    void window.piApi.terminal.start(cwd, instance.terminal.cols, instance.terminal.rows);
   }
 
   fit(): void {
-    const terminal = this.terminal;
-    const fitAddon = this.fitAddon;
-    if (!terminal || !fitAddon) return;
-    fitAddon.fit();
-    window.piApi.terminal.resize(terminal.cols, terminal.rows);
+    const instance = this.active;
+    if (!instance) return;
+    instance.fitAddon.fit();
+    window.piApi.terminal.resize(instance.cwd, instance.terminal.cols, instance.terminal.rows);
   }
 
   focus(): void {
-    this.terminal?.focus();
+    this.active?.terminal.focus();
   }
 
-  /** Sync the terminal colors to the current app theme (reads CSS variables). */
+  /** Sync every cached terminal's colors to the current app theme. */
   applyTheme(): void {
-    if (this.terminal) {
-      this.terminal.options.theme = readTerminalTheme();
+    const theme = readTerminalTheme();
+    for (const instance of this.instances.values()) {
+      instance.terminal.options.theme = theme;
     }
   }
 }

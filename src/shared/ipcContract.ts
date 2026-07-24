@@ -277,18 +277,21 @@ export enum PiChannel {
   SetShortcut = 'pi:set_shortcut',
   /** renderer → main: get model options from warm (pre-spawned) process */
   GetWarmSessionOptions = 'pi:get_warm_session_options',
-  /** renderer → main: ensure the terminal process is running and deliver its data MessagePort */
+  /** renderer → main: ensure the terminal process for a cwd is running and deliver its data MessagePort */
   TerminalStart = 'pi:terminal_start',
-  /** main → renderer: deliver the terminal's data MessagePort */
+  /** renderer → main: kill the terminal process for a cwd (LRU eviction) */
+  TerminalStop = 'pi:terminal_stop',
+  /** main → renderer: deliver a terminal's data MessagePort (payload carries its cwd) */
   TerminalPort = 'pi:terminal_port',
-  /** main → renderer: the terminal process exited */
+  /** main → renderer: a terminal process exited (payload carries its cwd) */
   TerminalExit = 'pi:terminal_exit',
 }
 
 // =============================================================================
 // Terminal panel (bottom PTY) — high-volume I/O flows over a data MessagePort,
 // mirroring the session architecture. Main only spawns the process and hands
-// off the port.
+// off the port. There is one process (and one MessagePort) per working
+// directory; the renderer keeps an LRU of the 5 most-recent terminals.
 // =============================================================================
 
 /** renderer → terminal utility, over the terminal data MessagePort */

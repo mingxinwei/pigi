@@ -68,13 +68,14 @@ interface PiApi {
   ) => Promise<{ success: boolean; error?: string }>;
   getAccentColor: () => Promise<string | null>;
 
-  // Bottom-panel terminal (single PTY, I/O over a dedicated MessagePort)
+  // Bottom-panel terminals (one PTY per cwd, I/O over a dedicated MessagePort each)
   terminal: {
     start: (cwd: string, cols: number, rows: number) => Promise<{ success: boolean }>;
-    write: (data: string) => void;
-    resize: (cols: number, rows: number) => void;
-    onData: (callback: (data: string) => void) => () => void;
-    onExit: (callback: (exitCode: number | null) => void) => () => void;
+    stop: (cwd: string) => void;
+    write: (cwd: string, data: string) => void;
+    resize: (cwd: string, cols: number, rows: number) => void;
+    onData: (cwd: string, callback: (data: string) => void) => () => void;
+    onExit: (cwd: string, callback: (exitCode: number | null) => void) => () => void;
   };
 }
 

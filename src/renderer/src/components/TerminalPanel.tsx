@@ -39,7 +39,6 @@ export default function TerminalPanel({
   onClose,
 }: TerminalPanelProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cwdRef = useRef(cwd);
   const height = useAppStore((s) => s.terminalHeight);
   const setTerminalHeight = useAppStore((s) => s.setTerminalHeight);
   const dragging = useAppStore((s) => s.terminalDragging);
@@ -71,16 +70,18 @@ export default function TerminalPanel({
     return () => themeObserver.disconnect();
   }, []);
 
-  // Start (or restart) the shell when the panel becomes visible.
+  // Show the terminal for the active cwd whenever the panel becomes visible or
+  // the working directory changes (switching sessions/projects). The controller
+  // keeps an LRU of terminals, so switching back restores the previous one.
   useEffect(() => {
     if (!visible) return;
     const frame = requestAnimationFrame(() => {
-      terminalController.ensureStarted(cwdRef.current);
+      terminalController.ensureStarted(cwd);
       terminalController.fit();
       terminalController.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [visible]);
+  }, [visible, cwd]);
 
   // Refit on container size changes (height drag, window resize), debounced so
   // a burst of resize events results in a single fit / PTY resize.

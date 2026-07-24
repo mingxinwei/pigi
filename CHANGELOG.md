@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Built-in terminal panel that slides up from the bottom of the main area. Toggle it with the title-bar terminal icon or Cmd+J (the icon's tooltip shows the shortcut), and drag its top edge to resize. Its colors follow the app's light/dark theme, and it opens and closes with a smooth animation that stays fluid even on long conversations.
+
 ### Changed
 
 - In collapsed read groups, an over-long command now ellipsizes in the middle instead of the end, so the useful tail (filename, line range, final arguments) stays visible.

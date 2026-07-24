@@ -67,6 +67,15 @@ interface PiApi {
     binding: ShortcutBinding,
   ) => Promise<{ success: boolean; error?: string }>;
   getAccentColor: () => Promise<string | null>;
+
+  // Bottom-panel terminal (single PTY, I/O over a dedicated MessagePort)
+  terminal: {
+    start: (cwd: string, cols: number, rows: number) => Promise<{ success: boolean }>;
+    write: (data: string) => void;
+    resize: (cols: number, rows: number) => void;
+    onData: (callback: (data: string) => void) => () => void;
+    onExit: (callback: (exitCode: number | null) => void) => () => void;
+  };
 }
 
 declare global {

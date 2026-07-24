@@ -41,4 +41,9 @@ export const SHORTCUT_DEFAULTS: ShortcutEntry[] = [
     label: 'Next session',
     defaultBinding: { key: ']', meta: true },
   },
+  {
+    id: 'terminal.toggle',
+    label: 'Toggle terminal',
+    defaultBinding: { key: 'j', meta: true },
+  },
 ];

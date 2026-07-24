@@ -295,7 +295,12 @@ export default React.memo(function MessageList({
 
     function savePosition(): void {
       const atBottom = isAtBottom(container!);
-      useAppStore.getState().setScrollPosition(sessionPath, atBottom ? -1 : container!.scrollTop);
+      const next = atBottom ? -1 : container!.scrollTop;
+      // Skip redundant writes (e.g. staying pinned at the bottom during the
+      // terminal open/close animation) so we don't allocate a new Map and
+      // re-render store subscribers on every scroll frame.
+      if (useAppStore.getState().scrollPositions.get(sessionPath) === next) return;
+      useAppStore.getState().setScrollPosition(sessionPath, next);
     }
 
     container.addEventListener('scroll', savePosition, { passive: true });
@@ -753,7 +758,11 @@ function estimateToolCommandLineCount(node: ToolNode): number {
   return Math.min(2, Math.max(1, Math.ceil(command.length / 80)));
 }
 
-function RenderItemRenderer({
+// Memoized so that virtualizer-driven re-renders (e.g. while the bottom terminal
+// panel animates open/close and the scroll container resizes every frame) skip
+// re-rendering rows whose props are unchanged, instead of reconciling every
+// visible markdown/tool tree on each frame.
+const RenderItemRenderer = React.memo(function RenderItemRenderer({
   item,
   isLast,
   sessionActive,
@@ -792,7 +801,7 @@ function RenderItemRenderer({
   return (
     <NodeRenderer node={item.node} searchQuery={searchQuery} activeOccurrenceIndex={activeIndex} />
   );
-}
+});
 
 function NodeRenderer({
   node,

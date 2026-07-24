@@ -52,6 +52,13 @@ interface AppState {
   sidebarExpanded: boolean;
   toggleSidebar: () => void;
 
+  // Bottom terminal panel. `terminalMounted` stays true after first open so the
+  // xterm instance (and its PTY) persist while the panel is toggled hidden.
+  terminalOpen: boolean;
+  terminalMounted: boolean;
+  toggleTerminal: () => void;
+  setTerminalOpen: (open: boolean) => void;
+
   // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools
   toolBlockViewMode: 'default' | 'compact_read';
   setToolBlockViewMode: (mode: 'default' | 'compact_read') => void;
@@ -155,6 +162,17 @@ export const useAppStore = create<AppState>((set) => ({
   // Sidebar
   sidebarExpanded: true,
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
+
+  // Bottom terminal panel
+  terminalOpen: false,
+  terminalMounted: false,
+  toggleTerminal: () =>
+    set((s) => {
+      const terminalOpen = !s.terminalOpen;
+      return { terminalOpen, terminalMounted: s.terminalMounted || terminalOpen };
+    }),
+  setTerminalOpen: (open) =>
+    set((s) => ({ terminalOpen: open, terminalMounted: s.terminalMounted || open })),
 
   // Tool block view mode
   toolBlockViewMode: 'compact_read',

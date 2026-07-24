@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { IconFilter2 } from '@tabler/icons-react';
+import { IconFilter2, IconTerminal2 } from '@tabler/icons-react';
 import { useAppStore } from '../state/appStore';
 import { useTypewriter } from '../hooks/useTypewriter';
 import { useRenameSuppress } from '../hooks/useRenameSuppress';
@@ -16,11 +16,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 interface SessionToolbarProps {
   sessionPath: string;
   onRename?: (sessionPath: string, name: string) => void;
+  terminalOpen: boolean;
+  onToggleTerminal: () => void;
+  /** Formatted shortcut (e.g. "⌘ J") shown in the terminal button tooltip. */
+  terminalShortcutLabel: string;
 }
 
 export default React.memo(function SessionToolbar({
   sessionPath,
   onRename,
+  terminalOpen,
+  onToggleTerminal,
+  terminalShortcutLabel,
 }: SessionToolbarProps): React.JSX.Element {
   const title = useAppStore(
     useCallback(
@@ -99,6 +106,28 @@ export default React.memo(function SessionToolbar({
       )}
 
       <div className="flex-1" />
+
+      <TooltipProvider delayDuration={400}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Toggle terminal"
+              aria-pressed={terminalOpen}
+              onClick={onToggleTerminal}
+              className={`flex items-center justify-center rounded p-1 transition-colors size-7 hover:bg-muted ${terminalOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <IconTerminal2 size={16} stroke={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="flex items-center gap-2">
+            <span>Toggle terminal</span>
+            {terminalShortcutLabel && (
+              <kbd className="font-mono text-xs text-muted-foreground">{terminalShortcutLabel}</kbd>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

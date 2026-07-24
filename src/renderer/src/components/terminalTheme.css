@@ -1,0 +1,53 @@
+/*
+ * Terminal (xterm) color palette.
+ *
+ * The palette lives entirely here so reskinning the terminal is a CSS-only
+ * change — terminalController.ts reads these variables at runtime and rebuilds
+ * the xterm theme. The background is intentionally NOT defined here: it tracks
+ * the app's own --background so the panel blends in seamlessly.
+ *
+ * Light = Atom One Light, dark = Atom One Dark. Swap the values (or the whole
+ * block) to switch palettes.
+ */
+
+:root {
+  --terminal-foreground: #383a42;
+  --terminal-cursor: #383a42;
+  --terminal-black: #383a42;
+  --terminal-red: #e45649;
+  --terminal-green: #50a14f;
+  --terminal-yellow: #c18401;
+  --terminal-blue: #4078f2;
+  --terminal-magenta: #a626a4;
+  --terminal-cyan: #0184bc;
+  --terminal-white: #a0a1a7;
+  --terminal-bright-black: #696c77;
+  --terminal-bright-red: #e45649;
+  --terminal-bright-green: #50a14f;
+  --terminal-bright-yellow: #c18401;
+  --terminal-bright-blue: #4078f2;
+  --terminal-bright-magenta: #a626a4;
+  --terminal-bright-cyan: #0184bc;
+  --terminal-bright-white: #383a42;
+}
+
+.dark {
+  --terminal-foreground: #abb2bf;
+  --terminal-cursor: #abb2bf;
+  --terminal-black: #3f4451;
+  --terminal-red: #e06c75;
+  --terminal-green: #98c379;
+  --terminal-yellow: #e5c07b;
+  --terminal-blue: #61afef;
+  --terminal-magenta: #c678dd;
+  --terminal-cyan: #56b6c2;
+  --terminal-white: #abb2bf;
+  --terminal-bright-black: #5c6370;
+  --terminal-bright-red: #e06c75;
+  --terminal-bright-green: #98c379;
+  --terminal-bright-yellow: #e5c07b;
+  --terminal-bright-blue: #61afef;
+  --terminal-bright-magenta: #c678dd;
+  --terminal-bright-cyan: #56b6c2;
+  --terminal-bright-white: #ffffff;
+}

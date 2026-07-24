@@ -24,6 +24,8 @@ import {
   type ShortcutBinding,
   type ShortcutDefinition,
   type StreamBatch,
+  type TerminalInboundMessage,
+  type TerminalOutboundMessage,
 } from '../shared/ipcContract';
 
 // =============================================================================
@@ -202,6 +204,45 @@ ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionPath: string }) => 
   const [controlPort, dataPort] = event.ports;
   if (!controlPort || !dataPort || !data?.sessionPath) return;
   setupPort(data.sessionPath, controlPort, dataPort);
+});
+
+// =============================================================================
+// Terminal panel port (single PTY, high-volume I/O over one data MessagePort)
+// =============================================================================
+
+let terminalPort: MessagePort | null = null;
+let terminalExitNotified = false;
+const terminalOutputHandlers = new Set<(data: string) => void>();
+const terminalExitHandlers = new Set<(exitCode: number | null) => void>();
+
+function notifyTerminalExit(exitCode: number | null): void {
+  if (terminalExitNotified) return;
+  terminalExitNotified = true;
+  for (const handler of terminalExitHandlers) handler(exitCode);
+}
+
+function setupTerminalPort(port: MessagePort): void {
+  if (terminalPort) terminalPort.close();
+  terminalPort = port;
+  port.onmessage = (event) => {
+    const message: TerminalOutboundMessage = event.data;
+    if (message.type === 'output') {
+      for (const handler of terminalOutputHandlers) handler(message.data);
+    } else if (message.type === 'exit') {
+      notifyTerminalExit(message.exitCode);
+    }
+  };
+  port.start();
+}
+
+ipcRenderer.on(PiChannel.TerminalPort, (event) => {
+  const [port] = event.ports;
+  if (port) setupTerminalPort(port);
+});
+
+ipcRenderer.on(PiChannel.TerminalExit, () => {
+  terminalPort = null;
+  notifyTerminalExit(null);
 });
 
 // =============================================================================
@@ -395,6 +436,35 @@ const piApi = {
 
   /** Get the system accent color as a hex string (e.g. '#007aff'). Returns null on unsupported platforms. */
   getAccentColor: (): Promise<string | null> => ipcRenderer.invoke(PiChannel.GetAccentColor),
+
+  /** Bottom-panel terminal. Single PTY; I/O flows over a dedicated MessagePort. */
+  terminal: {
+    /** Ensure the terminal process is running and (re)deliver its data port. */
+    start: (cwd: string, cols: number, rows: number): Promise<{ success: boolean }> => {
+      terminalExitNotified = false;
+      return ipcRenderer.invoke(PiChannel.TerminalStart, cwd, cols, rows);
+    },
+    /** Send keystrokes to the PTY. */
+    write: (data: string): void => {
+      const message: TerminalInboundMessage = { type: 'input', data };
+      terminalPort?.postMessage(message);
+    },
+    /** Inform the PTY of a new viewport size. */
+    resize: (cols: number, rows: number): void => {
+      const message: TerminalInboundMessage = { type: 'resize', cols, rows };
+      terminalPort?.postMessage(message);
+    },
+    /** Subscribe to PTY output. */
+    onData: (callback: (data: string) => void): (() => void) => {
+      terminalOutputHandlers.add(callback);
+      return () => terminalOutputHandlers.delete(callback);
+    },
+    /** Subscribe to terminal exit (shell exited or process gone). */
+    onExit: (callback: (exitCode: number | null) => void): (() => void) => {
+      terminalExitHandlers.add(callback);
+      return () => terminalExitHandlers.delete(callback);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

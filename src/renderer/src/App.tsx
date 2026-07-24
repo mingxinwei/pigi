@@ -2,6 +2,7 @@ import { useEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore
 import { toast } from 'sonner';
 import { useAppStore, type SessionEntry } from './state/appStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { formatShortcutLabel } from './shortcuts/formatShortcutLabel';
 import { detectPlatform } from './lib/platform';
 import {
   disposeTranscriptSession,
@@ -52,6 +53,7 @@ import type {
 import Sidebar from './components/Sidebar';
 import SessionToolbar from './components/SessionToolbar';
 import MessageList from './components/MessageList';
+import TerminalPanel from './components/TerminalPanel';
 import ChatInput from './components/ChatInput';
 import StreamingQueue from './components/StreamingQueue';
 import LoginDialog from './components/LoginDialog';
@@ -80,6 +82,9 @@ function App(): React.JSX.Element {
     navigationForwardStack,
     pushNavigationHistory,
     removeFromNavigationHistory,
+    terminalOpen,
+    terminalMounted,
+    toggleTerminal,
   } = useAppStore();
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -881,10 +886,17 @@ function App(): React.JSX.Element {
           }
         }
       },
+      'terminal.toggle': () => {
+        toggleTerminal();
+      },
     }),
-    [handleNewSession, handleOpenProject, handleResumeSession, findSessionByPath],
+    [handleNewSession, handleOpenProject, handleResumeSession, findSessionByPath, toggleTerminal],
   );
   const shortcutBindings = useKeyboardShortcuts(shortcutActions);
+  const terminalToggleBinding = shortcutBindings?.get('terminal.toggle');
+  const terminalShortcutLabel = terminalToggleBinding
+    ? formatShortcutLabel(terminalToggleBinding)
+    : '';
 
   const handleSelectProject = useCallback(async (path: string) => {
     const result = await setActiveProject(path);
@@ -1122,6 +1134,9 @@ function App(): React.JSX.Element {
               key={activeSessionPath}
               sessionPath={activeSessionPath ?? ''}
               onRename={handleRenameSession}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={toggleTerminal}
+              terminalShortcutLabel={terminalShortcutLabel}
             />
             <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
             <StreamingQueue
@@ -1197,6 +1212,9 @@ function App(): React.JSX.Element {
               <EmptyDescription>Select a session from the sidebar to get started.</EmptyDescription>
             </EmptyHeader>
           </Empty>
+        )}
+        {terminalMounted && (
+          <TerminalPanel cwd={activeCwd} visible={terminalOpen} onClose={toggleTerminal} />
         )}
       </main>
 

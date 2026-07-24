@@ -85,6 +85,8 @@ function App(): React.JSX.Element {
     terminalOpen,
     terminalMounted,
     toggleTerminal,
+    terminalHeight,
+    terminalDragging,
   } = useAppStore();
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -1138,30 +1140,50 @@ function App(): React.JSX.Element {
               onToggleTerminal={toggleTerminal}
               terminalShortcutLabel={terminalShortcutLabel}
             />
-            <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
-            <StreamingQueue
-              isStreaming={transcript.status !== 'idle'}
-              queuedSteering={transcript.queuedSteering}
-              queuedFollowUp={transcript.queuedFollowUp}
-              onEditQueuedMessage={handleEditQueuedMessage}
-            />
-            <ChatInput
-              onSend={handleSend}
-              onFollowUp={handleFollowUp}
-              onAbort={handleAbort}
-              onSlashCommand={handleSlashCommand}
-              isStreaming={transcript.status !== 'idle'}
-              gitBranch={gitBranch}
-              restoreText={restoreText}
-              onRestoredText={handleRestoredText}
-              onRefreshGitBranch={refreshGitBranch}
-              session={activeSession}
-              modelOptions={activeSessionPath ? modelOptions : []}
-              thinkingLevelOptions={activeSessionPath ? thinkingLevelOptions : []}
-              skillOptions={activeSessionPath ? skillOptions : []}
-              onSelectModel={handleSelectModel}
-              onSelectThinkingLevel={handleSelectThinkingLevel}
-            />
+            {/* Clipping viewport: the chat content slides up (GPU transform) by
+                the terminal height when the panel opens, in sync with the panel,
+                so nothing re-lays-out per frame. Clipped below the toolbar. */}
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              <div
+                className={`absolute inset-0 flex flex-col will-change-transform ${
+                  terminalDragging
+                    ? 'transition-none'
+                    : `transition-transform motion-reduce:transition-none ${
+                        terminalOpen
+                          ? 'duration-[420ms] ease-[cubic-bezier(0.16,1,0.3,1)]'
+                          : 'duration-[240ms] ease-[cubic-bezier(0.4,0,1,1)]'
+                      }`
+                }`}
+                style={{
+                  transform: terminalOpen ? `translateY(-${terminalHeight}px)` : 'translateY(0)',
+                }}
+              >
+                <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
+                <StreamingQueue
+                  isStreaming={transcript.status !== 'idle'}
+                  queuedSteering={transcript.queuedSteering}
+                  queuedFollowUp={transcript.queuedFollowUp}
+                  onEditQueuedMessage={handleEditQueuedMessage}
+                />
+                <ChatInput
+                  onSend={handleSend}
+                  onFollowUp={handleFollowUp}
+                  onAbort={handleAbort}
+                  onSlashCommand={handleSlashCommand}
+                  isStreaming={transcript.status !== 'idle'}
+                  gitBranch={gitBranch}
+                  restoreText={restoreText}
+                  onRestoredText={handleRestoredText}
+                  onRefreshGitBranch={refreshGitBranch}
+                  session={activeSession}
+                  modelOptions={activeSessionPath ? modelOptions : []}
+                  thinkingLevelOptions={activeSessionPath ? thinkingLevelOptions : []}
+                  skillOptions={activeSessionPath ? skillOptions : []}
+                  onSelectModel={handleSelectModel}
+                  onSelectThinkingLevel={handleSelectThinkingLevel}
+                />
+              </div>
+            </div>
           </>
         ) : isDraftChat ? (
           <>

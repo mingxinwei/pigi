@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { TERMINAL_DEFAULT_HEIGHT } from '../lib/layoutConstants';
 import type {
   ContextUsage,
   ModelInfo,
@@ -58,6 +59,12 @@ interface AppState {
   terminalMounted: boolean;
   toggleTerminal: () => void;
   setTerminalOpen: (open: boolean) => void;
+  // Panel height and live drag state are shared so the chat content can slide up
+  // by exactly the panel height, in sync with the panel, using GPU transforms.
+  terminalHeight: number;
+  setTerminalHeight: (height: number) => void;
+  terminalDragging: boolean;
+  setTerminalDragging: (dragging: boolean) => void;
 
   // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools
   toolBlockViewMode: 'default' | 'compact_read';
@@ -173,6 +180,10 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   setTerminalOpen: (open) =>
     set((s) => ({ terminalOpen: open, terminalMounted: s.terminalMounted || open })),
+  terminalHeight: TERMINAL_DEFAULT_HEIGHT,
+  setTerminalHeight: (height) => set({ terminalHeight: height }),
+  terminalDragging: false,
+  setTerminalDragging: (dragging) => set({ terminalDragging: dragging }),
 
   // Tool block view mode
   toolBlockViewMode: 'compact_read',

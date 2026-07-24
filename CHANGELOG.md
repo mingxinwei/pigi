@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Sessions are auto-named again after the first exchange. The automatic title generation had silently stopped working after a recent model-system update.
+
 ## [0.3.18] - 2026-07-23
 
 ### Added

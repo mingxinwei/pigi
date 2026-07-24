@@ -9,11 +9,11 @@ import { terminalController } from './terminalController';
 // don't spam node-pty with resizes and cause the terminal to flicker.
 const RESIZE_DEBOUNCE_MS = 80;
 
-// Deliberate open is a touch slower with a lively easeOutExpo (no overshoot so
-// it settles clean); the system-driven close snaps shut. Kept identical to the
-// chat-content slide in App so the two move as one.
-const OPEN_TRANSITION = 'duration-[420ms] ease-[cubic-bezier(0.16,1,0.3,1)]';
-const CLOSE_TRANSITION = 'duration-[240ms] ease-[cubic-bezier(0.4,0,1,1)]';
+// Purpose-built drawer curve (fast start, clean settle) in both directions;
+// open is slightly slower than close for enter/exit asymmetry. Kept identical
+// to the chat-content slide in App so the two move as one.
+const OPEN_TRANSITION = 'duration-[340ms] ease-[cubic-bezier(0.32,0.72,0,1)]';
+const CLOSE_TRANSITION = 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]';
 
 interface TerminalPanelProps {
   /** Working directory the shell starts in (captured on first start). */

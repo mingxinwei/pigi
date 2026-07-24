@@ -1150,8 +1150,8 @@ function App(): React.JSX.Element {
                     ? 'transition-none'
                     : `transition-transform motion-reduce:transition-none ${
                         terminalOpen
-                          ? 'duration-[420ms] ease-[cubic-bezier(0.16,1,0.3,1)]'
-                          : 'duration-[240ms] ease-[cubic-bezier(0.4,0,1,1)]'
+                          ? 'duration-[340ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
+                          : 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
                       }`
                 }`}
                 style={{

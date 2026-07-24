@@ -83,6 +83,8 @@ class TerminalController {
 
     const terminal = new Terminal({
       cursorBlink: true,
+      // Thin vertical beam instead of the default solid block.
+      cursorStyle: 'bar',
       fontSize: FONT_SIZE,
       fontFamily: FONT_FAMILY,
       allowProposedApi: true,

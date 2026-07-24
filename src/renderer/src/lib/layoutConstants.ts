@@ -8,6 +8,12 @@ export const MESSAGE_CONTENT_MAX_WIDTH =
 export const CHAT_INPUT_MAX_WIDTH = MESSAGE_CONTENT_MAX_WIDTH;
 export const MESSAGE_ROW_GAP = 4;
 
+/** Bottom terminal panel sizing. */
+export const TERMINAL_DEFAULT_HEIGHT = 280;
+export const TERMINAL_MIN_HEIGHT = 120;
+/** Cap the panel at this fraction of the window height. */
+export const TERMINAL_MAX_HEIGHT_RATIO = 0.8;
+
 /** Used by Dialog, Popover, and ContextMenu — these need backdrop-blur but blur renders incorrectly in vibrant regions, so they use a separate configuration. */
 export const VIBRANCY_OVERLAY_CONTENT =
   'rounded-xl bg-popover/88 backdrop-blur-sm p-4 text-sm text-popover-foreground shadow-md ring-[0.5px] ring-foreground/25 outline-hidden duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95';

@@ -100,6 +100,12 @@ class TerminalController {
       // WebGL unavailable — xterm falls back to the DOM renderer automatically.
     }
 
+    // macOS Cmd/Option line-editing shortcuts. xterm doesn't forward Cmd combos
+    // to the shell, and Option+Arrow/Backspace don't emit word-motion escapes by
+    // default, so translate the common ones ourselves. Everything else falls
+    // through (return true) so app shortcuts (Cmd+J, Cmd+[/]) and copy/paste work.
+    terminal.attachCustomKeyEventHandler((event) => this.handleMacKeyBindings(event));
+
     terminal.onData((data) => window.piApi.terminal.write(data));
     window.piApi.terminal.onData((data) => terminal.write(data));
     window.piApi.terminal.onExit((exitCode) => {
@@ -112,6 +118,53 @@ class TerminalController {
     this.terminal = terminal;
     this.fitAddon = fitAddon;
     this.host = host;
+  }
+
+  /**
+   * Translate macOS Cmd/Option line-editing keys into the control/escape
+   * sequences a shell understands. Returns false when handled (xterm should not
+   * also process the key), true otherwise so the event bubbles to app shortcuts.
+   */
+  private handleMacKeyBindings(event: KeyboardEvent): boolean {
+    if (event.type !== 'keydown') return true;
+    const { metaKey, altKey, ctrlKey, key } = event;
+
+    // Command: jump/kill by line (Cmd is not sent to the shell by default).
+    if (metaKey && !altKey && !ctrlKey) {
+      const sequence =
+        key === 'ArrowLeft'
+          ? '\x01' // start of line (Ctrl+A)
+          : key === 'ArrowRight'
+            ? '\x05' // end of line (Ctrl+E)
+            : key === 'Backspace'
+              ? '\x15' // delete to line start (Ctrl+U)
+              : null;
+      if (sequence) {
+        event.preventDefault();
+        window.piApi.terminal.write(sequence);
+        return false;
+      }
+      return true; // let Cmd+J, Cmd+[/], copy/paste, etc. through
+    }
+
+    // Option: move/kill by word.
+    if (altKey && !metaKey && !ctrlKey) {
+      const sequence =
+        key === 'ArrowLeft'
+          ? '\x1bb' // backward word (ESC b)
+          : key === 'ArrowRight'
+            ? '\x1bf' // forward word (ESC f)
+            : key === 'Backspace'
+              ? '\x1b\x7f' // backward-kill-word (ESC DEL)
+              : null;
+      if (sequence) {
+        event.preventDefault();
+        window.piApi.terminal.write(sequence);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /** Place the terminal's DOM node inside the given container. */

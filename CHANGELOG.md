@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- In collapsed read groups, an over-long command now ellipsizes in the middle instead of the end, so the useful tail (filename, line range, final arguments) stays visible.
+
 ### Fixed
 
 - Sessions are auto-named again after the first exchange. The automatic title generation had silently stopped working after a recent model-system update.

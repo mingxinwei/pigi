@@ -4,7 +4,8 @@
 
 ### Added
 
-- Built-in terminal panel that slides up from the bottom of the main area. Toggle it with the title-bar terminal icon or Cmd+J (the icon's tooltip shows the shortcut), and drag its top edge to resize. Its colors follow the app's light/dark theme, and it opens and closes with a smooth animation that stays fluid even on long conversations. The terminal follows the active project's working directory: switching to a different project shows that project's terminal, and the 5 most-recent terminals are kept alive so switching back restores each one's shell and scrollback. macOS line-editing shortcuts work inside it (Cmd/Option with arrows and delete), and closing it returns focus to the chat input.
+- Built-in terminal panel that slides up from the bottom of the main area. Toggle it with the title-bar terminal icon or Cmd+J (the icon's tooltip shows the shortcut), and drag its top edge to resize. Its colors follow the app's light/dark theme, and it opens and closes with a smooth animation that stays fluid even on long conversations.
+- Terminal tabs, one strip per project. The "+" button opens a new terminal in the current project's directory; each tab shows the shell's title and has a close button. Tabs are grouped per project: switching projects shows that project's own tabs, and switching back restores them exactly (shells and scrollback intact). The 5 most-recently-used projects are kept alive, and a project's tabs are released after an hour of inactivity. macOS line-editing shortcuts work inside the terminal (Cmd/Option with arrows and delete), clicking a tab focuses its terminal, and closing the last tab (or the panel) returns focus to the chat input.
 
 ### Changed
 

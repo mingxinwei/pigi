@@ -2,18 +2,20 @@
  * Terminal manager - main-process lifecycle for the bottom-panel PTYs.
  *
  * Mirrors the session architecture: main spawns a terminal utility process per
- * working directory, performs the port handshake, and then stays out of the
- * data path. High-volume PTY I/O flows over the delivered MessagePort.
+ * terminal tab, performs the port handshake, and then stays out of the data
+ * path. High-volume PTY I/O flows over the delivered MessagePort.
  *
- * The renderer keeps an LRU of the 5 most-recent terminals and asks main to
- * stop the ones it evicts, so the process map here stays bounded.
+ * Each terminal is keyed by a unique id (the renderer allocates it); the shell's
+ * working directory is a separate argument so multiple tabs can share a cwd. The
+ * renderer groups tabs by project and evicts (stops) the ones it no longer needs
+ * (tab close, project LRU, idle TTL), so the process map here stays bounded.
  */
 import { ipcMain, MessageChannelMain } from 'electron';
 import { getMainWindow } from '../windows/createMainWindow';
 import { createTerminalProcess } from '../processes/createPiAgentProcess';
 import { PiChannel, type TerminalUtilityCommand } from '../../shared/ipcContract';
 
-/** One utility process per working directory (keyed by cwd). */
+/** One utility process per terminal tab (keyed by its unique id). */
 const terminalProcesses = new Map<string, Electron.UtilityProcess>();
 
 function sendToRenderer(channel: PiChannel, data: unknown): void {
@@ -24,21 +26,22 @@ function sendToRenderer(channel: PiChannel, data: unknown): void {
 }
 
 /**
- * Ensure the terminal process for `cwd` exists, then hand a fresh data
- * MessagePort to both the utility process and the renderer. Re-invoking with an
- * existing cwd simply re-delivers a port (covers renderer reloads).
+ * Ensure the terminal process for `id` exists (spawning its shell in `cwd`),
+ * then hand a fresh data MessagePort to both the utility process and the
+ * renderer. Re-invoking with an existing id simply re-delivers a port (covers
+ * renderer reloads).
  */
-function startTerminal(cwd: string, cols: number, rows: number): { success: boolean } {
-  let proc = terminalProcesses.get(cwd);
+function startTerminal(id: string, cwd: string, cols: number, rows: number): { success: boolean } {
+  let proc = terminalProcesses.get(id);
   if (!proc) {
     proc = createTerminalProcess();
-    terminalProcesses.set(cwd, proc);
+    terminalProcesses.set(id, proc);
 
     const spawned = proc;
     proc.on('exit', () => {
-      if (terminalProcesses.get(cwd) === spawned) {
-        terminalProcesses.delete(cwd);
-        sendToRenderer(PiChannel.TerminalExit, { cwd });
+      if (terminalProcesses.get(id) === spawned) {
+        terminalProcesses.delete(id);
+        sendToRenderer(PiChannel.TerminalExit, { id });
       }
     });
 
@@ -52,17 +55,17 @@ function startTerminal(cwd: string, cols: number, rows: number): { success: bool
 
   const win = getMainWindow();
   if (win && !win.isDestroyed()) {
-    win.webContents.postMessage(PiChannel.TerminalPort, { cwd }, [channel.port2]);
+    win.webContents.postMessage(PiChannel.TerminalPort, { id }, [channel.port2]);
   }
 
   return { success: true };
 }
 
-/** Kill the terminal process for a single cwd (renderer LRU eviction). */
-function stopTerminal(cwd: string): void {
-  const proc = terminalProcesses.get(cwd);
+/** Kill the terminal process for a single id (tab close / LRU / TTL eviction). */
+function stopTerminal(id: string): void {
+  const proc = terminalProcesses.get(id);
   if (proc) {
-    terminalProcesses.delete(cwd);
+    terminalProcesses.delete(id);
     proc.kill();
   }
 }
@@ -76,16 +79,19 @@ export function stopTerminalProcess(): void {
 }
 
 export function registerTerminalHandlers(): void {
-  ipcMain.handle(PiChannel.TerminalStart, (_event, cwd: string, cols: number, rows: number) => {
-    if (typeof cwd !== 'string') {
-      return { success: false };
-    }
-    return startTerminal(cwd, Number(cols) || 80, Number(rows) || 24);
-  });
+  ipcMain.handle(
+    PiChannel.TerminalStart,
+    (_event, id: string, cwd: string, cols: number, rows: number) => {
+      if (typeof id !== 'string' || typeof cwd !== 'string') {
+        return { success: false };
+      }
+      return startTerminal(id, cwd, Number(cols) || 80, Number(rows) || 24);
+    },
+  );
 
-  ipcMain.handle(PiChannel.TerminalStop, (_event, cwd: string) => {
-    if (typeof cwd === 'string') {
-      stopTerminal(cwd);
+  ipcMain.handle(PiChannel.TerminalStop, (_event, id: string) => {
+    if (typeof id === 'string') {
+      stopTerminal(id);
     }
     return { success: true };
   });

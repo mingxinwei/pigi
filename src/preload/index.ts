@@ -207,9 +207,9 @@ ipcRenderer.on(PiChannel.SessionPort, (event, data: { sessionPath: string }) => 
 });
 
 // =============================================================================
-// Terminal panel ports (one PTY per cwd, high-volume I/O over a data MessagePort
-// each). Everything is keyed by cwd so the renderer can route to the right
-// terminal instance.
+// Terminal panel ports (one PTY per terminal tab, high-volume I/O over a data
+// MessagePort each). Everything is keyed by the tab's unique id so the renderer
+// can route to the right terminal instance.
 // =============================================================================
 
 const terminalPorts = new Map<string, MessagePort>();
@@ -217,36 +217,36 @@ const terminalExitNotified = new Set<string>();
 const terminalOutputHandlers = new Map<string, Set<(data: string) => void>>();
 const terminalExitHandlers = new Map<string, Set<(exitCode: number | null) => void>>();
 
-function notifyTerminalExit(cwd: string, exitCode: number | null): void {
-  if (terminalExitNotified.has(cwd)) return;
-  terminalExitNotified.add(cwd);
-  const handlers = terminalExitHandlers.get(cwd);
+function notifyTerminalExit(id: string, exitCode: number | null): void {
+  if (terminalExitNotified.has(id)) return;
+  terminalExitNotified.add(id);
+  const handlers = terminalExitHandlers.get(id);
   if (handlers) for (const handler of handlers) handler(exitCode);
 }
 
-function setupTerminalPort(cwd: string, port: MessagePort): void {
-  terminalPorts.get(cwd)?.close();
-  terminalPorts.set(cwd, port);
+function setupTerminalPort(id: string, port: MessagePort): void {
+  terminalPorts.get(id)?.close();
+  terminalPorts.set(id, port);
   port.onmessage = (event) => {
     const message: TerminalOutboundMessage = event.data;
     if (message.type === 'output') {
-      const handlers = terminalOutputHandlers.get(cwd);
+      const handlers = terminalOutputHandlers.get(id);
       if (handlers) for (const handler of handlers) handler(message.data);
     } else if (message.type === 'exit') {
-      notifyTerminalExit(cwd, message.exitCode);
+      notifyTerminalExit(id, message.exitCode);
     }
   };
   port.start();
 }
 
-ipcRenderer.on(PiChannel.TerminalPort, (event, payload: { cwd: string }) => {
+ipcRenderer.on(PiChannel.TerminalPort, (event, payload: { id: string }) => {
   const [port] = event.ports;
-  if (port) setupTerminalPort(payload.cwd, port);
+  if (port) setupTerminalPort(payload.id, port);
 });
 
-ipcRenderer.on(PiChannel.TerminalExit, (_event, payload: { cwd: string }) => {
-  terminalPorts.delete(payload.cwd);
-  notifyTerminalExit(payload.cwd, null);
+ipcRenderer.on(PiChannel.TerminalExit, (_event, payload: { id: string }) => {
+  terminalPorts.delete(payload.id);
+  notifyTerminalExit(payload.id, null);
 });
 
 // =============================================================================
@@ -441,51 +441,51 @@ const piApi = {
   /** Get the system accent color as a hex string (e.g. '#007aff'). Returns null on unsupported platforms. */
   getAccentColor: (): Promise<string | null> => ipcRenderer.invoke(PiChannel.GetAccentColor),
 
-  /** Bottom-panel terminals. One PTY per cwd; I/O flows over a dedicated MessagePort. */
+  /** Bottom-panel terminals. One PTY per tab (keyed by id); I/O over a MessagePort. */
   terminal: {
-    /** Ensure the terminal process for a cwd is running and (re)deliver its data port. */
-    start: (cwd: string, cols: number, rows: number): Promise<{ success: boolean }> => {
-      terminalExitNotified.delete(cwd);
-      return ipcRenderer.invoke(PiChannel.TerminalStart, cwd, cols, rows);
+    /** Ensure the terminal process for `id` is running (shell in `cwd`) and (re)deliver its data port. */
+    start: (id: string, cwd: string, cols: number, rows: number): Promise<{ success: boolean }> => {
+      terminalExitNotified.delete(id);
+      return ipcRenderer.invoke(PiChannel.TerminalStart, id, cwd, cols, rows);
     },
-    /** Kill the terminal process for a cwd (LRU eviction). */
-    stop: (cwd: string): void => {
-      terminalPorts.get(cwd)?.close();
-      terminalPorts.delete(cwd);
-      terminalOutputHandlers.delete(cwd);
-      terminalExitHandlers.delete(cwd);
-      terminalExitNotified.delete(cwd);
-      void ipcRenderer.invoke(PiChannel.TerminalStop, cwd);
+    /** Kill the terminal process for `id` (tab close / LRU / TTL eviction). */
+    stop: (id: string): void => {
+      terminalPorts.get(id)?.close();
+      terminalPorts.delete(id);
+      terminalOutputHandlers.delete(id);
+      terminalExitHandlers.delete(id);
+      terminalExitNotified.delete(id);
+      void ipcRenderer.invoke(PiChannel.TerminalStop, id);
     },
     /** Send keystrokes to a PTY. */
-    write: (cwd: string, data: string): void => {
+    write: (id: string, data: string): void => {
       const message: TerminalInboundMessage = { type: 'input', data };
-      terminalPorts.get(cwd)?.postMessage(message);
+      terminalPorts.get(id)?.postMessage(message);
     },
     /** Inform a PTY of a new viewport size. */
-    resize: (cwd: string, cols: number, rows: number): void => {
+    resize: (id: string, cols: number, rows: number): void => {
       const message: TerminalInboundMessage = { type: 'resize', cols, rows };
-      terminalPorts.get(cwd)?.postMessage(message);
+      terminalPorts.get(id)?.postMessage(message);
     },
     /** Subscribe to a PTY's output. */
-    onData: (cwd: string, callback: (data: string) => void): (() => void) => {
-      let handlers = terminalOutputHandlers.get(cwd);
+    onData: (id: string, callback: (data: string) => void): (() => void) => {
+      let handlers = terminalOutputHandlers.get(id);
       if (!handlers) {
         handlers = new Set();
-        terminalOutputHandlers.set(cwd, handlers);
+        terminalOutputHandlers.set(id, handlers);
       }
       handlers.add(callback);
-      return () => terminalOutputHandlers.get(cwd)?.delete(callback);
+      return () => terminalOutputHandlers.get(id)?.delete(callback);
     },
     /** Subscribe to a terminal's exit (shell exited or process gone). */
-    onExit: (cwd: string, callback: (exitCode: number | null) => void): (() => void) => {
-      let handlers = terminalExitHandlers.get(cwd);
+    onExit: (id: string, callback: (exitCode: number | null) => void): (() => void) => {
+      let handlers = terminalExitHandlers.get(id);
       if (!handlers) {
         handlers = new Set();
-        terminalExitHandlers.set(cwd, handlers);
+        terminalExitHandlers.set(id, handlers);
       }
       handlers.add(callback);
-      return () => terminalExitHandlers.get(cwd)?.delete(callback);
+      return () => terminalExitHandlers.get(id)?.delete(callback);
     },
   },
 };

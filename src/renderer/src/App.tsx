@@ -1110,6 +1110,22 @@ function App(): React.JSX.Element {
     ],
   );
 
+  // The chat content slides up (GPU transform) by the terminal height when the
+  // panel opens, in sync with the panel, so nothing re-lays-out per frame. Shared
+  // by the active-session and draft layouts so both ride above the terminal.
+  const terminalPushClassName = `absolute inset-0 flex flex-col will-change-transform ${
+    terminalDragging
+      ? 'transition-none'
+      : `transition-transform motion-reduce:transition-none ${
+          terminalOpen
+            ? 'duration-[340ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
+            : 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
+        }`
+  }`;
+  const terminalPushStyle = {
+    transform: terminalOpen ? `translateY(-${terminalHeight}px)` : 'translateY(0)',
+  };
+
   return (
     <SidebarProvider
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
@@ -1157,20 +1173,7 @@ function App(): React.JSX.Element {
                 the terminal height when the panel opens, in sync with the panel,
                 so nothing re-lays-out per frame. Clipped below the toolbar. */}
             <div className="relative min-h-0 flex-1 overflow-hidden">
-              <div
-                className={`absolute inset-0 flex flex-col will-change-transform ${
-                  terminalDragging
-                    ? 'transition-none'
-                    : `transition-transform motion-reduce:transition-none ${
-                        terminalOpen
-                          ? 'duration-[340ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
-                          : 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
-                      }`
-                }`}
-                style={{
-                  transform: terminalOpen ? `translateY(-${terminalHeight}px)` : 'translateY(0)',
-                }}
-              >
+              <div className={terminalPushClassName} style={terminalPushStyle}>
                 <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
                 <StreamingQueue
                   isStreaming={transcript.status !== 'idle'}
@@ -1200,30 +1203,32 @@ function App(): React.JSX.Element {
             </div>
           </>
         ) : isDraftChat ? (
-          <>
-            {!isDraftEmpty && <MessageList nodes={draftState.nodes} sessionPath="" />}
-            <ChatInput
-              onSend={handleSend}
-              onFollowUp={handleFollowUp}
-              onAbort={handleAbort}
-              onSlashCommand={handleSlashCommand}
-              isStreaming={isDraftSpawning}
-              gitBranch={gitBranch}
-              restoreText={restoreText}
-              onRestoredText={handleRestoredText}
-              onRefreshGitBranch={refreshGitBranch}
-              session={draftSession}
-              modelOptions={modelOptions}
-              thinkingLevelOptions={thinkingLevelOptions}
-              skillOptions={skillOptions}
-              onSelectModel={handleSelectModel}
-              onSelectThinkingLevel={handleSelectThinkingLevel}
-              isNewSession={isDraftEmpty}
-              recentProjects={recentProjects}
-              activeProject={activeProject}
-              onSelectProject={handleSelectProject}
-            />
-          </>
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div className={terminalPushClassName} style={terminalPushStyle}>
+              {!isDraftEmpty && <MessageList nodes={draftState.nodes} sessionPath="" />}
+              <ChatInput
+                onSend={handleSend}
+                onFollowUp={handleFollowUp}
+                onAbort={handleAbort}
+                onSlashCommand={handleSlashCommand}
+                isStreaming={isDraftSpawning}
+                gitBranch={gitBranch}
+                restoreText={restoreText}
+                onRestoredText={handleRestoredText}
+                onRefreshGitBranch={refreshGitBranch}
+                session={draftSession}
+                modelOptions={modelOptions}
+                thinkingLevelOptions={thinkingLevelOptions}
+                skillOptions={skillOptions}
+                onSelectModel={handleSelectModel}
+                onSelectThinkingLevel={handleSelectThinkingLevel}
+                isNewSession={isDraftEmpty}
+                recentProjects={recentProjects}
+                activeProject={activeProject}
+                onSelectProject={handleSelectProject}
+              />
+            </div>
+          </div>
         ) : recentProjects.length === 0 ? (
           <Empty>
             <EmptyHeader>

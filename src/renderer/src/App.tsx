@@ -1207,6 +1207,7 @@ function App(): React.JSX.Element {
             <div className={terminalPushClassName} style={terminalPushStyle}>
               {!isDraftEmpty && <MessageList nodes={draftState.nodes} sessionPath="" />}
               <ChatInput
+                ref={chatInputRef}
                 onSend={handleSend}
                 onFollowUp={handleFollowUp}
                 onAbort={handleAbort}

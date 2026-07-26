@@ -106,6 +106,22 @@ export default function TerminalPanel({
     };
   }, [visible]);
 
+  // Re-clamp the stored height when the window shrinks. The panel height is
+  // fixed, so the container ResizeObserver above never fires on a window
+  // resize; without this a panel dragged tall in a big window could exceed the
+  // main area after shrinking, pushing its tab strip and resize handle offscreen.
+  useEffect(() => {
+    const clampToWindow = (): void => {
+      const maxHeight = window.innerHeight * TERMINAL_MAX_HEIGHT_RATIO;
+      const current = useAppStore.getState().terminalHeight;
+      if (current > maxHeight) {
+        setTerminalHeight(Math.max(Math.floor(maxHeight), TERMINAL_MIN_HEIGHT));
+      }
+    };
+    window.addEventListener('resize', clampToWindow);
+    return () => window.removeEventListener('resize', clampToWindow);
+  }, [setTerminalHeight]);
+
   const handleResizeStart = useCallback(
     (event: React.PointerEvent) => {
       event.preventDefault();

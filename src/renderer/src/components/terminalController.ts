@@ -32,10 +32,11 @@ const PROJECT_LRU_MAX = 5;
 /** A cached (off-screen) group is killed after this long with no terminal I/O. */
 const GROUP_TTL_MS = 60 * 60 * 1000;
 
-let tabIdCounter = 0;
+// Globally unique across renderer lifetimes: the main process keeps terminal
+// processes keyed by id until they're stopped, so a reused id after a renderer
+// reload could otherwise attach a new tab to a stale shell.
 function nextTabId(): string {
-  tabIdCounter += 1;
-  return `term-${tabIdCounter}`;
+  return `term-${crypto.randomUUID()}`;
 }
 
 type TerminalTheme = NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'];

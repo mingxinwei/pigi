@@ -126,11 +126,11 @@ app.whenReady().then(() => {
     return accent || null;
   });
 
-  createMainWindow();
+  openMainWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      openMainWindow();
     }
   });
 });
@@ -145,3 +145,16 @@ app.on('before-quit', () => {
   stopAllProcesses();
   stopTerminalProcess();
 });
+
+/**
+ * Open the main window and tie the terminal shells to its lifetime. When the
+ * window (and its renderer) is destroyed, its PTYs are orphaned — on macOS the
+ * app keeps running with no window — so kill them. This also prevents a fresh
+ * renderer from colliding with stale terminal ids after a reopen.
+ */
+function openMainWindow(): void {
+  const win = createMainWindow();
+  win.on('closed', () => {
+    stopTerminalProcess();
+  });
+}

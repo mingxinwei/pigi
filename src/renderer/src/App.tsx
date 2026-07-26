@@ -94,6 +94,10 @@ function App(): React.JSX.Element {
 
   const activeSession = activeSessionPath ? (sessions.get(activeSessionPath) ?? null) : null;
   const activeCwd = activeSession?.cwd ?? activeProject?.path ?? window.piApi.getCwd();
+  // Terminal tabs are grouped per project, so use the project path (not a
+  // per-session cwd) as the group key; switching sessions within a project
+  // keeps the same terminal tabs.
+  const terminalProjectCwd = activeProject?.path ?? activeCwd;
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelInfo[]>([]);
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
@@ -1246,7 +1250,11 @@ function App(): React.JSX.Element {
           </Empty>
         )}
         {terminalMounted && (
-          <TerminalPanel cwd={activeCwd} visible={terminalOpen} onClose={toggleTerminal} />
+          <TerminalPanel
+            projectCwd={terminalProjectCwd}
+            visible={terminalOpen}
+            onClose={toggleTerminal}
+          />
         )}
       </main>
 

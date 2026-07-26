@@ -12,6 +12,12 @@ import type { AgentStatus } from './transcriptController';
 
 export type { AgentStatus };
 
+/** One terminal tab as shown in the panel's tab strip (mirrored from the controller). */
+export interface TerminalTabView {
+  id: string;
+  title: string;
+}
+
 export interface SessionEntry {
   sessionPath: string;
   persistedSessionId: string;
@@ -65,6 +71,11 @@ interface AppState {
   setTerminalHeight: (height: number) => void;
   terminalDragging: boolean;
   setTerminalDragging: (dragging: boolean) => void;
+  // Tab strip for the currently-shown project group. The terminal controller is
+  // the source of truth and mirrors the active group here so React can render it.
+  terminalTabs: TerminalTabView[];
+  activeTerminalTabId: string | null;
+  setTerminalTabs: (tabs: TerminalTabView[], activeTabId: string | null) => void;
 
   // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools
   toolBlockViewMode: 'default' | 'compact_read';
@@ -184,6 +195,10 @@ export const useAppStore = create<AppState>((set) => ({
   setTerminalHeight: (height) => set({ terminalHeight: height }),
   terminalDragging: false,
   setTerminalDragging: (dragging) => set({ terminalDragging: dragging }),
+  terminalTabs: [],
+  activeTerminalTabId: null,
+  setTerminalTabs: (terminalTabs, activeTerminalTabId) =>
+    set({ terminalTabs, activeTerminalTabId }),
 
   // Tool block view mode
   toolBlockViewMode: 'compact_read',

@@ -277,21 +277,23 @@ export enum PiChannel {
   SetShortcut = 'pi:set_shortcut',
   /** renderer → main: get model options from warm (pre-spawned) process */
   GetWarmSessionOptions = 'pi:get_warm_session_options',
-  /** renderer → main: ensure the terminal process for a cwd is running and deliver its data MessagePort */
+  /** renderer → main: ensure the terminal process for an id is running and deliver its data MessagePort */
   TerminalStart = 'pi:terminal_start',
-  /** renderer → main: kill the terminal process for a cwd (LRU eviction) */
+  /** renderer → main: kill the terminal process for an id (tab close / LRU / TTL eviction) */
   TerminalStop = 'pi:terminal_stop',
-  /** main → renderer: deliver a terminal's data MessagePort (payload carries its cwd) */
+  /** main → renderer: deliver a terminal's data MessagePort (payload carries its id) */
   TerminalPort = 'pi:terminal_port',
-  /** main → renderer: a terminal process exited (payload carries its cwd) */
+  /** main → renderer: a terminal process exited (payload carries its id) */
   TerminalExit = 'pi:terminal_exit',
 }
 
 // =============================================================================
 // Terminal panel (bottom PTY) — high-volume I/O flows over a data MessagePort,
 // mirroring the session architecture. Main only spawns the process and hands
-// off the port. There is one process (and one MessagePort) per working
-// directory; the renderer keeps an LRU of the 5 most-recent terminals.
+// off the port. There is one process (and one MessagePort) per terminal tab,
+// keyed by a unique id (the shell's working directory is a separate param, so
+// multiple tabs can share a cwd). The renderer groups tabs by project and keeps
+// an LRU of the most-recent projects.
 // =============================================================================
 
 /** renderer → terminal utility, over the terminal data MessagePort */

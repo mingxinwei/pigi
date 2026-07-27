@@ -51,3 +51,12 @@
   --terminal-bright-cyan: #56b6c2;
   --terminal-bright-white: #ffffff;
 }
+
+/*
+ * Round xterm's scrollbar slider. xterm ships the VS Code-style custom
+ * scrollbar (a `.slider` at the right edge) and only sets its size and color,
+ * leaving the corners square. Pill it to match the app; leave the width alone.
+ */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 7px;
+}

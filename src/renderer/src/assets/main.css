@@ -59,7 +59,9 @@
 }
 
 :root {
-  --system-accent: oklch(0.48 0.22 259);
+  /* App accent (links, highlights, mini-map, focus rings). Set at runtime from
+     themeAccents.ts via --accent-light; fallback mirrors the Indigo default. */
+  --system-accent: var(--accent-light, oklch(0.55 0.2 277.1));
   --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(1 0 0);
   --foreground: #1a1c1f;
@@ -98,7 +100,8 @@
 }
 
 .dark {
-  --system-accent: oklch(0.55 0.22 259);
+  /* Dark-mode accent; brighter than light so it stays legible on dark bg. */
+  --system-accent: var(--accent-dark, oklch(0.7 0.17 277.1));
   --search-highlight-bg: color-mix(in srgb, var(--system-accent) 40%, transparent);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

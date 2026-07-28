@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { IconFilter2, IconTerminal2 } from '@tabler/icons-react';
+import { IconFilter2, IconNotebook, IconTerminal2 } from '@tabler/icons-react';
 import { useAppStore } from '../state/appStore';
 import { useTypewriter } from '../hooks/useTypewriter';
 import { useRenameSuppress } from '../hooks/useRenameSuppress';
@@ -83,27 +83,30 @@ export default React.memo(function SessionToolbar({
   );
 
   return (
-    <div className="flex shrink-0 items-center gap-2 px-5 h-10 border-b-[0.5px] border-foreground/27">
-      {isEditing ? (
-        <input
-          type="text"
-          value={editValue}
-          onChange={(event) => setEditValue(event.target.value)}
-          onBlur={handleFinishRename}
-          onKeyDown={handleKeyDown}
-          autoFocus
-          size={editValue.length || 1}
-          className="max-w-[50%] min-w-0 bg-transparent text-sm text-foreground outline-none caret-foreground"
-        />
-      ) : (
-        <span
-          className="max-w-[50%] truncate text-sm text-foreground cursor-default"
-          title={title}
-          onDoubleClick={handleStartRename}
-        >
-          {displayTitle}
-        </span>
-      )}
+    <div className="flex shrink-0 items-center gap-2 px-3 h-11 border-b-[0.5px] border-foreground/27">
+      <div className="flex min-w-0 max-w-[33%] items-center gap-1.5">
+        <IconNotebook size={16} stroke={2} className="shrink-0 text-foreground" />
+        {isEditing ? (
+          <input
+            type="text"
+            value={editValue}
+            onChange={(event) => setEditValue(event.target.value)}
+            onBlur={handleFinishRename}
+            onKeyDown={handleKeyDown}
+            autoFocus
+            size={editValue.length || 1}
+            className="min-w-0 max-w-full bg-transparent text-sm font-medium text-foreground outline-none caret-foreground"
+          />
+        ) : (
+          <span
+            className="truncate text-sm font-medium text-foreground cursor-default"
+            title={title}
+            onDoubleClick={handleStartRename}
+          >
+            {displayTitle}
+          </span>
+        )}
+      </div>
 
       <div className="flex-1" />
 

@@ -5,6 +5,7 @@
 ### Fixed
 
 - The message list no longer occasionally vibrates when it's scrolled to the bottom, which could happen shortly after opening a conversation.
+- The "Working..." indicator and the sidebar's running-session spinner stay smooth instead of stuttering while the app is busy rendering.
 
 ### Changed
 

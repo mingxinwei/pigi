@@ -103,7 +103,7 @@ export default function StreamingQueue({
     node: (
       <QueueBar
         icon={
-          <IconStarFilled className="size-4 animate-[spin_2.2s_linear_infinite] text-[var(--system-accent)]" />
+          <IconStarFilled className="size-4 animate-[spin_2.2s_linear_infinite] text-[var(--system-accent)] will-change-transform" />
         }
       >
         <span>Working...</span>

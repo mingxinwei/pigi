@@ -107,7 +107,7 @@ export function SessionItem({
                 {displayTitle}
               </span>
               {isRunning ? (
-                <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-green-500" />
+                <IconLoader2 className="ml-2 size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-green-500 will-change-transform" />
               ) : (
                 <Tooltip>
                   <TooltipTrigger asChild>

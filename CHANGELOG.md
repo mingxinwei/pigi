@@ -11,6 +11,7 @@
 
 - Tool blocks have a cleaner look: removed internal border lines, tightened spacing, and the status bar now uses colored text without a background fill.
 - Links, search highlights, the message mini-map, focus rings, and the "Working..." indicator now use a refined indigo accent color instead of following the (often muted) system accent. More accent colors are built in, ready for an upcoming picker in settings.
+- Large edit diffs render noticeably faster and are less likely to cause a hitch when they first appear, since off-screen diff lines are no longer laid out until scrolled into view.
 
 ## [0.3.19] - 2026-07-27
 

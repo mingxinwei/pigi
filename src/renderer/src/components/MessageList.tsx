@@ -214,8 +214,16 @@ export default React.memo(function MessageList({
     overscan: 8,
   });
 
-  // Disable virtualizer scroll corrections when auto-scroll is off.
-  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => autoScrollRef.current;
+  // Always disable the virtualizer's built-in scroll correction. Auto-scroll
+  // pinning is owned exclusively by the useLayoutEffect below, which pins to the
+  // real DOM scrollHeight. The virtualizer's correction (resizeItem ->
+  // scrollTo(modelOffset + delta)) uses the virtualizer's OWN coordinate model,
+  // which is gapless (the row gap is applied as CSS marginBottom, invisible to
+  // measurements) while scrollHeight includes those gaps. When both ran at once
+  // they targeted slightly different "bottoms", each triggering the other's
+  // re-measure -> re-pin cycle without converging, causing the list to vibrate
+  // (most visible during the measurement settle right after a session opens).
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   // Resume auto-scroll when a new user message appears
   useLayoutEffect(() => {

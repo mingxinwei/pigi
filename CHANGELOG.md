@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The message list no longer occasionally vibrates when it's scrolled to the bottom, which could happen shortly after opening a conversation.
+
 ### Changed
 
 - Links, search highlights, the message mini-map, focus rings, and the "Working..." indicator now use a refined indigo accent color instead of following the (often muted) system accent. More accent colors are built in, ready for an upcoming picker in settings.

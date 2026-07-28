@@ -10,6 +10,7 @@ import ImagePreview from './ImagePreview';
 import { getToolCommandParts, cleanReadOutput, READ_IMAGE_RE } from '../lib/toolDisplay';
 import OverflowClamp from './overflowClamp';
 import { Skeleton } from './ui/skeleton';
+import { IconCheck, IconX, IconMinus } from '@tabler/icons-react';
 
 /** Max lines shown in collapsed write preview */
 function WritePreview({
@@ -94,18 +95,22 @@ const STATUS_CONFIG = {
   running: {
     label: 'Running',
     className: 'text-[#854d0e]',
+    Icon: null,
   },
   success: {
     label: 'Succeeded',
     className: 'text-[#166534]',
+    Icon: IconCheck,
   },
   error: {
     label: 'Failed',
     className: 'text-[#991b1b]',
+    Icon: IconX,
   },
   cancelled: {
     label: 'Cancelled',
     className: 'text-[#3f3f46]',
+    Icon: IconMinus,
   },
 } as const;
 
@@ -120,7 +125,7 @@ function ElapsedTimer({ startedAt }: { startedAt?: number }): React.JSX.Element 
     return () => clearInterval(interval);
   }, [startMs]);
 
-  return <span className="tabular-nums">Elapsed {elapsed.toFixed(1)}s</span>;
+  return <span className="tabular-nums">{elapsed.toFixed(1)}s</span>;
 }
 
 /** Min height for running tool blocks to reserve space and reduce layout shift */
@@ -199,7 +204,7 @@ function formatDuration(durationMs: number | undefined): string | null {
 
   const seconds = Math.max(0.1, durationMs * SECONDS_PER_MILLISECOND);
   const formattedSeconds = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString();
-  return `Took ${formattedSeconds}s`;
+  return `${formattedSeconds}s`;
 }
 
 function getReadImagePath(node: ToolNode): string | null {
@@ -228,7 +233,9 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   // Read tool returns fast — skip rendering the running state to avoid flicker
   if (node.name === 'read' && node.status === 'running') return null;
 
-  const { className: statusClassName } = STATUS_CONFIG[node.status];
+  const statusConfig = STATUS_CONFIG[node.status];
+  const statusClassName = statusConfig.className;
+  const StatusIcon = statusConfig.Icon;
   const command = getToolCommandParts(node);
   const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
@@ -328,7 +335,8 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             statusClassName,
           )}
         >
-          <span>
+          <span className="flex items-center gap-1">
+            {StatusIcon && <StatusIcon className="size-3.5 shrink-0 [stroke-width:2]" />}
             {node.status === 'running' ? (
               <ElapsedTimer startedAt={node.startedAt} />
             ) : (

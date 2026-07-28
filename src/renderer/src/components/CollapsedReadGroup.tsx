@@ -118,9 +118,9 @@ function ThinkingGroupRow({ node }: { node: AssistantNode }): React.JSX.Element 
         onClick={() => setExpanded(!expanded)}
       >
         {thinkingInProgress ? (
-          <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
+          <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground [stroke-width:2]" />
         ) : (
-          <IconBrain className="size-3.5 shrink-0 text-muted-foreground" />
+          <IconBrain className="size-3.5 shrink-0 text-muted-foreground [stroke-width:2]" />
         )}
         <span
           className={`text-[14px] ${thinkingInProgress ? 'text-foreground' : 'text-foreground/70'}`}
@@ -202,7 +202,9 @@ export default function CollapsedReadGroup({
                     <IconLoader2 className="size-3.5 shrink-0 animate-[spin_1.8s_linear_infinite] text-muted-foreground" />
                   ) : (
                     Icon && (
-                      <Icon className={`size-3.5 shrink-0 ${statusConfig?.className ?? ''}`} />
+                      <Icon
+                        className={`size-3.5 shrink-0 [stroke-width:2] ${statusConfig?.className ?? ''}`}
+                      />
                     )
                   )}
                   <MiddleTruncatedLabel text={getCommandLabel(node)} />

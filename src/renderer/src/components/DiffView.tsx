@@ -70,7 +70,15 @@ export default function DiffView({ lines }: DiffViewProps): React.JSX.Element {
             }
             const lineNum = item.type === 'remove' ? item.oldLineNumber : item.lineNumber;
             return (
-              <div key={lineIdx} className={cn('flex', LINE_STYLES[item.type])}>
+              <div
+                key={lineIdx}
+                className={cn(
+                  // Skip layout/paint/raster for rows clipped by the clamp or
+                  // scrolled out of view; they render lazily when revealed.
+                  'flex [content-visibility:auto] [contain-intrinsic-size:auto_20px]',
+                  LINE_STYLES[item.type],
+                )}
+              >
                 <span className="w-4 shrink-0 select-none text-center opacity-50">
                   {PREFIX[item.type]}
                 </span>

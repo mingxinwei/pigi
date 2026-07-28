@@ -6,12 +6,14 @@
 
 - The message list no longer occasionally vibrates when it's scrolled to the bottom, which could happen shortly after opening a conversation.
 - The "Working..." indicator and the sidebar's running-session spinner stay smooth instead of stuttering while the app is busy rendering.
+- Syntax-highlighted code in write previews and command output no longer flickers between plain and colored text as it streams in.
 
 ### Changed
 
 - Tool blocks have a cleaner look: removed internal border lines, tightened spacing, and the status bar now uses colored text without a background fill.
 - Links, search highlights, the message mini-map, focus rings, and the "Working..." indicator now use a refined indigo accent color instead of following the (often muted) system accent. More accent colors are built in, ready for an upcoming picker in settings.
 - Large edit diffs render noticeably faster and are less likely to cause a hitch when they first appear, since off-screen diff lines are no longer laid out until scrolled into view.
+- Large highlighted output (writes, command results, code blocks) renders faster: off-screen lines are no longer laid out until scrolled into view.
 
 ## [0.3.19] - 2026-07-27
 

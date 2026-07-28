@@ -26,7 +26,7 @@ function WritePreview({
   return (
     <div className="mt-2 overflow-hidden rounded font-mono text-[13px] leading-5">
       <pre className="overflow-hidden whitespace-pre-wrap break-words text-muted-foreground [overflow-wrap:anywhere]">
-        <SyntaxHighlightedCode code={trimmed} language={language} />
+        <SyntaxHighlightedCode code={trimmed} language={language} isStreaming={isStreaming} />
         {isStreaming && <span className="animate-pulse text-muted-foreground/50">▋</span>}
       </pre>
     </div>
@@ -310,7 +310,11 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             hasOutput &&
             ((node.name !== 'edit' && node.name !== 'write') || node.status === 'error') && (
               <pre className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[14px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-                <SyntaxHighlightedCode code={cleanedOutput} language={outputLanguage} />
+                <SyntaxHighlightedCode
+                  code={cleanedOutput}
+                  language={outputLanguage}
+                  isStreaming={node.status === 'running'}
+                />
               </pre>
             )}
 

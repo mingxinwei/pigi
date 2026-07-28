@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   bundledLanguages,
   createHighlighter,
@@ -9,6 +9,12 @@ import {
 interface SyntaxHighlightedCodeProps {
   code: string;
   language: string;
+  /**
+   * When true, the code is still streaming in. Highlighting is throttled so
+   * shiki re-tokenizes at most once per {@link STREAMING_HIGHLIGHT_THROTTLE_MS}
+   * instead of on every chunk.
+   */
+  isStreaming?: boolean;
 }
 
 interface HighlightedToken {
@@ -21,6 +27,8 @@ type HighlightedLine = HighlightedToken[];
 
 interface HighlightedState {
   key: string;
+  /** The exact code string these lines were highlighted from. */
+  source: string;
   lines: HighlightedLine[] | null;
 }
 
@@ -28,6 +36,7 @@ const SHIKI_THEME = 'one-light';
 const MAX_HIGHLIGHTED_CODE_LENGTH = 80_000;
 const MAX_HIGHLIGHT_CACHE_SIZE = 100;
 const MAX_TOKENIZED_LINE_LENGTH = 2_000;
+const STREAMING_HIGHLIGHT_THROTTLE_MS = 60;
 const TOKENIZE_TIME_LIMIT_MS = 250;
 const HIGHLIGHT_STATE_KEY_SEPARATOR = ':';
 const FONT_STYLE_ITALIC = 1;
@@ -155,20 +164,70 @@ async function highlightCode(
   );
 }
 
+/**
+ * Throttles code updates so a downstream (expensive) computation runs at most
+ * once per interval while streaming. Passes the value through immediately when
+ * not streaming, and flushes the latest value once streaming stops.
+ */
+function useStreamingThrottledCode(code: string, isStreaming: boolean, intervalMs: number): string {
+  const [throttledCode, setThrottledCode] = useState(code);
+  const latestCodeRef = useRef(code);
+  const lastEmitAtRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Refs are written here (in an effect), never during render.
+    latestCodeRef.current = code;
+    if (!isStreaming) {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+    // Trailing throttle: coalesce bursts into at most one emit per interval.
+    // setState runs only inside the timer (async), never synchronously here.
+    if (timerRef.current === null) {
+      const wait = Math.max(0, intervalMs - (Date.now() - lastEmitAtRef.current));
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        lastEmitAtRef.current = Date.now();
+        setThrottledCode(latestCodeRef.current);
+      }, wait);
+    }
+  }, [code, isStreaming, intervalMs]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  // While streaming, return the throttled value; otherwise pass the latest
+  // through immediately so the final content highlights without delay.
+  return isStreaming ? throttledCode : code;
+}
+
 export default function SyntaxHighlightedCode({
   code,
   language,
+  isStreaming = false,
 }: SyntaxHighlightedCodeProps): React.JSX.Element {
   const normalizedLanguage = useMemo(() => normalizeLanguage(language), [language]);
+  const highlightInput = useStreamingThrottledCode(
+    code,
+    isStreaming,
+    STREAMING_HIGHLIGHT_THROTTLE_MS,
+  );
   const currentHighlightKey = useMemo(
-    () => (normalizedLanguage ? highlightedStateKey(code, normalizedLanguage) : null),
-    [code, normalizedLanguage],
+    () => (normalizedLanguage ? highlightedStateKey(highlightInput, normalizedLanguage) : null),
+    [highlightInput, normalizedLanguage],
   );
   const [highlightedState, setHighlightedState] = useState<HighlightedState | null>(null);
-  const highlightedLines =
-    currentHighlightKey && highlightedState?.key === currentHighlightKey
-      ? highlightedState.lines
-      : null;
+  // Stale-while-revalidate: keep the last successful highlight on screen while
+  // the next one computes, so streaming updates never flash back to plain text.
+  const highlightedLines = highlightedState?.lines ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -179,31 +238,54 @@ export default function SyntaxHighlightedCode({
       };
     }
 
-    void cacheHighlightedCode(code, normalizedLanguage)
+    void cacheHighlightedCode(highlightInput, normalizedLanguage)
       .then((lines) => {
         if (!cancelled) {
-          setHighlightedState({ key: currentHighlightKey, lines });
+          setHighlightedState({ key: currentHighlightKey, source: highlightInput, lines });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setHighlightedState({ key: currentHighlightKey, lines: null });
+          setHighlightedState({ key: currentHighlightKey, source: highlightInput, lines: null });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [code, currentHighlightKey, normalizedLanguage]);
+  }, [highlightInput, currentHighlightKey, normalizedLanguage]);
 
   if (!highlightedLines) {
     return <code className="bg-transparent p-0 font-mono text-[14px]">{code}</code>;
   }
 
+  // The stale highlight covers `source`; anything the live `code` has appended
+  // since then is rendered as a plain tail so the latest content is always
+  // visible. It gets highlighted on the next tick. The last highlighted line is
+  // moved into the tail too, since streaming may have extended it.
+  const source = highlightedState?.source ?? '';
+  const isAppendOfSource = code.length > source.length && code.startsWith(source);
+  let renderedLines = highlightedLines;
+  let plainTail = '';
+  if (isAppendOfSource) {
+    const lastLineStart = source.lastIndexOf('\n') + 1;
+    plainTail = code.slice(lastLineStart);
+    renderedLines = highlightedLines.slice(0, highlightedLines.length - 1);
+  } else if (code !== source && !code.startsWith(source)) {
+    // Content diverged (not a simple append); avoid showing a mismatched
+    // highlight and fall back to plain until the next highlight lands.
+    return <code className="bg-transparent p-0 font-mono text-[14px]">{code}</code>;
+  }
+
   return (
     <code className="bg-transparent p-0 font-mono text-[14px]">
-      {highlightedLines.map((line, lineIndex) => (
-        <span key={lineIndex} className="block min-h-5">
+      {renderedLines.map((line, lineIndex) => (
+        <span
+          key={lineIndex}
+          // Skip layout/paint/raster for lines clipped by the clamp or scrolled
+          // out of view; they render lazily when revealed.
+          className="block min-h-5 [content-visibility:auto] [contain-intrinsic-size:auto_20px]"
+        >
           {line.map((token, tokenIndex) => (
             <span key={tokenIndex} style={tokenStyle(token)}>
               {token.content}
@@ -211,6 +293,7 @@ export default function SyntaxHighlightedCode({
           ))}
         </span>
       ))}
+      {plainTail !== '' && <span className="block whitespace-pre-wrap">{plainTail}</span>}
     </code>
   );
 }

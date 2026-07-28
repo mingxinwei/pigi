@@ -93,31 +93,19 @@ interface ToolBlockProps {
 const STATUS_CONFIG = {
   running: {
     label: 'Running',
-    className: 'text-[#92400e]',
-    style: {
-      background: '#fef3c7',
-    },
+    className: 'text-[#854d0e]',
   },
   success: {
     label: 'Succeeded',
     className: 'text-[#166534]',
-    style: {
-      background: '#dcfce7',
-    },
   },
   error: {
     label: 'Failed',
     className: 'text-[#991b1b]',
-    style: {
-      background: '#fee2e2',
-    },
   },
   cancelled: {
     label: 'Cancelled',
     className: 'text-[#3f3f46]',
-    style: {
-      background: '#f4f4f5',
-    },
   },
 } as const;
 
@@ -240,13 +228,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
   // Read tool returns fast — skip rendering the running state to avoid flicker
   if (node.name === 'read' && node.status === 'running') return null;
 
-  const { className: statusClassName, style: statusStyle } = STATUS_CONFIG[node.status];
-  // A successful edit already shows its result via the diff, so its green
-  // footer fill clashes with the diff's green. Keep the footer bar and its
-  // green text, but drop the background for this case; other statuses stay
-  // fully colored.
-  const isSuccessfulEdit = node.name === 'edit' && node.status === 'success';
-  const footerStyle = isSuccessfulEdit ? undefined : statusStyle;
+  const { className: statusClassName } = STATUS_CONFIG[node.status];
   const command = getToolCommandParts(node);
   const editDiffFromDetails = getEditDiffFromDetails(node);
   const writeEntries = getWriteEntries(node);
@@ -274,7 +256,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         data-testid={`tool-block-${node.toolCallId}`}
       >
         {command.body ? (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/80">
+          <div className="-mx-3 flex items-start gap-1 px-3 pt-1.5 pb-1 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span
               ref={commandRef}
@@ -296,7 +278,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
             )}
           </div>
         ) : (
-          <div className="-mx-3 flex items-start gap-1 px-3 py-1.5 font-mono text-[14px] font-medium leading-5 text-foreground border-b border-border/80">
+          <div className="-mx-3 flex items-start gap-1 px-3 pt-1.5 pb-1 font-mono text-[14px] font-medium leading-5 text-foreground">
             <span className="shrink-0">{command.prefix}</span>
             <span className="min-w-0 text-muted-foreground">…</span>
           </div>
@@ -304,7 +286,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
 
         <OverflowClamp
           maxHeight={BLOCK_CONTENT_MAX_HEIGHT}
-          className="py-2"
+          className="pt-1 pb-2"
           tailAnchor={node.name !== 'edit'}
         >
           {node.status !== 'running' && node.status !== 'error' && editDiffFromDetails && (
@@ -338,10 +320,9 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
         <div
           data-search-ignore
           className={cn(
-            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-b-md border-t border-border/80',
+            '-mx-3 -mb-2 mt-auto flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs font-medium rounded-b-md',
             statusClassName,
           )}
-          style={footerStyle}
         >
           <span>
             {node.status === 'running' ? (
@@ -350,7 +331,7 @@ export default function ToolBlock({ node }: ToolBlockProps): React.JSX.Element |
               <>{durationLabel && <span>{durationLabel}</span>}</>
             )}
           </span>
-          {timeout !== undefined && <span data-search-ignore>timeout {timeout}s</span>}
+          {timeout !== undefined && <span data-search-ignore>Timeout {timeout}s</span>}
         </div>
       </div>
       {imagePath && <ImagePreview src={`local-file://${imagePath}`} alt={imagePath} />}

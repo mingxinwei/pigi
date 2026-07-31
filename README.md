@@ -43,4 +43,4 @@ npm run build:mac
 
 ## License
 
-[MIT](./LICENSE)
+[Apache 2.0](./LICENSE)

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The message list no longer visibly bounces while pinned to the bottom during fast streaming (most noticeable with quick models): the bottom pin now runs inside a ResizeObserver callback, so it applies in the same frame the content grows instead of one frame later.
+
 ## [0.3.20] - 2026-07-29
 
 ### Fixed

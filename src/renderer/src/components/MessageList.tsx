@@ -146,6 +146,7 @@ export default React.memo(function MessageList({
   sessionPath,
 }: MessageListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rowsWrapperRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -215,14 +216,12 @@ export default React.memo(function MessageList({
   });
 
   // Always disable the virtualizer's built-in scroll correction. Auto-scroll
-  // pinning is owned exclusively by the useLayoutEffect below, which pins to the
-  // real DOM scrollHeight. The virtualizer's correction (resizeItem ->
-  // scrollTo(modelOffset + delta)) uses the virtualizer's OWN coordinate model,
-  // which is gapless (the row gap is applied as CSS marginBottom, invisible to
-  // measurements) while scrollHeight includes those gaps. When both ran at once
-  // they targeted slightly different "bottoms", each triggering the other's
-  // re-measure -> re-pin cycle without converging, causing the list to vibrate
-  // (most visible during the measurement settle right after a session opens).
+  // pinning is owned exclusively by the ResizeObserver pin + the
+  // useLayoutEffect below, both of which target the real DOM scrollHeight. The
+  // virtualizer's correction (resizeItem -> scrollTo(modelOffset + delta))
+  // uses the virtualizer's OWN coordinate model, which is gapless (the row gap
+  // is applied as CSS marginBottom, invisible to measurements) while
+  // scrollHeight includes those gaps — so its target is never the true bottom.
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   // Resume auto-scroll when a new user message appears
@@ -234,33 +233,48 @@ export default React.memo(function MessageList({
     lastNodeIdRef.current = lastNode?.id ?? null;
   }, [displayNodes]);
 
-  // Auto-scroll + wheel handler. ResizeObserver on the scroll container
-  // detects when it shrinks (e.g. StreamingQueue appears). Content-growth
-  // scrolling is handled by the useLayoutEffect below (keyed on total size),
-  // which pins the bottom synchronously after the height commit — avoiding the
-  // RAF race where scrollTop was set against a stale (smaller) scrollHeight and
-  // stopped short of the true bottom.
+  // Auto-scroll + wheel handler.
+  //
+  // Pinning is done synchronously inside ResizeObserver callbacks, which run
+  // after layout but BEFORE paint in the same frame — so the pinned scroll
+  // position is what actually gets painted. This is the only timing that
+  // avoids visible jitter during fast streaming:
+  //
+  // - Pinning from a React effect keyed on the virtualizer's total size is one
+  //   frame too late: the streaming commit grows the row DOM immediately, but
+  //   the virtualizer only learns the new size via its own ResizeObserver, so
+  //   the growth frame paints unpinned (content visually jumps up) and the
+  //   next frame snaps back — a high-amplitude vibration at fast output rates.
+  // - The virtualizer's built-in correction (resizeItem -> scrollTo) runs in
+  //   the right frame but targets its own gapless coordinate model (the row
+  //   gap is CSS marginBottom, invisible to measurements) instead of the real
+  //   DOM scrollHeight, causing a low-amplitude high-frequency vibration.
+  //
+  // Two observers cover both ways the bottom can move:
+  // - rowsWrapperRo: any row grows (streaming text, async code highlight,
+  //   late re-measure) — the wrapper's border-box tracks the real rows, which
+  //   lead the virtualizer's measurements.
+  // - containerRo: the container itself shrinks (e.g. StreamingQueue appears).
+  //
+  // The useLayoutEffect keyed on totalSize below remains as a backup for
+  // spacer-height commits (virtualizer re-measures change totalSize without a
+  // row-DOM resize, which rowsWrapperRo cannot see).
   // Stable effect — never re-created.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-
-    let pendingRaf = 0;
+    const rowsWrapper = rowsWrapperRef.current;
+    if (!container || !rowsWrapper) return;
 
     function scrollToBottom(): void {
       if (!autoScrollRef.current) return;
       container!.scrollTop = container!.scrollHeight;
     }
 
-    // Observe the container itself — when it shrinks (e.g. StreamingQueue appears)
-    // we need to scroll to bottom so content isn't hidden. Container resizes do
-    // not change the virtualizer total size, so the layout effect below won't
-    // fire for them.
+    const rowsWrapperRo = new ResizeObserver(scrollToBottom);
+    rowsWrapperRo.observe(rowsWrapper);
+
     const containerRo = new ResizeObserver(() => {
-      if (autoScrollRef.current) {
-        if (pendingRaf) cancelAnimationFrame(pendingRaf);
-        pendingRaf = requestAnimationFrame(scrollToBottom);
-      }
+      scrollToBottom();
       setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
@@ -288,8 +302,8 @@ export default React.memo(function MessageList({
     scrollToBottom();
 
     return () => {
+      rowsWrapperRo.disconnect();
       containerRo.disconnect();
-      if (pendingRaf) cancelAnimationFrame(pendingRaf);
       container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
@@ -352,12 +366,11 @@ export default React.memo(function MessageList({
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
 
-  // Pin to the bottom whenever the virtualizer's total content size changes
-  // (new messages, streaming deltas, or late item re-measurements). Running in
-  // useLayoutEffect — synchronously after the spacer height is committed and
-  // before paint — guarantees scrollHeight is final, so a single assignment
-  // reaches the true bottom instead of a stale, too-small height. Re-runs on
-  // every size change, so streaming keeps following the bottom exactly.
+  // Backup pin for spacer-height commits: when the virtualizer's total size
+  // changes without a row-DOM resize (late re-measurements only rewrite the
+  // spacer height, which the rows-wrapper ResizeObserver cannot see), pin here
+  // — synchronously after the height commit, before paint. Row growth during
+  // streaming is primarily pinned by the ResizeObserver above.
   const scrollSessionRef = useRef(sessionPath);
   useLayoutEffect(() => {
     // On session switch the restore effect owns initial positioning; skip the
@@ -602,6 +615,7 @@ export default React.memo(function MessageList({
             data-testid="message-virtualizer"
           >
             <div
+              ref={rowsWrapperRef}
               className="absolute left-0 top-0 w-full"
               style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
             >

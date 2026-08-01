@@ -112,9 +112,11 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  showCheckIcon = true,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
   inset?: boolean;
+  showCheckIcon?: boolean;
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
@@ -126,14 +128,16 @@ function DropdownMenuRadioItem({
       )}
       {...props}
     >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-radio-item-indicator"
-      >
-        <DropdownMenuPrimitive.ItemIndicator>
-          <IconCheck />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
+      {showCheckIcon && (
+        <span
+          className="pointer-events-none absolute right-2 flex items-center justify-center"
+          data-slot="dropdown-menu-radio-item-indicator"
+        >
+          <DropdownMenuPrimitive.ItemIndicator>
+            <IconCheck />
+          </DropdownMenuPrimitive.ItemIndicator>
+        </span>
+      )}
       {children}
     </DropdownMenuPrimitive.RadioItem>
   );

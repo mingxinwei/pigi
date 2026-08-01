@@ -23,4 +23,4 @@
   ro.observe(wrapper);
   window.__paintedRo = ro; // keep a reference; call .disconnect() to stop
   return 'painted-state probe installed';
-})()
+})();

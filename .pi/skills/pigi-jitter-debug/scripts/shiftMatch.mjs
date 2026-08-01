@@ -74,7 +74,12 @@ for (let i = 1; i < count; i++) {
   const samples = Math.ceil(bandH / 3) * Math.ceil((x1 - x0) / 5);
   const avg = bestCost / samples;
   cumulative += bestShift / scale;
-  out.push({ i, shiftCss: Math.round((bestShift / scale) * 10) / 10, cum: Math.round(cumulative * 10) / 10, avg: Math.round(avg * 10) / 10 });
+  out.push({
+    i,
+    shiftCss: Math.round((bestShift / scale) * 10) / 10,
+    cum: Math.round(cumulative * 10) / 10,
+    avg: Math.round(avg * 10) / 10,
+  });
   prev = cur;
 }
 console.log(JSON.stringify(out));

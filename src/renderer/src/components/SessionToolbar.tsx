@@ -144,8 +144,8 @@ export default React.memo(function SessionToolbar({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          sideOffset={4}
-          className="min-w-0 w-fit text-xs bg-popover/50 backdrop-blur-md"
+          sideOffset={6}
+          className="min-w-0 w-fit bg-popover/50 p-1.5 backdrop-blur-md"
         >
           <DropdownMenuRadioGroup
             value={toolBlockViewMode}
@@ -154,7 +154,10 @@ export default React.memo(function SessionToolbar({
             <TooltipProvider delayDuration={400}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuRadioItem value="compact_read" className="text-xs">
+                  <DropdownMenuRadioItem
+                    value="compact_read"
+                    className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
+                  >
                     Compact
                   </DropdownMenuRadioItem>
                 </TooltipTrigger>
@@ -164,7 +167,10 @@ export default React.memo(function SessionToolbar({
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuRadioItem value="default" className="text-xs">
+                  <DropdownMenuRadioItem
+                    value="default"
+                    className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
+                  >
                     Show All
                   </DropdownMenuRadioItem>
                 </TooltipTrigger>

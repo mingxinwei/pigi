@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The view mode dropdown in the message toolbar now highlights the selected option (Compact / Show All) with the app's accent color and a matching check mark; the menu and its options have more breathing room.
+
 ## [0.4.0] - 2026-07-31
 
 ### Fixed

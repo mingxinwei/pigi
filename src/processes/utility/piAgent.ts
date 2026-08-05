@@ -19,7 +19,6 @@ import {
   createAgentSessionServices,
   getAgentDir,
   ModelRegistry,
-  type ModelRuntime,
   SessionManager,
   SettingsManager,
   type WriteToolInput,
@@ -27,8 +26,6 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import type {
   AuthProviderInfo,
-  ModelInfo,
-  ThinkingLevel,
   PiCommand,
   PiPush,
   PiRequest,
@@ -39,46 +36,8 @@ import type {
   UtilityCommand,
   UtilityResponse,
 } from '../../shared/ipcContract';
+import { toModelInfo } from '../../shared/modelInfo';
 import { generateSessionTitle } from './autoRename';
-
-const EXTENDED_THINKING_LEVELS: ThinkingLevel[] = [
-  'off',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-];
-
-function toModelInfo(model: {
-  name: string;
-  provider: string;
-  id: string;
-  api: string;
-  contextWindow: number;
-  maxTokens: number;
-  reasoning: boolean;
-  thinkingLevelMap?: Record<string, unknown | null>;
-}): ModelInfo {
-  const thinkingLevels: ThinkingLevel[] = model.reasoning
-    ? EXTENDED_THINKING_LEVELS.filter((level) => {
-        const mapped = model.thinkingLevelMap?.[level];
-        if (mapped === null) return false;
-        if (level === 'xhigh') return mapped !== undefined;
-        return true;
-      })
-    : ['off'];
-  return {
-    name: model.name,
-    provider: model.provider,
-    id: model.id,
-    api: model.api,
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-    reasoning: model.reasoning,
-    thinkingLevels,
-  };
-}
 
 // =============================================================================
 // Port interface (compatible with Electron's MessagePortMain)
@@ -495,31 +454,19 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
     case 'get_session_options': {
       const session = runtime.session;
       const modelRegistry = new ModelRegistry(runtime.services.modelRuntime);
-      // Await the reload so the snapshot reads below reflect freshly fetched
-      // models. This is the authoritative self-heal path: if the warm process
-      // that became this session cached a partial catalog (e.g. Booking-Gateway
-      // /radius models that lagged on cold start), awaiting the refresh restores
-      // the full list instead of leaving the session permanently short. Bound
-      // the wait so a stalled gateway (reloadConfig has no network timeout)
-      // can't hang the command — the refresh keeps running in the background
-      // and updates the snapshot for the next call regardless.
-      await Promise.race([
-        modelRegistry.refresh().catch(() => undefined),
-        delay(GET_SESSION_OPTIONS_REFRESH_TIMEOUT_MS),
-      ]);
+      // Session-scoped models are authoritative for the picker (the session
+      // was created with an explicit model list). Everything here is local
+      // and synchronous — the global catalog for unscoped sessions is served
+      // by the session worker, not by this command.
       const scopedModels = session.scopedModels.filter((scoped) =>
         modelRegistry.hasConfiguredAuth(scoped.model),
       );
-      const models =
-        scopedModels.length > 0
-          ? scopedModels.map((scoped) => toModelInfo(scoped.model))
-          : modelRegistry.getAvailable().map(toModelInfo);
       const skills = runtime.services.resourceLoader.getSkills().skills.map((skill) => ({
         name: `skill:${skill.name}`,
         description: skill.description,
       }));
       return {
-        models,
+        models: scopedModels.map((scoped) => toModelInfo(scoped.model)),
         thinkingLevels: session.getAvailableThinkingLevels(),
         skills,
       };
@@ -737,70 +684,19 @@ function prewarmSessionServices(cwds: string[]): void {
   }
 }
 
-const WARM_MODEL_REFRESH_MAX_RETRIES = 3;
-const WARM_MODEL_REFRESH_RETRY_DELAY_MS = 750;
-const GET_SESSION_OPTIONS_REFRESH_TIMEOUT_MS = 4000;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Returns true when at least one configured provider has zero available models.
- * Radius/gateway catalogs are fetched over the network, so a transient failure
- * can leave a logged-in provider (e.g. Booking-Gateway) with no models even
- * though its auth is configured. That is the signal to retry the refresh.
- */
-function configuredProvidersMissingModels(
-  modelRuntime: ModelRuntime,
-  available: readonly { provider: string }[],
-): boolean {
-  const providersWithModels = new Set(available.map((model) => model.provider));
-  for (const provider of modelRuntime.getProviders()) {
-    if (
-      modelRuntime.getProviderAuthStatus(provider.id).configured &&
-      !providersWithModels.has(provider.id)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function warmUp(cwds: string[]): Promise<void> {
+  // The warm process is a session embryo: its only job is to prewarm services
+  // so a later create_session is fast. The model catalog lives in the session
+  // worker (the long-lived metadata process), so warm_ready carries no
+  // catalog and there is nothing to converge here.
   try {
-    // Prewarm services for the given cwds so model info is available quickly.
-    const cwd = cwds[0] || process.cwd();
-    const services = await getServices(cwd);
-    // Report available models and thinking levels back to main.
-    const modelRegistry = new ModelRegistry(services.modelRuntime);
-    await modelRegistry.refresh();
-    let available = modelRegistry.getAvailable();
-
-    // The warm process caches this list once and is later claimed as a real
-    // session, so a partial catalog (a configured provider that failed to load
-    // its models on cold start) would persist until the next warm process
-    // spawns. Retry in the background so both the pool cache and the draft
-    // model picker self-heal. Each emission carries a `complete` flag: while a
-    // refresh is still pending it is false so the draft picker keeps polling
-    // instead of settling on a stale timing guess.
-    for (
-      let attempt = 0;
-      attempt < WARM_MODEL_REFRESH_MAX_RETRIES &&
-      configuredProvidersMissingModels(services.modelRuntime, available);
-      attempt++
-    ) {
-      sendToMain({ type: 'warm_ready', models: available.map(toModelInfo), complete: false });
-      await delay(WARM_MODEL_REFRESH_RETRY_DELAY_MS);
-      await modelRegistry.refresh();
-      available = modelRegistry.getAvailable();
-    }
-    // No further refresh is pending: this is the authoritative list.
-    sendToMain({ type: 'warm_ready', models: available.map(toModelInfo), complete: true });
+    await getServices(cwds[0] || process.cwd());
   } catch (err) {
+    // getServices failures are retried lazily by create_session, so a failed
+    // prewarm must not make this process unclaimable.
     console.error('Failed to warm up:', err);
-    sendToMain({ type: 'warm_ready', models: [], complete: true });
   }
+  sendToMain({ type: 'warm_ready' });
 }
 
 async function createSession(cwd: string): Promise<void> {

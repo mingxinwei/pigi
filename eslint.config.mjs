@@ -47,7 +47,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', '.pi/skills/**/scripts/**/*.mjs'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
     },

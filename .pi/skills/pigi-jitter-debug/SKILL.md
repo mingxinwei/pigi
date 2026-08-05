@@ -16,7 +16,7 @@ Chromium's per-frame order (simplified):
 1. Tasks (IPC handlers, React commits scheduled from them, timers)
 2. `requestAnimationFrame` callbacks
 3. Style recalc + layout
-4. ResizeObserver callbacks  ← last JS point before paint
+4. ResizeObserver callbacks ← last JS point before paint
 5. Paint
 
 Consequences:
@@ -24,7 +24,7 @@ Consequences:
 - **A `useLayoutEffect` keyed on virtualizer state is one frame late for
   content growth.** The streaming commit grows row DOM immediately, but the
   virtualizer only learns the new size from its own ResizeObserver, so a pin
-  keyed on `totalSize` fires in a re-render that happens *after* the growth
+  keyed on `totalSize` fires in a re-render that happens _after_ the growth
   frame already painted unpinned. This caused the message-list vibration fixed
   in `MessageList.tsx` (pin now runs inside a ResizeObserver callback observing
   the rows wrapper — step 4, same frame as the growth).
@@ -37,7 +37,7 @@ Consequences:
 ## Trap 1: rAF probes read pre-render state
 
 rAF runs at step 2; pins run at step 4. A rAF loop sampling
-`scrollHeight - scrollTop - clientHeight` records the transient *before* the
+`scrollHeight - scrollTop - clientHeight` records the transient _before_ the
 pin of the same frame — it shows oscillation on BOTH broken and fixed builds.
 Useless for verdicts.
 

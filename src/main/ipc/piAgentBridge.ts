@@ -15,6 +15,7 @@ import { PiAgentProcessPool } from './piAgentProcessPool';
 import {
   PiChannel,
   type ListProjectSessionsCommand,
+  type ModelInfo,
   type ReadSessionMessagesCommand,
   type RenameSessionCommand,
   type SessionWorkerResponse,
@@ -52,6 +53,17 @@ const processPool = new PiAgentProcessPool((sessionPath, code) => {
   sendToRenderer(PiChannel.ProcessExit, { sessionPath, code });
 });
 
+// =============================================================================
+// Model catalog (served by the session worker, cached + broadcast by main)
+//
+// The session worker is the single producer of the model catalog; it loads it
+// once at startup and rebuilds it only on credential changes. Main keeps the
+// last published snapshot so a freshly loaded renderer gets an immediate
+// answer, and forwards every update push.
+// =============================================================================
+
+let modelCatalogCache: ModelInfo[] = [];
+
 function startSessionWorker(): void {
   if (sessionWorkerProcess) {
     return;
@@ -62,6 +74,10 @@ function startSessionWorker(): void {
 
   proc.on('message', (message: SessionWorkerResponse) => {
     switch (message.type) {
+      case 'catalog_updated':
+        modelCatalogCache = message.models;
+        sendToRenderer(PiChannel.ModelCatalogUpdated, { models: message.models });
+        break;
       case 'project_sessions_chunk':
         sendToRenderer(PiChannel.ProjectSessionsChunk, {
           requestId: message.requestId,
@@ -100,6 +116,9 @@ function startSessionWorker(): void {
   proc.on('exit', () => {
     if (sessionWorkerProcess === proc) {
       sessionWorkerProcess = null;
+      // The cache is kept: it is the last known catalog and stays valid until
+      // the respawned worker publishes (a respawned worker reloads the
+      // catalog on startup, so recovery needs no coordination here).
       for (const [id, callback] of pendingRenameCallbacks) {
         callback({ success: false, error: 'session worker process exited' });
         pendingRenameCallbacks.delete(id);
@@ -157,10 +176,13 @@ async function attemptSpawnSessionProcess(
       }
 
       // A login/logout in this session process changed stored credentials.
-      // Rebuild the warm process so the draft model picker (which reads the
-      // warm process cache) reflects the new auth instead of a stale snapshot.
+      // Rebuild the warm process (so a session claimed from it sees fresh
+      // auth) and rebuild the catalog (the worker caches an in-memory auth
+      // snapshot that refresh() will not reload from disk).
       if (message.type === 'credentials_changed') {
         processPool.respawnWarmProcess();
+        startSessionWorker();
+        sessionWorkerProcess?.postMessage({ type: 'reload_catalog' });
         return;
       }
 
@@ -313,8 +335,10 @@ export function registerIpcHandlers(): void {
     return { success: processPool.touchSessionProcess(sessionPath) };
   });
 
-  ipcMain.handle(PiChannel.GetWarmSessionOptions, async () => {
-    return processPool.getWarmSessionOptions();
+  ipcMain.handle(PiChannel.GetModelCatalog, async () => {
+    // Pure cache read: the worker publishes on startup and on credential
+    // changes; updates arrive via ModelCatalogUpdated.
+    return modelCatalogCache;
   });
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {

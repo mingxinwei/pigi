@@ -40,7 +40,8 @@ import {
   reorderProjects,
   renameSession,
   readSessionMessages,
-  getWarmSessionOptions,
+  getModelCatalog,
+  onModelCatalogUpdated,
 } from './services/piAgentClient';
 import type {
   AuthProviderInfo,
@@ -99,7 +100,13 @@ function App(): React.JSX.Element {
   // keeps the same terminal tabs.
   const terminalProjectCwd = activeProject?.path ?? activeCwd;
   const [gitBranch, setGitBranch] = useState<string | null>(null);
-  const [modelOptions, setModelOptions] = useState<ModelInfo[]>([]);
+  // The picker has two model sources: the session-scoped list (authoritative
+  // for sessions created with an explicit model list) and the global catalog
+  // pushed from main (for drafts and unscoped sessions). Scoped wins when
+  // non-empty.
+  const [catalogModels, setCatalogModels] = useState<ModelInfo[]>([]);
+  const [scopedModels, setScopedModels] = useState<ModelInfo[]>([]);
+  const modelOptions = scopedModels.length > 0 ? scopedModels : catalogModels;
   const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillSlashCommand[]>([]);
   const selectedSessionPath = pendingSelectedPath ?? activeSessionPath ?? null;
@@ -119,10 +126,6 @@ function App(): React.JSX.Element {
   }, [terminalOpen]);
   const lastModelRef = useRef<{ provider: string; id: string } | null>(null);
   const lastThinkingLevelRef = useRef<ThinkingLevel | null>(null);
-  // Identifies the current draft that is polling the warm process for options.
-  // Bumped each time a new draft starts, so an older draft's in-flight warm
-  // poll can detect it has been superseded and stop writing option state.
-  const draftOptionsGenerationRef = useRef(0);
   // State mirrors of refs for render access (updated alongside refs).
   const [lastModelSnapshot, setLastModelSnapshot] = useState<{
     provider: string;
@@ -212,19 +215,41 @@ function App(): React.JSX.Element {
       if (useAppStore.getState().activeSessionPath !== sessionId) {
         return;
       }
-      setModelOptions(options.models);
+      setScopedModels(options.models);
       setThinkingLevelOptions(options.thinkingLevels);
       setSkillOptions(options.skills);
     } catch (err) {
-      if (useAppStore.getState().activeSessionPath !== sessionId) {
-        return;
-      }
+      // Keep the last known options on transient failures — the global
+      // catalog still backs the model list, so nothing blanks out.
       console.error('Failed to refresh session options:', err);
-      setModelOptions([]);
-      setThinkingLevelOptions([]);
-      setSkillOptions([]);
     }
   }, []);
+
+  // Global model catalog: immediate snapshot + live updates from main. The
+  // worker re-publishes only on change, so this is quiet in the steady state.
+  useEffect(() => {
+    void getModelCatalog()
+      .then(setCatalogModels)
+      .catch((err) => console.error('Failed to load model catalog:', err));
+    return onModelCatalogUpdated(setCatalogModels);
+  }, []);
+
+  // Draft mode derives thinking levels from the catalog (last-used model
+  // first, otherwise the first model). Sessions own their thinking levels via
+  // get_session_options, so this only runs when no session is active.
+  useEffect(() => {
+    if (activeSessionPath) {
+      return;
+    }
+    const matched = lastModelRef.current
+      ? catalogModels.find(
+          (model) =>
+            model.id === lastModelRef.current!.id &&
+            model.provider === lastModelRef.current!.provider,
+        )
+      : null;
+    setThinkingLevelOptions(matched?.thinkingLevels ?? catalogModels[0]?.thinkingLevels ?? []);
+  }, [catalogModels, activeSessionPath]);
 
   const handleSidebarResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -310,34 +335,17 @@ function App(): React.JSX.Element {
   }, [activeSessionPath, refreshSessionState, transcript.status]);
 
   useEffect(() => {
-    if (!activeSessionPath) {
-      return;
-    }
-
-    let cancelled = false;
-    void getSessionOptions(activeSessionPath)
-      .then((options) => {
-        if (cancelled) {
-          return;
-        }
-        setModelOptions(options.models);
-        setThinkingLevelOptions(options.thinkingLevels);
-        setSkillOptions(options.skills);
-      })
-      .catch((err) => {
-        if (cancelled) {
-          return;
-        }
-        console.error('Failed to refresh session options:', err);
-        setModelOptions([]);
-        setThinkingLevelOptions([]);
-        setSkillOptions([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSessionPath]);
+    // Defer to next frame to avoid cascading renders from the async setState chain.
+    const frame = requestAnimationFrame(() => {
+      // Clear the previous session's scoped list so it cannot bleed into the
+      // next owner's picker while options load; the catalog backs the gap.
+      setScopedModels([]);
+      if (activeSessionPath) {
+        void refreshSessionOptions(activeSessionPath);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeSessionPath, refreshSessionOptions]);
 
   const refreshGitBranch = useCallback(async () => {
     const result = await getGitBranch(activeCwd);
@@ -664,49 +672,9 @@ function App(): React.JSX.Element {
     setActiveSession(null);
     setIsDraftChat(true);
     setPendingSelectedPath(null);
-    // Fetch model info from the warm process. The warm process publishes an
-    // initial list and re-publishes once slow providers such as
-    // Booking-Gateway/radius finish loading, marking the final emission
-    // `complete`. Poll until complete (or retries exhausted) so the picker is
-    // not frozen on a partial list, and guard every write with this draft's
-    // generation so a poll that outlives the draft cannot overwrite another
-    // owner's option state.
-    const generation = ++draftOptionsGenerationRef.current;
-    let warmRetryCount = 0;
-    const MAX_WARM_RETRIES = 12;
-    const fetchWarmOptions = (): void => {
-      void getWarmSessionOptions().then((options) => {
-        if (
-          draftOptionsGenerationRef.current !== generation ||
-          useAppStore.getState().activeSessionPath !== null
-        ) {
-          // A newer draft started, or a session became active — either way this
-          // draft no longer owns the option state.
-          return;
-        }
-        if (options.models.length > 0) {
-          setModelOptions(options.models);
-          // Derive thinkingLevels from the last-used model if available
-          const matchedModel = lastModelRef.current
-            ? options.models.find(
-                (m) =>
-                  m.id === lastModelRef.current!.id &&
-                  m.provider === lastModelRef.current!.provider,
-              )
-            : null;
-          setThinkingLevelOptions(
-            matchedModel ? matchedModel.thinkingLevels : options.models[0].thinkingLevels,
-          );
-        }
-        warmRetryCount++;
-        // Keep polling until the warm process reports it finished refreshing, or
-        // retries are exhausted. Empty/partial lists keep polling.
-        if (!options.complete && warmRetryCount < MAX_WARM_RETRIES) {
-          setTimeout(fetchWarmOptions, 500);
-        }
-      });
-    };
-    fetchWarmOptions();
+    // The draft picker reads the global catalog (already subscribed above);
+    // clear any previous session's scoped list so it cannot bleed in.
+    setScopedModels([]);
   }, [isDraftChat, activeSessionPath, pushNavigationHistory, setActiveSession]);
 
   function handleNewSessionForProject(path: string): void {
@@ -801,15 +769,9 @@ function App(): React.JSX.Element {
         // Wire up live subscriptions (port is now available under sessionPath)
         ensureTranscriptSession(sessionPath);
 
-        // Fetch session options and state from the process
+        // Fetch session-scoped options and state from the process
         void refreshSessionState(sessionPath);
-        void getSessionOptions(sessionPath)
-          .then((options) => {
-            setModelOptions(options.models);
-            setThinkingLevelOptions(options.thinkingLevels);
-            setSkillOptions(options.skills);
-          })
-          .catch(() => {});
+        void refreshSessionOptions(sessionPath);
         void touchSession(sessionPath);
 
         // Refresh session list for this project
@@ -842,7 +804,14 @@ function App(): React.JSX.Element {
         toast.error('Failed to resume session. Please try again.');
       }
     },
-    [modelOptions, addSessionEntry, pushNavigationHistory, refreshSessionState, setActiveSession],
+    [
+      modelOptions,
+      addSessionEntry,
+      pushNavigationHistory,
+      refreshSessionState,
+      refreshSessionOptions,
+      setActiveSession,
+    ],
   );
 
   const handleOpenProject = useCallback(async () => {

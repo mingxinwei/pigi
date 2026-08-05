@@ -106,6 +106,12 @@ export interface SkillSlashCommand {
 }
 
 export interface SessionOptions {
+  /**
+   * Session-scoped models (empty when the session uses the global catalog).
+   * Scoped models are authoritative for the picker; when empty, the renderer
+   * falls back to the main-process model catalog (see GetModelCatalog /
+   * ModelCatalogUpdated).
+   */
   models: ModelInfo[];
   thinkingLevels: ThinkingLevel[];
   skills: SkillSlashCommand[];
@@ -275,8 +281,10 @@ export enum PiChannel {
   GetShortcuts = 'pi:get_shortcuts',
   /** renderer → main: update a keyboard shortcut binding */
   SetShortcut = 'pi:set_shortcut',
-  /** renderer → main: get model options from warm (pre-spawned) process */
-  GetWarmSessionOptions = 'pi:get_warm_session_options',
+  /** renderer → main: get the cached model catalog snapshot */
+  GetModelCatalog = 'pi:get_model_catalog',
+  /** main → renderer: the model catalog changed (push, no request) */
+  ModelCatalogUpdated = 'pi:model_catalog_updated',
   /** renderer → main: ensure the terminal process for an id is running and deliver its data MessagePort */
   TerminalStart = 'pi:terminal_start',
   /** renderer → main: kill the terminal process for an id (tab close / LRU / TTL eviction) */
@@ -349,10 +357,15 @@ export interface ReadSessionMessagesCommand {
   sessionPath: string;
 }
 
+export interface ReloadCatalogCommand {
+  type: 'reload_catalog';
+}
+
 export type SessionWorkerCommand =
   | ListProjectSessionsCommand
   | RenameSessionCommand
-  | ReadSessionMessagesCommand;
+  | ReadSessionMessagesCommand
+  | ReloadCatalogCommand;
 
 export type SessionWorkerResponse =
   | ({ type: 'project_sessions_chunk' } & ProjectSessionsChunk)
@@ -366,7 +379,8 @@ export type SessionWorkerResponse =
       thinkingLevel?: ThinkingLevel;
       model?: { provider: string; modelId: string } | null;
       error?: string;
-    };
+    }
+  | { type: 'catalog_updated'; models: ModelInfo[] };
 
 // =============================================================================
 // Internal: Main → Utility (parentPort, lifecycle only)
@@ -387,5 +401,7 @@ export type UtilityResponse =
   | { type: 'session_created'; sessionId: string; sessionPath: string }
   | { type: 'session_error'; error: string }
   | { type: 'session_busy_changed'; isBusy: boolean }
-  | { type: 'warm_ready'; models: ModelInfo[]; complete: boolean }
+  // Services prewarmed; the process is ready to be claimed as a session. The
+  // model catalog is served by the session worker, so this carries no payload.
+  | { type: 'warm_ready' }
   | { type: 'credentials_changed' };

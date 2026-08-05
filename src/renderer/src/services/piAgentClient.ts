@@ -266,10 +266,12 @@ export function onStreamBatch(
   return window.piApi.onStreamBatch(sessionPath, callback);
 }
 
-/** Get model options from the warm (pre-spawned) process. Returns empty if not ready. */
-export async function getWarmSessionOptions(): Promise<{
-  models: ModelInfo[];
-  complete: boolean;
-}> {
-  return window.piApi.getWarmSessionOptions();
+/** Get the cached model catalog snapshot. Updates arrive via onModelCatalogUpdated. */
+export async function getModelCatalog(): Promise<ModelInfo[]> {
+  return window.piApi.getModelCatalog();
+}
+
+/** Subscribe to model catalog updates pushed from main. */
+export function onModelCatalogUpdated(callback: (models: ModelInfo[]) => void): () => void {
+  return window.piApi.onModelCatalogUpdated(callback);
 }

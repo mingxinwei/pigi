@@ -1,5 +1,5 @@
 import { createPiAgentProcess } from '../processes/createPiAgentProcess';
-import { type ModelInfo, type UtilityCommand } from '../../shared/ipcContract';
+import { type UtilityCommand } from '../../shared/ipcContract';
 
 interface SessionProcess {
   process: Electron.UtilityProcess;
@@ -11,9 +11,6 @@ interface SessionProcess {
 interface WarmProcess {
   process: Electron.UtilityProcess;
   ready: boolean;
-  models: ModelInfo[];
-  /** True once the warm process has finished refreshing (no retry pending). */
-  complete: boolean;
 }
 
 const MAX_IDLE_SESSION_PROCESS_COUNT = 3;
@@ -33,7 +30,10 @@ export class PiAgentProcessPool {
   /**
    * Ensure a warm process exists. Spawns one if not present.
    * The warm process initializes services (model registry, extensions) but
-   * does NOT create a session file — it stays unbound until claimed.
+   * does NOT create a session file — it stays unbound until claimed. It is a
+   * pure session embryo: the model catalog is served by the session worker,
+   * so a hung warm-up never blocks the picker, and session creation simply
+   * falls back to a fresh process when this one is not ready.
    */
   ensureWarmProcess(cwds: string[] = this.warmCwds): void {
     this.warmCwds = [...new Set(cwds)];
@@ -43,17 +43,6 @@ export class PiAgentProcessPool {
       return;
     }
     this.spawnWarmProcess();
-  }
-
-  /** Get model/thinking options from the warm process (empty if not yet ready). */
-  getWarmSessionOptions(): { models: ModelInfo[]; complete: boolean } {
-    if (!this.warmProcess || !this.warmProcess.ready) {
-      return { models: [], complete: false };
-    }
-    return {
-      models: this.warmProcess.models,
-      complete: this.warmProcess.complete,
-    };
   }
 
   /** Whether the warm process is initialized and ready to accept create_session. */
@@ -80,8 +69,8 @@ export class PiAgentProcessPool {
   /**
    * Rebuild the warm process from scratch. Used after a credential change: the
    * existing warm process caches an in-memory auth snapshot that refresh() will
-   * not reload, so a fresh process is the reliable way to pick up new/removed
-   * credentials (and thus the correct model catalog) from disk.
+   * not reload, so a session claimed from it would see stale credentials. A
+   * fresh process picks up new/removed credentials from disk.
    */
   respawnWarmProcess(): void {
     if (this.warmProcess) {
@@ -188,20 +177,18 @@ export class PiAgentProcessPool {
     this.warmProcess = {
       process: proc,
       ready: false,
-      models: [],
-      complete: false,
     };
     proc.on('exit', () => {
       if (this.warmProcess?.process === proc) {
         this.warmProcess = null;
       }
     });
-    // Listen for warm_ready response
-    proc.on('message', (message: { type: string; models?: unknown[]; complete?: boolean }) => {
+    // The warm phase ends with a single warm_ready once services are
+    // prewarmed (or failed — the process is claimable either way since
+    // create_session retries service creation lazily).
+    proc.on('message', (message: { type: string }) => {
       if (message.type === 'warm_ready' && this.warmProcess?.process === proc) {
         this.warmProcess.ready = true;
-        this.warmProcess.models = (message.models ?? []) as ModelInfo[];
-        this.warmProcess.complete = message.complete ?? false;
       }
     });
     // Send warm_up command to initialize services

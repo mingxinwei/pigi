@@ -416,9 +416,17 @@ const piApi = {
     return () => ipcRenderer.removeListener(PiChannel.ProcessExit, handler);
   },
 
-  /** Get model options from the warm (pre-spawned) process. */
-  getWarmSessionOptions: (): Promise<{ models: ModelInfo[]; complete: boolean }> =>
-    ipcRenderer.invoke(PiChannel.GetWarmSessionOptions),
+  /** Get the cached model catalog snapshot. Updates arrive via onModelCatalogUpdated. */
+  getModelCatalog: (): Promise<ModelInfo[]> => ipcRenderer.invoke(PiChannel.GetModelCatalog),
+
+  /** Subscribe to model catalog updates (main → renderer push). */
+  onModelCatalogUpdated: (callback: (models: ModelInfo[]) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, data: { models: ModelInfo[] }): void => {
+      callback(data.models);
+    };
+    ipcRenderer.on(PiChannel.ModelCatalogUpdated, handler);
+    return () => ipcRenderer.removeListener(PiChannel.ModelCatalogUpdated, handler);
+  },
 
   /** Get the app's working directory (for session creation). */
   getCwd: (): string => process.cwd(),

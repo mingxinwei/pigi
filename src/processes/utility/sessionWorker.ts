@@ -79,11 +79,10 @@ function delay(ms: number): Promise<void> {
 /** Publish the current snapshot to main, but only when it actually changed. */
 function publishCatalog(modelRuntime: ModelRuntime): void {
   const models = modelRuntime.getAvailableSnapshot().map(toModelInfo);
+  // Sort for order-insensitivity, then stringify the full entries so any
+  // field change (not just the provider/id set) counts as a catalog change.
   const key = JSON.stringify(
-    models
-      .map((model) => `${model.provider}/${model.id}`)
-      .sort()
-      .join('\n'),
+    [...models].sort((a, b) => `${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`)),
   );
   if (key === lastPublishedCatalogKey) {
     return;

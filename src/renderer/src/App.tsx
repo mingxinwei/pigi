@@ -103,11 +103,13 @@ function App(): React.JSX.Element {
   // The picker has two model sources: the session-scoped list (authoritative
   // for sessions created with an explicit model list) and the global catalog
   // pushed from main (for drafts and unscoped sessions). Scoped wins when
-  // non-empty.
+  // non-empty. The scoped list is tagged with its owning session, so a stale
+  // list can never bleed into another session's (or a draft's) picker.
   const [catalogModels, setCatalogModels] = useState<ModelInfo[]>([]);
-  const [scopedModels, setScopedModels] = useState<ModelInfo[]>([]);
+  const [scoped, setScoped] = useState<{ sessionPath: string; models: ModelInfo[] } | null>(null);
+  const scopedModels = scoped && scoped.sessionPath === activeSessionPath ? scoped.models : [];
   const modelOptions = scopedModels.length > 0 ? scopedModels : catalogModels;
-  const [thinkingLevelOptions, setThinkingLevelOptions] = useState<ThinkingLevel[]>([]);
+  const [sessionThinkingLevels, setSessionThinkingLevels] = useState<ThinkingLevel[]>([]);
   const [skillOptions, setSkillOptions] = useState<SkillSlashCommand[]>([]);
   const selectedSessionPath = pendingSelectedPath ?? activeSessionPath ?? null;
   const { state: transcript, controller: transcriptControllerRef } =
@@ -215,8 +217,8 @@ function App(): React.JSX.Element {
       if (useAppStore.getState().activeSessionPath !== sessionId) {
         return;
       }
-      setScopedModels(options.models);
-      setThinkingLevelOptions(options.thinkingLevels);
+      setScoped({ sessionPath: sessionId, models: options.models });
+      setSessionThinkingLevels(options.thinkingLevels);
       setSkillOptions(options.skills);
     } catch (err) {
       // Keep the last known options on transient failures — the global
@@ -235,21 +237,20 @@ function App(): React.JSX.Element {
   }, []);
 
   // Draft mode derives thinking levels from the catalog (last-used model
-  // first, otherwise the first model). Sessions own their thinking levels via
-  // get_session_options, so this only runs when no session is active.
-  useEffect(() => {
-    if (activeSessionPath) {
-      return;
-    }
-    const matched = lastModelRef.current
+  // first, otherwise the first model); sessions own theirs via
+  // get_session_options. This is render-time derivation (not an effect), so
+  // a late-arriving lastModel seed — the last session's model is read
+  // asynchronously on first load — recomputes it like any derived value.
+  const draftThinkingLevels = useMemo(() => {
+    const matched = lastModelSnapshot
       ? catalogModels.find(
           (model) =>
-            model.id === lastModelRef.current!.id &&
-            model.provider === lastModelRef.current!.provider,
+            model.id === lastModelSnapshot.id && model.provider === lastModelSnapshot.provider,
         )
       : null;
-    setThinkingLevelOptions(matched?.thinkingLevels ?? catalogModels[0]?.thinkingLevels ?? []);
-  }, [catalogModels, activeSessionPath]);
+    return matched?.thinkingLevels ?? catalogModels[0]?.thinkingLevels ?? [];
+  }, [catalogModels, lastModelSnapshot]);
+  const thinkingLevelOptions = activeSessionPath ? sessionThinkingLevels : draftThinkingLevels;
 
   const handleSidebarResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -335,11 +336,10 @@ function App(): React.JSX.Element {
   }, [activeSessionPath, refreshSessionState, transcript.status]);
 
   useEffect(() => {
-    // Defer to next frame to avoid cascading renders from the async setState chain.
+    // The rAF boundary is for the react-hooks/set-state-in-effect rule: the
+    // refresh lands its setState asynchronously, and the rule also flags a
+    // direct (even async) call of a state-setting closure in an effect body.
     const frame = requestAnimationFrame(() => {
-      // Clear the previous session's scoped list so it cannot bleed into the
-      // next owner's picker while options load; the catalog backs the gap.
-      setScopedModels([]);
       if (activeSessionPath) {
         void refreshSessionOptions(activeSessionPath);
       }
@@ -673,8 +673,8 @@ function App(): React.JSX.Element {
     setIsDraftChat(true);
     setPendingSelectedPath(null);
     // The draft picker reads the global catalog (already subscribed above);
-    // clear any previous session's scoped list so it cannot bleed in.
-    setScopedModels([]);
+    // the previous session's scoped list is ignored automatically because it
+    // is tagged with that session's path.
   }, [isDraftChat, activeSessionPath, pushNavigationHistory, setActiveSession]);
 
   function handleNewSessionForProject(path: string): void {
@@ -962,7 +962,7 @@ function App(): React.JSX.Element {
       let needsThinkingClamp = false;
       if (model.thinkingLevels.length > 0) {
         const levels = model.thinkingLevels;
-        setThinkingLevelOptions(levels);
+        setSessionThinkingLevels(levels);
         // Reset thinking level if current one isn't available for this model
         if (lastThinkingLevelRef.current && !levels.includes(lastThinkingLevelRef.current)) {
           needsThinkingClamp = true;

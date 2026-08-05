@@ -9,6 +9,7 @@
 ### Fixed
 
 - The model picker now reliably shows the full model list, including gateway models that load over the network: the model list is loaded once at startup, pushed to the app when ready, and refreshed when you log in or out — instead of being re-fetched and repeatedly polled by each chat, which could leave the picker stuck on a partial list.
+- A new chat's thinking-level options now follow your most recently used model instead of the first model in the list when the app has just started.
 
 ## [0.4.0] - 2026-07-31
 

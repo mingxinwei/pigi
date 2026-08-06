@@ -774,8 +774,14 @@ function App(): React.JSX.Element {
         void refreshSessionOptions(sessionPath);
         void touchSession(sessionPath);
 
-        // Refresh session list for this project
-        void listProjectSessions([session.cwd]);
+        // No session-list refresh here: resume changes no session metadata,
+        // and re-fetching under the user's cursor made the sidebar list
+        // visibly shift right after a click. This applies to all resume paths
+        // (list click, switcher, navigation history) for consistent behavior;
+        // the tradeoff is that metadata stays as-of the last refresh until the
+        // next one. Refreshes still happen on app start, project select,
+        // session create/rename, and after flushing buffered prompts below
+        // (which do change the session).
 
         // Flush any pending prompts
         const bufferedMessages = pendingPromptsRef.current.get(sessionPath);

@@ -162,22 +162,37 @@ export function SessionList({
   const isCollapsedWithPinned =
     !isExpanded && visibleWhenCollapsedSessionIds && visibleWhenCollapsedSessionIds.size > 0;
 
-  // Auto-expand "show more" when the selected session is among the hidden
-  // ones. Keyed on selection changes only: showAll is deliberately not a
-  // dependency, so an explicit "Show less" is never immediately overridden
-  // (that made the list flicker open again right after collapsing). The ref
-  // also guards against projectSessions churn (list refreshes) re-expanding
-  // a list the user just collapsed.
+  // Auto-expand "show more" when the selection lands on a hidden session
+  // from outside this list (hydration, navigation history). Selections made
+  // by clicking an item here are suppressed: the item was visible when
+  // clicked, and an explicit "Show less" must never be overridden — not even
+  // when a session-list refresh re-runs this effect after the collapse.
+  // showAll is deliberately not a dependency (read via ref) so toggling it
+  // never re-triggers the effect.
   const showAllRef = useRef(showAll);
   useEffect(() => {
     showAllRef.current = showAll;
   }, [showAll]);
-  const lastAutoExpandPathRef = useRef<string | null>(null);
+  const suppressAutoExpandPathRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!selectedSessionPath || showAllRef.current) {
+    // The suppression marker is set synchronously in the click handler before
+    // the selection render, so a fresh marker survives this effect run. Once
+    // the selection moves elsewhere (external selection via switcher,
+    // navigation history, or New chat → null), expire it: auto-expand must
+    // apply again for hidden selections, exactly like the sidebar's scroll
+    // marker.
+    if (!selectedSessionPath) {
+      suppressAutoExpandPathRef.current = null;
       return;
     }
-    if (lastAutoExpandPathRef.current === selectedSessionPath) {
+    if (suppressAutoExpandPathRef.current !== selectedSessionPath) {
+      suppressAutoExpandPathRef.current = null;
+    }
+    if (suppressAutoExpandPathRef.current === selectedSessionPath) {
+      // Fresh click marker — suppress this selection only.
+      return;
+    }
+    if (showAllRef.current) {
       return;
     }
     const fullSessions = isCollapsedWithPinned
@@ -185,7 +200,8 @@ export function SessionList({
       : projectSessions;
     const hidden = fullSessions.slice(visibleSessionCount);
     if (hidden.some((s) => s.path === selectedSessionPath)) {
-      lastAutoExpandPathRef.current = selectedSessionPath;
+      // Expand at most once per selection; after that the user owns showAll.
+      suppressAutoExpandPathRef.current = selectedSessionPath;
       requestAnimationFrame(() => {
         if (!showAllRef.current) {
           setShowAll(true);
@@ -209,6 +225,11 @@ export function SessionList({
   const hiddenCount = sessionsToRender.length - visibleSessions.length;
 
   function handleSessionSwitch(session: PiSessionInfo): void {
+    // Clicked items are visible by definition (hidden items aren't rendered),
+    // so auto-expand must never fire for this selection — even if a later
+    // session-list refresh re-runs the effect after the user collapsed the
+    // list.
+    suppressAutoExpandPathRef.current = session.path;
     onResumeSession(session);
   }
 

@@ -48,6 +48,21 @@ export default function Sidebar({
   // Track the last session path we've successfully scrolled to.
   // This allows retries when projectSessions loads asynchronously after selectedSessionPath changes.
   const lastScrolledPathRef = useRef<string | null>(null);
+  // The selection observed at the previous effect run — distinguishes a real
+  // selection change from a projectSessions-only re-run.
+  const lastSelectionRef = useRef<string | null>(null);
+  // Selections that came from clicking an item in the session list: the item
+  // is already under the cursor, so the scroll effect below must not move it
+  // (centering on every click produced visible layout shift).
+  const listClickedPathRef = useRef<string | null>(null);
+
+  const handleResumeSessionFromList = useCallback(
+    (session: PiSessionInfo) => {
+      listClickedPathRef.current = session.path;
+      onResumeSession(session);
+    },
+    [onResumeSession],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -60,11 +75,28 @@ export default function Sidebar({
   useEffect(() => {
     if (!selectedSessionPath) {
       lastScrolledPathRef.current = null;
+      lastSelectionRef.current = null;
+      listClickedPathRef.current = null;
       return;
     }
 
-    // Already scrolled to this session — skip unless projectSessions just loaded
-    if (lastScrolledPathRef.current === selectedSessionPath) return;
+    const selectionChanged = lastSelectionRef.current !== selectedSessionPath;
+    lastSelectionRef.current = selectedSessionPath;
+
+    // Clicked in the list — already visible under the cursor; never scroll.
+    // Mark it as handled so projectSessions churn won't retry either. The
+    // marker only suppresses this one selection: once the selection moves
+    // elsewhere it is cleared below, so jumping back here via the switcher
+    // or navigation history still centers the item.
+    if (listClickedPathRef.current === selectedSessionPath) {
+      lastScrolledPathRef.current = selectedSessionPath;
+      return;
+    }
+    listClickedPathRef.current = null;
+
+    // Selection unchanged since last run (projectSessions loaded/refreshed):
+    // scroll at most once per selection.
+    if (!selectionChanged && lastScrolledPathRef.current === selectedSessionPath) return;
 
     // Find which project contains this session
     let targetProjectPath: string | null = null;
@@ -242,7 +274,7 @@ export default function Sidebar({
                 onToggleProjectExpand={toggleProjectExpand}
                 onSelectProject={onSelectProject}
                 onNewSessionForProject={handleNewSessionForProject}
-                onResumeSession={onResumeSession}
+                onResumeSession={handleResumeSessionFromList}
                 onOpenProject={onOpenProject}
                 onRemoveProject={onRemoveProject}
                 onReorderProjects={onReorderProjects}

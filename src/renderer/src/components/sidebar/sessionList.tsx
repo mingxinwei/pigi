@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { IconLoader2, IconPencil } from '@tabler/icons-react';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import type { PiSessionInfo } from '../../../../shared/ipcContract';
@@ -162,23 +162,37 @@ export function SessionList({
   const isCollapsedWithPinned =
     !isExpanded && visibleWhenCollapsedSessionIds && visibleWhenCollapsedSessionIds.size > 0;
 
-  // Auto-expand "show more" when selected session is among hidden ones
+  // Auto-expand "show more" when the selected session is among the hidden
+  // ones. Keyed on selection changes only: showAll is deliberately not a
+  // dependency, so an explicit "Show less" is never immediately overridden
+  // (that made the list flicker open again right after collapsing). The ref
+  // also guards against projectSessions churn (list refreshes) re-expanding
+  // a list the user just collapsed.
+  const showAllRef = useRef(showAll);
   useEffect(() => {
-    if (!selectedSessionPath || showAll) return;
+    showAllRef.current = showAll;
+  }, [showAll]);
+  const lastAutoExpandPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedSessionPath || showAllRef.current) {
+      return;
+    }
+    if (lastAutoExpandPathRef.current === selectedSessionPath) {
+      return;
+    }
     const fullSessions = isCollapsedWithPinned
       ? projectSessions.filter((s) => visibleWhenCollapsedSessionIds!.has(s.id))
       : projectSessions;
     const hidden = fullSessions.slice(visibleSessionCount);
     if (hidden.some((s) => s.path === selectedSessionPath)) {
-      requestAnimationFrame(() => setShowAll(true));
+      lastAutoExpandPathRef.current = selectedSessionPath;
+      requestAnimationFrame(() => {
+        if (!showAllRef.current) {
+          setShowAll(true);
+        }
+      });
     }
-  }, [
-    selectedSessionPath,
-    showAll,
-    projectSessions,
-    isCollapsedWithPinned,
-    visibleWhenCollapsedSessionIds,
-  ]);
+  }, [selectedSessionPath, projectSessions, isCollapsedWithPinned, visibleWhenCollapsedSessionIds]);
 
   // When collapsed with pinned sessions, show only those.
   // When expanded, show all with pagination.

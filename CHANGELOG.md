@@ -10,6 +10,7 @@
 
 - In the sidebar, collapsing a project's chat list with "Show less" now sticks: the list no longer flickers and springs back open when the selected chat is one of the hidden older chats.
 - Clicking a chat in the sidebar no longer makes the list refresh or jump: resuming a chat leaves the list untouched, and the scroll-to-center behavior now applies only to selections made outside the list (session switcher, navigation history), not to your own clicks.
+- Thinking levels in a new chat now match the model you are on: models that support the strongest level (like Kimi K3's "max") offer it again, and the last-used level is clamped to what the current model actually supports instead of carrying over a level from another model.
 
 ## [0.4.1] - 2026-08-05
 

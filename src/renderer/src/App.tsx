@@ -51,6 +51,7 @@ import type {
   SkillSlashCommand,
   ThinkingLevel,
 } from '../../shared/ipcContract';
+import { clampThinkingLevelTo } from '../../shared/thinkingLevels';
 import Sidebar from './components/Sidebar';
 import SessionToolbar from './components/SessionToolbar';
 import MessageList from './components/MessageList';
@@ -162,6 +163,31 @@ function App(): React.JSX.Element {
   const userHistory = useMemo(() => extractUserHistory(transcript.nodes), [transcript.nodes]);
   const draftUserHistory = useMemo(() => extractUserHistory(draftState.nodes), [draftState.nodes]);
 
+  // Draft mode derives thinking levels from the catalog (last-used model
+  // first, otherwise the first model); sessions own theirs via
+  // get_session_options. This is render-time derivation (not an effect), so
+  // a late-arriving lastModel seed — the last session's model is read
+  // asynchronously on first load — recomputes it like any derived value.
+  const draftThinkingLevels = useMemo(() => {
+    const matched = lastModelSnapshot
+      ? catalogModels.find(
+          (model) =>
+            model.id === lastModelSnapshot.id && model.provider === lastModelSnapshot.provider,
+        )
+      : null;
+    return matched?.thinkingLevels ?? catalogModels[0]?.thinkingLevels ?? [];
+  }, [catalogModels, lastModelSnapshot]);
+
+  // The remembered level may come from a different model (or a session file
+  // written by another tool); clamp it to what the draft model supports so
+  // the picker never shows a level the model doesn't have. The raw snapshot
+  // is kept — the backend clamps identically on session creation.
+  const draftThinkingLevel = useMemo(() => {
+    if (!lastThinkingLevelSnapshot) return null;
+    if (draftThinkingLevels.length === 0) return lastThinkingLevelSnapshot;
+    return clampThinkingLevelTo(lastThinkingLevelSnapshot, draftThinkingLevels);
+  }, [lastThinkingLevelSnapshot, draftThinkingLevels]);
+
   // Synthetic session entry for draft mode — provides model/thinking display.
   const draftSession = useMemo((): SessionEntry | null => {
     if (!isDraftChat) return null;
@@ -179,13 +205,13 @@ function App(): React.JSX.Element {
       cwd: activeCwd,
       createdAt: '',
       model: resolvedModel,
-      thinkingLevel: lastThinkingLevelSnapshot,
+      thinkingLevel: draftThinkingLevel,
       contextUsage: null,
       autoCompactionEnabled: false,
       messageCount: 0,
       error: null,
     };
-  }, [isDraftChat, modelOptions, activeCwd, lastModelSnapshot, lastThinkingLevelSnapshot]);
+  }, [isDraftChat, modelOptions, activeCwd, lastModelSnapshot, draftThinkingLevel]);
 
   // Pending prompt buffer: holds messages sent before the utility process is ready.
   const pendingPromptsRef = useRef<Map<string, string[]>>(new Map());
@@ -247,20 +273,6 @@ function App(): React.JSX.Element {
     return onModelCatalogUpdated(setCatalogModels);
   }, []);
 
-  // Draft mode derives thinking levels from the catalog (last-used model
-  // first, otherwise the first model); sessions own theirs via
-  // get_session_options. This is render-time derivation (not an effect), so
-  // a late-arriving lastModel seed — the last session's model is read
-  // asynchronously on first load — recomputes it like any derived value.
-  const draftThinkingLevels = useMemo(() => {
-    const matched = lastModelSnapshot
-      ? catalogModels.find(
-          (model) =>
-            model.id === lastModelSnapshot.id && model.provider === lastModelSnapshot.provider,
-        )
-      : null;
-    return matched?.thinkingLevels ?? catalogModels[0]?.thinkingLevels ?? [];
-  }, [catalogModels, lastModelSnapshot]);
   const thinkingLevelOptions = activeSessionPath ? sessionThinkingLevels : draftThinkingLevels;
 
   const handleSidebarResizeStart = useCallback(
@@ -976,30 +988,18 @@ function App(): React.JSX.Element {
       lastModelRef.current = { provider: model.provider, id: model.id };
       setLastModelSnapshot({ provider: model.provider, id: model.id });
       // Filter thinking level options for the selected model
-      let needsThinkingClamp = false;
       if (model.thinkingLevels.length > 0) {
-        const levels = model.thinkingLevels;
-        setSessionThinkingLevels(levels);
-        // Reset thinking level if current one isn't available for this model
-        if (lastThinkingLevelRef.current && !levels.includes(lastThinkingLevelRef.current)) {
-          needsThinkingClamp = true;
-          setLastThinkingLevelSnapshot('off');
-        }
+        setSessionThinkingLevels(model.thinkingLevels);
       }
+      // No thinking-level clamp needed here: the backend re-clamps on setModel
+      // (and on setThinkingLevel), refreshSessionState propagates the clamped
+      // value, and the draft display clamps via draftThinkingLevel.
       if (!activeSessionPath) {
-        if (needsThinkingClamp) {
-          lastThinkingLevelRef.current = 'off';
-        }
         return;
       }
       await setModel(activeSessionPath, model.provider, model.id);
       await refreshSessionState(activeSessionPath);
       await refreshSessionOptions(activeSessionPath);
-      // Clamp thinking level on the backend if not available for new model
-      if (needsThinkingClamp) {
-        lastThinkingLevelRef.current = 'off';
-        await setThinkingLevel(activeSessionPath, 'off');
-      }
     },
     [activeSessionPath, refreshSessionState, refreshSessionOptions],
   );

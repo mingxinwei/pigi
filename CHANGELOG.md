@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Pressing the up arrow in the chat input now recalls your previous messages, one by one back through the whole conversation; the down arrow walks forward again. If you had started typing something, it is remembered and comes back when you press down — so nothing you wrote is lost.
+
 ### Fixed
 
 - In the sidebar, collapsing a project's chat list with "Show less" now sticks: the list no longer flickers and springs back open when the selected chat is one of the hidden older chats.

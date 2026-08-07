@@ -68,6 +68,8 @@ interface ChatInputProps {
   modelOptions: ModelInfo[];
   thinkingLevelOptions: ThinkingLevel[];
   skillOptions: SkillSlashCommand[];
+  /** Past user prompts (most recent last) for up/down arrow recall */
+  userHistory: string[];
   onSelectModel: (model: ModelInfo) => void;
   onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
   /** New session mode: centers input, enables project switching via # */
@@ -110,6 +112,7 @@ export default function ChatInput({
   onSelectModel,
   onSelectThinkingLevel,
   skillOptions,
+  userHistory,
   isNewSession = false,
   recentProjects = [],
   activeProject = null,
@@ -119,6 +122,14 @@ export default function ChatInput({
   useImperativeHandle(ref, () => ({ focus: () => textareaRef.current?.focus() }), []);
   const draftsRef = useRef<Map<string, string>>(new Map());
   const prevSessionIdRef = useRef<string | null>(null);
+  // History recall: index into userHistory (-1 = fresh draft position) plus
+  // the draft saved when the user starts navigating up. Down arrow restores it.
+  const historyIndexRef = useRef(-1);
+  const savedDraftRef = useRef<string | null>(null);
+  const resetHistoryRecall = useCallback(() => {
+    historyIndexRef.current = -1;
+    savedDraftRef.current = null;
+  }, []);
   const [slashMatches, setSlashMatches] = useState<{
     builtin: SlashCommand[];
     skill: SlashCommand[];
@@ -166,15 +177,20 @@ export default function ChatInput({
     const prevId = prevSessionIdRef.current;
     const currentId = session?.sessionPath ?? null;
 
-    // Save previous session's draft
+    // Save previous session's draft (respect history recall: if navigating
+    // history, the saved draft is what the user actually typed, not the
+    // recalled message currently shown)
     if (prevId && prevId !== currentId) {
-      const draft = textarea.value;
+      const draft = historyIndexRef.current === -1 ? textarea.value : (savedDraftRef.current ?? '');
       if (draft) {
         draftsRef.current.set(prevId, draft);
       } else {
         draftsRef.current.delete(prevId);
       }
     }
+
+    // Reset history recall when switching sessions
+    resetHistoryRecall();
 
     // Restore current session's draft
     if (currentId !== prevId) {
@@ -184,23 +200,23 @@ export default function ChatInput({
     }
 
     prevSessionIdRef.current = currentId;
-  }, [session?.sessionPath]);
+  }, [session?.sessionPath, resetHistoryRecall]);
 
   // Restore text from abort/dequeue
   useEffect(() => {
     if (restoreText === null) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
+    // Programmatic value change: exit history recall
+    resetHistoryRecall();
     // Join restored text with current input (current goes last)
     const currentText = textarea.value.trim();
     const combined = [restoreText, currentText].filter((t) => t).join('\n\n');
     textarea.value = combined;
-    textarea.style.height = 'auto';
-    const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
-    textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+    resizeTextarea(textarea);
     textarea.focus();
     onRestoredText();
-  }, [restoreText, onRestoredText]);
+  }, [restoreText, onRestoredText, resetHistoryRecall]);
   const contextUsage = session?.contextUsage ?? null;
   const autoCompactionEnabled = session?.autoCompactionEnabled ?? false;
   const contextUsageLabel = formatContextUsage(contextUsage, autoCompactionEnabled);
@@ -218,6 +234,8 @@ export default function ChatInput({
     if (!text) {
       return;
     }
+    // Sending exits history recall; the sent message enters the transcript
+    resetHistoryRecall();
 
     // Check for slash command (only if it matches a known command)
     if (text.startsWith('/')) {
@@ -250,17 +268,31 @@ export default function ChatInput({
     textarea.value = '';
     textarea.style.height = 'auto';
     onSend(text);
-  }, [onSend, onSlashCommand, allSlashCommands]);
+  }, [onSend, onSlashCommand, allSlashCommands, resetHistoryRecall]);
 
   const handleFollowUpSend = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     const text = textarea.value.trim();
     if (!text) return;
+    resetHistoryRecall();
     textarea.value = '';
     textarea.style.height = 'auto';
     onFollowUp(text);
-  }, [onFollowUp]);
+  }, [onFollowUp, resetHistoryRecall]);
+
+  // Show a recall entry in the textarea; index -1 shows the saved draft
+  const applyHistoryEntry = useCallback(
+    (index: number) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const text = index === -1 ? (savedDraftRef.current ?? '') : (userHistory[index] ?? '');
+      textarea.value = text;
+      resizeTextarea(textarea);
+      textarea.selectionStart = textarea.selectionEnd = text.length;
+    },
+    [userHistory],
+  );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -305,6 +337,34 @@ export default function ChatInput({
         }
       }
 
+      // History recall: up/down arrow navigates past user messages (shell-style)
+      const noModifiers = !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
+      if (e.key === 'ArrowUp' && noModifiers) {
+        if (userHistory.length === 0) return;
+        // Keep the position valid if history shrank (e.g., messages removed)
+        historyIndexRef.current = Math.min(historyIndexRef.current, userHistory.length - 1);
+        e.preventDefault();
+        if (historyIndexRef.current === -1) {
+          // Save whatever is currently typed so down arrow can restore it
+          savedDraftRef.current = textareaRef.current?.value ?? '';
+          historyIndexRef.current = userHistory.length - 1;
+        } else if (historyIndexRef.current > 0) {
+          historyIndexRef.current -= 1;
+        }
+        applyHistoryEntry(historyIndexRef.current);
+        return;
+      }
+      if (e.key === 'ArrowDown' && noModifiers) {
+        if (userHistory.length === 0 || historyIndexRef.current === -1) return;
+        historyIndexRef.current = Math.min(historyIndexRef.current, userHistory.length - 1);
+        e.preventDefault();
+        // At the newest entry, pressing down restores the saved draft
+        historyIndexRef.current =
+          historyIndexRef.current === userHistory.length - 1 ? -1 : historyIndexRef.current + 1;
+        applyHistoryEntry(historyIndexRef.current);
+        return;
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         // Alt+Enter queues a follow-up message during streaming
@@ -323,6 +383,8 @@ export default function ChatInput({
       flatSlashMatches,
       selectedSlashIndex,
       onSlashCommand,
+      userHistory,
+      applyHistoryEntry,
     ],
   );
 
@@ -331,9 +393,12 @@ export default function ChatInput({
     if (!textarea) {
       return;
     }
-    textarea.style.height = 'auto';
-    const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
-    textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+    // Typing exits history recall; keep the edited text as the current draft
+    if (historyIndexRef.current !== -1) {
+      savedDraftRef.current = textarea.value;
+      historyIndexRef.current = -1;
+    }
+    resizeTextarea(textarea);
 
     // Update slash command matches
     const value = textarea.value;
@@ -557,6 +622,12 @@ export default function ChatInput({
       </div>
     </div>
   );
+}
+
+function resizeTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = 'auto';
+  const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
+  textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
 }
 
 function ModelSettingsPicker({

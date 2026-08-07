@@ -11,7 +11,7 @@ import {
   markSessionHydrated,
   useTranscript,
 } from './hooks/useTranscript';
-import { TranscriptController } from './state/transcriptController';
+import { TranscriptController, type TranscriptNode } from './state/transcriptController';
 import {
   resumeSession,
   createSession,
@@ -63,6 +63,11 @@ import { SidebarProvider } from './components/ui/sidebar';
 import { Empty, EmptyTitle, EmptyDescription, EmptyHeader } from './components/ui/empty';
 import { ESCAPE_ABORT_SCOPE_SELECTOR } from './lib/focusScopes';
 const WELCOME_TITLE = 'Welcome to pigi';
+
+/** User prompt texts from a transcript, most recent last (for chat input recall). */
+function extractUserHistory(nodes: TranscriptNode[]): string[] {
+  return nodes.filter((node) => node.role === 'user').map((node) => node.text);
+}
 
 function App(): React.JSX.Element {
   const [sidebarWidth, setSidebarWidth] = useState(244);
@@ -150,6 +155,12 @@ function App(): React.JSX.Element {
   const draftGetSnapshot = useCallback(() => draftControllerRef.current.state, []);
   const draftState = useSyncExternalStore(draftSubscribe, draftGetSnapshot);
   const isDraftEmpty = draftState.nodes.length === 0;
+
+  // User prompt history for up/down arrow recall in the chat input
+  // (most recent last). Builtin slash commands never create user nodes, so
+  // this contains only real prompts.
+  const userHistory = useMemo(() => extractUserHistory(transcript.nodes), [transcript.nodes]);
+  const draftUserHistory = useMemo(() => extractUserHistory(draftState.nodes), [draftState.nodes]);
 
   // Synthetic session entry for draft mode — provides model/thinking display.
   const draftSession = useMemo((): SessionEntry | null => {
@@ -1173,6 +1184,7 @@ function App(): React.JSX.Element {
                   skillOptions={activeSessionPath ? skillOptions : []}
                   onSelectModel={handleSelectModel}
                   onSelectThinkingLevel={handleSelectThinkingLevel}
+                  userHistory={userHistory}
                 />
               </div>
             </div>
@@ -1198,6 +1210,7 @@ function App(): React.JSX.Element {
                 skillOptions={skillOptions}
                 onSelectModel={handleSelectModel}
                 onSelectThinkingLevel={handleSelectThinkingLevel}
+                userHistory={draftUserHistory}
                 isNewSession={isDraftEmpty}
                 recentProjects={recentProjects}
                 activeProject={activeProject}

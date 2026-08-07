@@ -514,6 +514,10 @@ function App(): React.JSX.Element {
         isDraftSpawningRef.current = false;
         setIsDraftSpawning(false);
         controller.setStatus('streaming');
+        // Sync the status to the store immediately: the working timer (minimal
+        // view) keys off the session status and must appear as soon as the
+        // session activates, without waiting for the first agent event round-trip.
+        useAppStore.getState().updateSession(sessionPath, { status: 'streaming' });
         pushNavigationHistory(sessionPath);
         setActiveSession(sessionPath);
 

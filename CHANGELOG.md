@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- New "Minimal" view mode in the message toolbar's view dropdown: each of your messages opens a turn with a live "Working for Xm Ys" timer (click it to expand the full tool cards and thinking), a shimmer line shows what the agent is doing right now, a finished command stays until the next activity replaces it, and the turn closes with the agent's final summary. Scrolling behaves exactly like the other views — auto-follow on new messages, saved positions, and the user-message minimap all work.
+
 ### Fixed
 
 - Subagents no longer start a second copy of the app to run in; they use the standalone pi CLI from your shell environment instead, which is lighter and does not crash on startup.

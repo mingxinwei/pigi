@@ -77,9 +77,9 @@ interface AppState {
   activeTerminalTabId: string | null;
   setTerminalTabs: (tabs: TerminalTabView[], activeTabId: string | null) => void;
 
-  // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools
-  toolBlockViewMode: 'default' | 'compact_read';
-  setToolBlockViewMode: (mode: 'default' | 'compact_read') => void;
+  // Tool block view mode: 'default' shows all cards, 'compact_read' collapses consecutive read-only tools, 'minimal' renders a minimal/codex-style activity view
+  toolBlockViewMode: 'default' | 'compact_read' | 'minimal';
+  setToolBlockViewMode: (mode: 'default' | 'compact_read' | 'minimal') => void;
 
   // Platform
   platform: Platform;

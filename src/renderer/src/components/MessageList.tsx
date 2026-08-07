@@ -1,12 +1,11 @@
 import React, { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from 'react';
 import { useAppStore } from '../state/appStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { IconArrowDown, IconCopy, IconCheck, IconSparkles } from '@tabler/icons-react';
+import { IconArrowDown } from '@tabler/icons-react';
 import {
   type TranscriptNode,
   type AssistantNode,
   type ToolNode,
-  type UserNode,
   getToolArgs,
 } from '../state/transcriptController';
 import {
@@ -19,20 +18,15 @@ import ToolBlock from './ToolBlock';
 import { getToolCommandParts, getToolSearchText } from '../lib/toolDisplay';
 import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
-import { cn } from '../lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
 import MessageSearch, { type MessageSearchTarget, type OccurrenceResult } from './MessageSearch';
-import {
-  highlightMatches,
-  useHighlightTextNodes,
-  findOccurrenceRanges,
-} from '../lib/highlightMatches';
+import { useHighlightTextNodes, findOccurrenceRanges } from '../lib/highlightMatches';
 import { buildRenderItems, type RenderItem } from '../lib/readGrouping';
 import ThinkingBlock from './thinkingBlock';
-import OverflowClamp from './overflowClamp';
-import ShimmerOverlay from './shimmerOverlay';
+import { MessageToolbar, SystemBubble, UserBubble } from './messageBubbles';
+import { parseSkillBlock } from '../lib/skillBlock';
+import MinimalView from './minimalView';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
@@ -54,7 +48,6 @@ const USER_MESSAGE_TRAILING_PADDING = 8;
 const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72;
 /** Max estimated height for user bubbles capped by max-h-[40vh] CSS */
 const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
-const USER_MESSAGE_MAX_HEIGHT_VH = 0.4;
 
 /** Extract a search-friendly command string for a tool node, matching the text rendered in the tool label. */
 function getToolSearchMeta(node: ToolNode): string {
@@ -166,6 +159,9 @@ export default React.memo(function MessageList({
   } | null>(null);
 
   const toolBlockViewMode = useAppStore((state) => state.toolBlockViewMode);
+  // Minimal mode renders plain (non-virtualized) turn content inside the same
+  // scroll container, sharing auto-scroll / restore / minimap with other modes.
+  const isMinimal = toolBlockViewMode === 'minimal';
   const sessionStatus = useAppStore(
     (state) => (sessionPath ? state.sessions.get(sessionPath)?.status : undefined) ?? 'idle',
   );
@@ -200,7 +196,10 @@ export default React.memo(function MessageList({
     return map;
   }, [renderItems, nodeToDisplayIndex]);
 
-  const searchTargets = useMemo(() => buildSearchTargets(renderItems), [renderItems]);
+  const searchTargets = useMemo(
+    () => (isMinimal ? [] : buildSearchTargets(renderItems)),
+    [renderItems, isMinimal],
+  );
 
   const getItemKey = useCallback((index: number) => renderItems[index]?.id ?? index, [renderItems]);
 
@@ -208,7 +207,9 @@ export default React.memo(function MessageList({
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: renderItems.length,
+    // Inert in minimal mode: turns render unvirtualized, so there is nothing
+    // to measure or window. The hook still runs to keep hook order stable.
+    count: isMinimal ? 0 : renderItems.length,
     getScrollElement: () => containerRef.current,
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
@@ -259,7 +260,8 @@ export default React.memo(function MessageList({
   // The useLayoutEffect keyed on totalSize below remains as a backup for
   // spacer-height commits (virtualizer re-measures change totalSize without a
   // row-DOM resize, which rowsWrapperRo cannot see).
-  // Stable effect — never re-created.
+  // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
+  // different element, so the observers must re-bind.
   useEffect(() => {
     const container = containerRef.current;
     const rowsWrapper = rowsWrapperRef.current;
@@ -307,7 +309,7 @@ export default React.memo(function MessageList({
       container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [isMinimal]);
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
@@ -390,7 +392,7 @@ export default React.memo(function MessageList({
   // Returns a displayNodes index (what the MiniMap uses).
   // Uses measurement cache to check ALL user messages, not just visible ones,
   // so the last user message stays highlighted when scrolled to the bottom.
-  const activeUserMessageIndex = useMemo(() => {
+  const virtualActiveUserMessageIndex = useMemo(() => {
     if (virtualItems.length === 0) return -1;
     const container = containerRef.current;
     const viewportCenter = container
@@ -415,6 +417,42 @@ export default React.memo(function MessageList({
     // virtualItems included as dependency to re-derive on scroll
   }, [virtualItems, renderItems, nodeToDisplayIndex, rowVirtualizer]);
 
+  const [minimalActiveUserMessageIndex, setMinimalActiveUserMessageIndex] = useState(-1);
+
+  // Minimal mode renders every turn without virtualization, so the minimap's
+  // active user message comes from DOM positions instead of the virtualizer's
+  // measurement cache. Re-derives on scroll and on transcript changes.
+  useEffect(() => {
+    if (!isMinimal) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    function updateActiveUserMessage(): void {
+      const elements = container!.querySelectorAll<HTMLElement>('[data-display-index]');
+      const containerRect = container!.getBoundingClientRect();
+      const viewportCenter = containerRect.top + containerRect.height / 2;
+      let closestIndex = -1;
+      let closestDistance = Infinity;
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect();
+        const distance = Math.abs(rect.top + rect.height / 2 - viewportCenter);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = Number(element.dataset.displayIndex);
+        }
+      }
+      setMinimalActiveUserMessageIndex(closestIndex);
+    }
+
+    updateActiveUserMessage();
+    container.addEventListener('scroll', updateActiveUserMessage, { passive: true });
+    return () => container.removeEventListener('scroll', updateActiveUserMessage);
+  }, [isMinimal, displayNodes]);
+
+  const activeUserMessageIndex = isMinimal
+    ? minimalActiveUserMessageIndex
+    : virtualActiveUserMessageIndex;
+
   function handleScrollToBottom(): void {
     const container = containerRef.current;
     if (!container) return;
@@ -432,12 +470,23 @@ export default React.memo(function MessageList({
 
   const handleScrollToIndex = useCallback(
     (displayIndex: number) => {
+      autoScrollRef.current = false;
+      if (isMinimal) {
+        // No virtual rows to scroll to — locate the user bubble in the DOM.
+        const container = containerRef.current;
+        const element = container?.querySelector<HTMLElement>(
+          `[data-display-index="${displayIndex}"]`,
+        );
+        if (!container || !element) return;
+        container.scrollTop +=
+          element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        return;
+      }
       const renderIndex = displayToRenderIndex.get(displayIndex);
       if (renderIndex === undefined) return;
-      autoScrollRef.current = false;
       rowVirtualizer.scrollToIndex(renderIndex, { align: 'start', behavior: 'auto' });
     },
-    [rowVirtualizer, displayToRenderIndex],
+    [isMinimal, rowVirtualizer, displayToRenderIndex],
   );
 
   const toggleGroupExpand = useCallback((groupId: string) => {
@@ -565,9 +614,10 @@ export default React.memo(function MessageList({
     });
   }, [activeOccurrenceInfo, searchQuery]);
 
-  // Cmd/Ctrl+F opens search
+  // Cmd/Ctrl+F opens search (not supported in minimal mode)
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
+      if (isMinimal) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         if (searchOpen) {
@@ -579,7 +629,7 @@ export default React.memo(function MessageList({
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [searchOpen]);
+  }, [searchOpen, isMinimal]);
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -597,71 +647,83 @@ export default React.memo(function MessageList({
         >
           {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
 
-          {/*
-           * Spacer div for the virtualizer. We add paddingBottom instead of
-           * using the virtualizer's paddingEnd option because paddingEnd
-           * feeds into getTotalSize() and triggers a measure → scroll adjust
-           * → re-render loop that causes visible flickering. paddingBottom on
-           * this spacer is invisible to the virtualizer (the items inside are
-           * position:absolute and ignore it), but it increases scrollHeight
-           * so scroll-to-bottom reaches the last item's full margin-bottom.
-           */}
-          <div
-            className="relative"
-            style={{
-              height: `${totalSize}px`,
-              paddingBottom: `${MESSAGE_ROW_GAP + 16}px`,
-            }}
-            data-testid="message-virtualizer"
-          >
-            <div
-              ref={rowsWrapperRef}
-              className="absolute left-0 top-0 w-full"
-              style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
-            >
-              {virtualItems.map((virtualItem) => {
-                const item = renderItems[virtualItem.index];
-                const isLast = virtualItem.index === renderItems.length - 1;
-                return (
-                  <div
-                    key={item.id}
-                    ref={rowVirtualizer.measureElement}
-                    data-index={virtualItem.index}
-                    data-item-id={item.id}
-                    style={{ marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px` }}
-                  >
-                    <RenderItemRenderer
-                      item={item}
-                      isLast={isLast}
-                      sessionActive={sessionStatus !== 'idle'}
-                      searchQuery={searchQuery}
-                      expanded={
-                        item.type === 'readGroup' ? expandedGroupIds.has(item.id) : undefined
-                      }
-                      onToggleExpand={
-                        item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
-                      }
-                      activeOccurrenceItemId={activeOccurrenceInfo?.itemId ?? null}
-                      activeOccurrenceToolNodeId={activeOccurrenceInfo?.toolNodeId ?? null}
-                      activeOccurrenceIndex={activeOccurrenceInfo?.occurrenceIndex ?? null}
-                    />
-                  </div>
-                );
-              })}
+          {isMinimal ? (
+            /* Minimal mode: unvirtualized turn content. rowsWrapperRef gives
+               the ResizeObserver pin a box that tracks content growth. */
+            <div ref={rowsWrapperRef}>
+              <MinimalView nodes={displayNodes} sessionStatus={sessionStatus} />
             </div>
-          </div>
+          ) : (
+            /*
+             * Spacer div for the virtualizer. We add paddingBottom instead of
+             * using the virtualizer's paddingEnd option because paddingEnd
+             * feeds into getTotalSize() and triggers a measure → scroll adjust
+             * → re-render loop that causes visible flickering. paddingBottom on
+             * this spacer is invisible to the virtualizer (the items inside are
+             * position:absolute and ignore it), but it increases scrollHeight
+             * so scroll-to-bottom reaches the last item's full margin-bottom.
+             */
+            <div
+              className="relative"
+              style={{
+                height: `${totalSize}px`,
+                paddingBottom: `${MESSAGE_ROW_GAP + 16}px`,
+              }}
+              data-testid="message-virtualizer"
+            >
+              <div
+                ref={rowsWrapperRef}
+                className="absolute left-0 top-0 w-full"
+                style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
+              >
+                {virtualItems.map((virtualItem) => {
+                  const item = renderItems[virtualItem.index];
+                  const isLast = virtualItem.index === renderItems.length - 1;
+                  return (
+                    <div
+                      key={item.id}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualItem.index}
+                      data-item-id={item.id}
+                      style={{
+                        marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px`,
+                      }}
+                    >
+                      <RenderItemRenderer
+                        item={item}
+                        isLast={isLast}
+                        sessionActive={sessionStatus !== 'idle'}
+                        searchQuery={searchQuery}
+                        expanded={
+                          item.type === 'readGroup' ? expandedGroupIds.has(item.id) : undefined
+                        }
+                        onToggleExpand={
+                          item.type === 'readGroup' ? () => toggleGroupExpand(item.id) : undefined
+                        }
+                        activeOccurrenceItemId={activeOccurrenceInfo?.itemId ?? null}
+                        activeOccurrenceToolNodeId={activeOccurrenceInfo?.toolNodeId ?? null}
+                        activeOccurrenceIndex={activeOccurrenceInfo?.occurrenceIndex ?? null}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
-      <MessageSearch
-        key={searchOpen ? 'open' : 'closed'}
-        refocus={searchRefocus}
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        query={searchQuery}
-        onQueryChange={setSearchQuery}
-        targets={searchTargets}
-        onJump={handleSearchJump}
-      />
+      {!isMinimal && (
+        <MessageSearch
+          key={searchOpen ? 'open' : 'closed'}
+          refocus={searchRefocus}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          targets={searchTargets}
+          onJump={handleSearchJump}
+        />
+      )}
       <UserMessageMiniMap
         nodes={displayNodes}
         containerWidth={containerWidth}
@@ -891,164 +953,6 @@ function ToolBubble({
   );
 }
 
-function UserBubble({
-  node,
-  searchQuery,
-  activeOccurrenceIndex,
-}: {
-  node: UserNode;
-  searchQuery: string;
-  activeOccurrenceIndex: number | null;
-}): React.JSX.Element {
-  const { text } = node;
-
-  const [maxHeight, setMaxHeight] = useState(() =>
-    Math.round(window.innerHeight * USER_MESSAGE_MAX_HEIGHT_VH),
-  );
-  useEffect(() => {
-    const handleResize = (): void =>
-      setMaxHeight(Math.round(window.innerHeight * USER_MESSAGE_MAX_HEIGHT_VH));
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const skillBlock = useMemo(() => parseSkillBlock(text), [text]);
-
-  if (skillBlock) {
-    return (
-      <SkillLinkBubble
-        skillBlock={skillBlock}
-        timestamp={node.sentAt}
-        searchQuery={searchQuery}
-        activeOccurrenceIndex={activeOccurrenceIndex}
-      />
-    );
-  }
-
-  return (
-    <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
-      <div className="group flex max-w-[85%] flex-col items-end">
-        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-clip p-3.5')}>
-          <OverflowClamp
-            maxHeight={maxHeight}
-            tailAnchor={false}
-            className="text-[15px] leading-6 text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-          >
-            {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
-          </OverflowClamp>
-        </div>
-        <div className="flex w-full items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-          <MessageToolbar text={node.text} />
-          <span className="text-xs text-muted-foreground" data-search-ignore>
-            {formatUserMessageTime(node.sentAt)}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatUserMessageTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  if (isSameLocalDay(date, new Date())) {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: '2-digit',
-      hourCycle: 'h23',
-      minute: '2-digit',
-    }).format(date);
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: isSameLocalYear(date, new Date()) ? undefined : 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-}
-
-function isSameLocalDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function isSameLocalYear(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear();
-}
-
-interface ParsedSkillBlock {
-  name: string;
-  body: string;
-  userMessage: string | undefined;
-}
-
-const SKILL_BLOCK_PATTERN =
-  /^<skill name="([^"]+)" location="[^"]+">\r?\n([\s\S]*?)\r?\n<\/skill>(?:\r?\n\r?\n([\s\S]+))?$/;
-
-function parseSkillBlock(text: string): ParsedSkillBlock | null {
-  const match = text.match(SKILL_BLOCK_PATTERN);
-  if (!match) return null;
-  return {
-    name: match[1],
-    body: match[2],
-    userMessage: match[3] || undefined,
-  };
-}
-
-function SkillLinkBubble({
-  skillBlock,
-  timestamp,
-  searchQuery,
-  activeOccurrenceIndex,
-}: {
-  skillBlock: ParsedSkillBlock;
-  timestamp: number;
-  searchQuery: string;
-  activeOccurrenceIndex: number | null;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="flex justify-end pb-2 pt-6" data-testid="skill-message">
-      <div className="group flex max-w-[85%] flex-col items-end">
-        <div className="rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] w-fit">
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="inline text-[var(--system-accent)] hover:opacity-80 cursor-pointer"
-              >
-                <IconSparkles className="size-4 shrink-0 inline -mt-0.5 mr-0.5" />
-                {skillBlock.name}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              className="w-[32rem] max-h-[60vh] overflow-y-auto p-4"
-            >
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
-                <IconSparkles className="size-4 shrink-0" />
-                <span>{skillBlock.name}</span>
-              </div>
-              <MarkdownMessage text={skillBlock.body} />
-            </PopoverContent>
-          </Popover>
-          {skillBlock.userMessage && (
-            <> {highlightMatches(skillBlock.userMessage, searchQuery, activeOccurrenceIndex)}</>
-          )}
-        </div>
-        <div className="flex w-full items-center justify-end gap-2">
-          <span className="text-xs text-muted-foreground" data-search-ignore>
-            {formatUserMessageTime(timestamp)}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AssistantBubble({
   node,
   searchQuery,
@@ -1094,52 +998,6 @@ function AssistantBubble({
 
         <MessageToolbar text={node.text || node.thinking} />
       </div>
-    </div>
-  );
-}
-
-function SystemBubble({
-  text,
-  isLoading,
-  searchQuery,
-  activeOccurrenceIndex,
-}: {
-  text: string;
-  isLoading?: boolean;
-  searchQuery: string;
-  activeOccurrenceIndex: number | null;
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-3 py-2" data-testid="system-message">
-      <div className="h-px flex-1 bg-border" />
-      <span className="relative shrink-0 text-sm text-muted-foreground overflow-hidden">
-        {highlightMatches(text, searchQuery, activeOccurrenceIndex)}
-        {isLoading && <ShimmerOverlay />}
-      </span>
-      <div className="h-px flex-1 bg-border" />
-    </div>
-  );
-}
-
-function MessageToolbar({ text }: { text: string }): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
-
-  return (
-    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-      <button
-        type="button"
-        className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"
-        onClick={handleCopy}
-        title="Copy message"
-      >
-        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-      </button>
     </div>
   );
 }

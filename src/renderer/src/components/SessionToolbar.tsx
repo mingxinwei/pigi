@@ -149,7 +149,9 @@ export default React.memo(function SessionToolbar({
         >
           <DropdownMenuRadioGroup
             value={toolBlockViewMode}
-            onValueChange={(value) => setToolBlockViewMode(value as 'default' | 'compact_read')}
+            onValueChange={(value) =>
+              setToolBlockViewMode(value as 'default' | 'compact_read' | 'minimal')
+            }
           >
             <TooltipProvider delayDuration={400}>
               <Tooltip>
@@ -163,6 +165,19 @@ export default React.memo(function SessionToolbar({
                 </TooltipTrigger>
                 <TooltipContent side="left">
                   Collapse consecutive read-only tool calls into a single group
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuRadioItem
+                    value="minimal"
+                    className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
+                  >
+                    Minimal
+                  </DropdownMenuRadioItem>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  Minimal activity view: working timer, tool cards, final summary
                 </TooltipContent>
               </Tooltip>
               <Tooltip>

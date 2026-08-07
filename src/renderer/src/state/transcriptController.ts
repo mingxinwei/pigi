@@ -42,6 +42,9 @@ export interface AssistantNode {
   thinkingEndedAt?: number;
   /** Timestamp of the assistant message_start event (streaming sessions) */
   messageStartedAt?: number;
+  /** Timestamp of the assistant message_end event (streaming sessions) or the
+   *  message timestamp for hydrated messages */
+  messageEndedAt?: number;
 }
 
 export interface ToolNode {
@@ -417,6 +420,8 @@ export class TranscriptController {
               isStreaming: false,
               thinkingStartedAt: thinking ? assistantTimestamp : undefined,
               thinkingEndedAt: thinking ? persistedAt : undefined,
+              messageStartedAt: assistantTimestamp,
+              messageEndedAt: persistedAt ?? assistantTimestamp,
             };
             nodes.push(node);
           }
@@ -963,6 +968,7 @@ export class TranscriptController {
     // Finalize the assistant node
     assistant.isStreaming = false;
     this.markThinkingEnded(assistant);
+    assistant.messageEndedAt = Date.now();
     assistant.stopReason = endMessage.stopReason;
     assistant.model = endMessage.model?.name;
     assistant.provider = endMessage.model?.provider;

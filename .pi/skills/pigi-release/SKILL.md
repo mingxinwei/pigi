@@ -18,7 +18,7 @@ description: Commit changes and release new versions. Use when asked to commit, 
 
 When asked to release a new version:
 
-1. Bump `version` in `package.json` (minor by default unless user says otherwise).
+1. Bump `version` in `package.json` (patch by default unless the user specifies otherwise).
 2. Rename `## [Unreleased]` to `## [<version>]` in `CHANGELOG.md`, add date.
 3. Commit with message `release: v<version>`.
 4. Create annotated tag and push: `git tag -a v<version> -m "v<version>" && git push --follow-tags`.

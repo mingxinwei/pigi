@@ -93,11 +93,6 @@ const TurnSection = React.memo(function TurnSection({
   onExpandDetails: () => void;
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  // The row (or rows) replaced by the current ones, still animating out
-  // (rolling upward) while the new rows roll in from below — the swap reads
-  // as scrolling to the next activity instead of a cut.
-  const [exiting, setExiting] = useState<{ key: string; rows: React.ReactNode } | null>(null);
-  const prevRowsRef = useRef<{ key: string; rows: React.ReactNode } | null>(null);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -111,11 +106,11 @@ const TurnSection = React.memo(function TurnSection({
     turn.entries.every((node) => node.role === 'system');
 
   // Activity rows: running tools, errors and system markers; when the area
-  // would otherwise be empty, the last activity (thinking or tool) lingers
-  // until the next one arrives — the area must never be empty between
-  // activities. Rows are keyed by node id so React reuses the element when
-  // the same tool goes running -> finished (no re-animation); a different
-  // node id remounts the row and plays the enter animation for the swap.
+  // would otherwise be empty, the last activity (thinking, narration or
+  // tool) lingers until the next one arrives — the area must never be empty
+  // between activities, and every activity is transient: replaced by the
+  // next one, gone when the turn ends. Rows are keyed by node id so React
+  // reuses the element when the same tool goes running -> finished.
   const visibleItems = analysis.items.filter(
     (item) =>
       item.kind === 'system' ||
@@ -126,43 +121,28 @@ const TurnSection = React.memo(function TurnSection({
   );
   const lingering = analysis.isActive && visibleItems.length === 0 ? analysis.lastActivity : null;
   const rows: React.ReactNode[] = visibleItems.map((item) => (
-    <div key={item.node.id} className="minimal-activity-enter">
-      <TurnItemRenderer item={item} />
-    </div>
+    <TurnItemRenderer key={item.node.id} item={item} />
   ));
   if (lingering) {
     rows.push(
       lingering.role === 'assistant' ? (
-        <div
-          key={lingering.id}
-          className="minimal-activity-enter relative w-fit overflow-hidden text-[15px] text-muted-foreground"
-          data-testid="minimal-thinking"
-        >
-          Thinking...
-          <ShimmerOverlay />
-        </div>
+        lingering.text.length > 0 ? (
+          <NarrationLine key={lingering.id} node={lingering} />
+        ) : (
+          <div
+            key={lingering.id}
+            className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
+            data-testid="minimal-thinking"
+          >
+            Thinking...
+            <ShimmerOverlay />
+          </div>
+        )
       ) : (
-        <div key={lingering.id} className="minimal-activity-enter">
-          <ToolLine node={lingering} live={false} />
-        </div>
+        <ToolLine key={lingering.id} node={lingering} live={false} />
       ),
     );
   }
-  const rowsKey = rows.map((row) => (row as React.ReactElement).key).join('|');
-
-  // When the set of rows changes, keep the previous rows around (absolute,
-  // animating out) so the swap scrolls instead of cutting. The key stays
-  // stable across timer-driven re-renders.
-  useEffect(() => {
-    const prev = prevRowsRef.current;
-    if (prev && prev.key !== rowsKey) {
-      // Keyed by the previous rows' key so a rapid second swap remounts the
-      // exiting block and restarts its roll-out instead of swapping content
-      // mid-animation.
-      setExiting({ key: prev.key, rows: prev.rows });
-    }
-    prevRowsRef.current = { key: rowsKey, rows };
-  }, [rowsKey, rows]);
 
   return (
     <section
@@ -220,25 +200,11 @@ const TurnSection = React.memo(function TurnSection({
         </div>
       ) : (
         /* Collapsed: the intro (first text) sits above the activity area;
-            below it, thinking and tool lines show what the agent is doing.
-            Middle narration never renders here — only the intro and the
-            current last text are visible as text. */
-        <div className="mt-2 flex flex-col gap-1 overflow-hidden">
+            below it, the single current activity (thinking, narration or
+            tool) shows what the agent is doing. */
+        <div className="mt-2 flex flex-col gap-1">
           {showIntro && <AssistantText node={analysis.intro!} testId="minimal-intro" />}
-          {/* The inner relative box anchors the exiting rows (absolute, top
-              of the row area) while the current rows flow normally. */}
-          <div className="relative flex flex-col gap-1">
-            {exiting && (
-              <div
-                key={exiting.key}
-                className="minimal-activity-exit pointer-events-none absolute inset-x-0 top-0"
-                onAnimationEnd={() => setExiting(null)}
-              >
-                {exiting.rows}
-              </div>
-            )}
-            {rows}
-          </div>
+          {rows}
         </div>
       )}
 
@@ -284,6 +250,8 @@ function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Elemen
     case 'tool':
       return <ToolLine node={item.node} live />;
     case 'text':
+      // Only errors land here — narration goes through the single activity
+      // slot (lastActivity). Errors are the turn's outcome, full block.
       return <AssistantText node={item.node} />;
     case 'system':
       return (
@@ -295,6 +263,16 @@ function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Elemen
         />
       );
   }
+}
+
+/** A narration message (middle narration or the final summary message) as a
+ *  single truncated line in the activity stream. */
+function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
+  return (
+    <div className="line-clamp-1 text-[15px] text-muted-foreground" data-testid="minimal-narration">
+      <MarkdownMessage text={node.text} />
+    </div>
+  );
 }
 
 /** Full-detail rendering for an expanded turn: complete tool cards, thinking blocks, text. */

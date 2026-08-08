@@ -108,6 +108,9 @@ export function analyzeTurn(
     if (node.role === 'assistant') {
       if (node.text.length > 0) {
         textEntries.push({ node, index });
+        // Narration is activity like any other: the current text message
+        // occupies the single activity slot until the next activity arrives.
+        lastActivity = node;
       }
       // A node that streams thinking (or is still pre-text) counts as
       // activity — including after thinking ended, when its text may have
@@ -174,13 +177,13 @@ export function analyzeTurn(
       : null;
 
   // Second pass: build the activity stream in transcript order — running tools
-  // (completed ones disappear), and system markers. Middle narration is
-  // deliberately not collected here: only the intro and the current last text
-  // render as text in minimal view. Error messages stay (they are the turn's
-  // outcome, not narration).
+  // (completed ones disappear), error messages (the turn's outcome, not
+  // narration), and system markers. Narration (middle narration and the final
+  // summary message) is NOT collected here: it occupies the single activity
+  // slot via lastActivity, exactly like thinking and tools — transient, one
+  // at a time, replaced by the next activity.
   for (const node of turn.entries) {
     if (node.role === 'assistant') {
-      if (node === intro || node === summary) continue;
       if (node.errorMessage) {
         items.push({ kind: 'text', node });
       }

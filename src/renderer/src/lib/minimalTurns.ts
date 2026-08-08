@@ -45,8 +45,6 @@ export interface MinimalTurnAnalysis {
   /** Whether the "Thinking..." indicator is visible: thinking lingers after
    *  its stream ends until a tool starts. */
   showThinking: boolean;
-  /** True once the final summary text starts streaming (work is done). */
-  summaryStarted: boolean;
   /** The turn's most recent tool, shown while the activity area would
    *  otherwise be empty: a finished command lingers until the next activity
    *  (thinking indicator, next tool, narration, summary) replaces it. */
@@ -148,7 +146,33 @@ export function analyzeTurn(
     firstToolIndex === -1 || (textEntries.length > 0 && textEntries[0].index < firstToolIndex)
       ? (textEntries[0]?.node ?? null)
       : null;
-  const summary = textEntries.length > 0 ? textEntries[textEntries.length - 1].node : null;
+  // A user-less system-marker turn has no work to time — it must never count
+  // as active (the streaming session would otherwise show it a working timer).
+  const isPureSystemTurn =
+    turn.entries.length > 0 && turn.entries.every((node) => node.role === 'system');
+
+  // A turn with no agent nodes yet (user message just sent, agent_start pending)
+  // counts as active while the session is streaming so the timer appears early.
+  // 'error' is a sticky terminal status — it must not keep a dead turn active
+  // (the timer would tick forever on a failed session).
+  const isActive =
+    !isPureSystemTurn &&
+    isLastTurn &&
+    (lastAgentNodeActive ||
+      turn.entries.length === 0 ||
+      sessionStatus === 'streaming' ||
+      sessionStatus === 'tool_running');
+
+  const lastTextEntry = textEntries[textEntries.length - 1];
+  // Only the turn's FINAL text may occupy the summary slot, and it is only
+  // known once the turn has ended (a streaming message may still turn out to
+  // be middle narration — there is no earlier signal). A message whose
+  // stopReason is 'toolUse' ended because a tool call followed — middle
+  // narration by definition, never the summary.
+  const summary =
+    !isActive && lastTextEntry !== undefined && lastTextEntry.node.stopReason !== 'toolUse'
+      ? lastTextEntry.node
+      : null;
 
   // Second pass: build the activity stream in transcript order — running tools
   // (completed ones disappear), and system markers. Middle narration is
@@ -170,41 +194,16 @@ export function analyzeTurn(
     }
   }
 
-  // A user-less system-marker turn has no work to time — it must never count
-  // as active (the streaming session would otherwise show it a working timer).
-  const isPureSystemTurn =
-    turn.entries.length > 0 && turn.entries.every((node) => node.role === 'system');
-
-  // A turn with no agent nodes yet (user message just sent, agent_start pending)
-  // counts as active while the session is streaming so the timer appears early.
-  // 'error' is a sticky terminal status — it must not keep a dead turn active
-  // (the timer would tick forever on a failed session).
-  const isActive =
-    !isPureSystemTurn &&
-    isLastTurn &&
-    (lastAgentNodeActive ||
-      turn.entries.length === 0 ||
-      sessionStatus === 'streaming' ||
-      sessionStatus === 'tool_running');
-
   const showThinking =
     lastThinkingNode !== null &&
     (lastThinkingNode.thinkingEndedAt === undefined || !items.some((item) => item.kind === 'tool'));
-  // The final summary starts once the LAST text message has content. When the
-  // turn's only text is its intro (e.g. the agent narrates then keeps working
-  // with tools), that message is not the conclusion yet — the work continues,
-  // so the timer must keep running.
-  const summaryStarted = summary !== null && summary.text.length > 0 && summary !== intro;
 
-  // Between consecutive tools (or between the last tool and the summary) the
-  // stream has a quiet gap: the finished command vanished but the next
-  // activity has not arrived yet. Keep the last tool on screen during that
-  // gap; it is replaced as soon as anything else shows up.
+  // Between consecutive tools (or between the last tool and the end of the
+  // turn) the stream has a quiet gap: the finished command vanished but the
+  // next activity has not arrived yet. Keep the last tool on screen during
+  // that gap; it is replaced as soon as anything else shows up.
   const fallbackTool =
-    isActive &&
-    !showThinking &&
-    !summaryStarted &&
-    !items.some((item) => item.kind === 'tool' || item.kind === 'text')
+    isActive && !showThinking && !items.some((item) => item.kind === 'tool' || item.kind === 'text')
       ? lastToolNode
       : null;
 
@@ -223,7 +222,6 @@ export function analyzeTurn(
     isActive,
     thinkingNode: lastThinkingNode,
     showThinking,
-    summaryStarted,
     fallbackTool,
   };
 }

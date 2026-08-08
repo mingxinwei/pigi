@@ -91,8 +91,6 @@ const TurnSection = React.memo(function TurnSection({
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const showTimer = shouldShowTimer(analysis);
-  // The turn is done working as soon as the final summary starts streaming.
-  const summaryStarted = analysis.summaryStarted;
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
   // (the turn's only text must not vanish).
@@ -133,12 +131,12 @@ const TurnSection = React.memo(function TurnSection({
             className="flex w-full items-center gap-1.5 pt-3 pb-1 text-left"
             data-testid="minimal-timer-row"
           >
-            {/* The turn stops counting as "working" the moment the final
-                summary message starts streaming — the work is done. */}
+            {/* The turn stops counting as "working" once it ends (the timer
+                freezes and the final summary appears together). */}
             <WorkingTimer
               startAt={analysis.startAt}
               endAt={analysis.endAt}
-              active={analysis.isActive && !summaryStarted}
+              active={analysis.isActive}
             />
             <IconChevronRight
               className={cn(

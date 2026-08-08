@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
@@ -88,7 +88,10 @@ function getCodeLanguageLabel(language: string): string {
   return CODE_LANGUAGE_LABELS[normalizedLanguage] ?? language;
 }
 
-export default function MarkdownMessage({ text }: MarkdownMessageProps): React.JSX.Element {
+// Memoized: the remark/rehype pipeline is expensive, and callers (minimal
+// view turns, message rows) re-render for unrelated reasons like scroll
+// tracking or timer ticks — the text prop is a stable string in those cases.
+export default memo(function MarkdownMessage({ text }: MarkdownMessageProps): React.JSX.Element {
   return (
     <div className="markdown-body">
       <Markdown
@@ -100,4 +103,4 @@ export default function MarkdownMessage({ text }: MarkdownMessageProps): React.J
       </Markdown>
     </div>
   );
-}
+});

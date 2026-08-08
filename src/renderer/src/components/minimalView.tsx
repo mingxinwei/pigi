@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronRight } from '@tabler/icons-react';
 import {
   type AgentStatus,
@@ -21,7 +21,7 @@ import ToolBlock from './ToolBlock';
 import ThinkingBlock from './thinkingBlock';
 import { SystemBubble, UserBubble } from './messageBubbles';
 import { getToolCommandParts } from '../lib/toolDisplay';
-import ShimmerOverlay from './shimmerOverlay';
+import ShimmerOverlay, { SHIMMER_SPEED_PX_PER_SECOND } from './shimmerOverlay';
 import { cn } from '../lib/utils';
 
 /**
@@ -33,18 +33,26 @@ import { cn } from '../lib/utils';
  *
  * Each user message starts a turn: the agent's first text message (intro) is
  * rendered at the top, followed by a "Working for Xm Ys" timer and a divider.
- * The activity stream below shows only the currently running tool as a plain
- * text line with a shimmer sweep; a finished command lingers (static) during
- * quiet gaps until the next activity replaces it. The turn ends with the
- * agent's final text message (summary), rendered without its thinking.
+ * The activity stream below shimmers only on live indicators (the Thinking
+ * placeholder, the running tool line); text content always renders static.
+ * A finished command lingers (static) during quiet gaps until the next
+ * activity replaces it. The turn ends with the agent's final text message
+ * (summary), rendered without its thinking.
  */
 
 interface MinimalViewProps {
   nodes: TranscriptNode[];
   sessionStatus: AgentStatus;
+  /** Called when the user expands/collapses a turn's details — MessageList
+   *  uses it to release the auto-scroll pin so the viewport stays put. */
+  onExpandDetails: () => void;
 }
 
-export default function MinimalView({ nodes, sessionStatus }: MinimalViewProps): React.JSX.Element {
+export default function MinimalView({
+  nodes,
+  sessionStatus,
+  onExpandDetails,
+}: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
   const analyses = useMemo(
     () => turns.map((turn, index) => analyzeTurn(turn, sessionStatus, index === turns.length - 1)),
@@ -54,7 +62,12 @@ export default function MinimalView({ nodes, sessionStatus }: MinimalViewProps):
   return (
     <div data-testid="minimal-view">
       {turns.map((turn, index) => (
-        <TurnSection key={turn.id} turn={turn} analysis={analyses[index]} />
+        <TurnSection
+          key={turn.id}
+          turn={turn}
+          analysis={analyses[index]}
+          onExpandDetails={onExpandDetails}
+        />
       ))}
     </div>
   );
@@ -70,9 +83,11 @@ export default function MinimalView({ nodes, sessionStatus }: MinimalViewProps):
 const TurnSection = React.memo(function TurnSection({
   turn,
   analysis,
+  onExpandDetails,
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
+  onExpandDetails: () => void;
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const showTimer = shouldShowTimer(analysis);
@@ -96,7 +111,13 @@ const TurnSection = React.memo(function TurnSection({
         <>
           <button
             type="button"
-            onClick={() => setDetailsExpanded((value) => !value)}
+            onClick={() => {
+              // Expanding grows the content; release the bottom pin first so
+              // the viewport isn't yanked away from the turn being opened.
+              onExpandDetails();
+              setDetailsExpanded((value) => !value);
+            }}
+            aria-expanded={detailsExpanded}
             className="flex w-full items-center gap-1.5 pt-3 pb-1 text-left"
             data-testid="minimal-timer-row"
           >
@@ -141,10 +162,17 @@ const TurnSection = React.memo(function TurnSection({
             </div>
           )}
           {analysis.intro && !introIsOnlyText && analysis.isActive && (
-            <AssistantText node={analysis.intro} testId="minimal-intro" shimmer />
+            <AssistantText node={analysis.intro} testId="minimal-intro" />
           )}
           {analysis.items
-            .filter((item) => item.kind === 'system' || analysis.isActive)
+            .filter(
+              (item) =>
+                item.kind === 'system' ||
+                // Errors are the turn's outcome, not transient activity — they
+                // must stay visible after the turn ends.
+                (item.kind === 'text' && item.node.errorMessage !== undefined) ||
+                analysis.isActive,
+            )
             .map((item) => (
               <TurnItemRenderer key={item.node.id} item={item} />
             ))}
@@ -163,24 +191,19 @@ function AssistantText({
   node,
   className,
   testId,
-  shimmer = false,
 }: {
   node: AssistantNode;
   className?: string;
   testId?: string;
-  /** Live activity (intro / middle narration) sweeps a shimmer to mark it as
-   *  transient; the final summary never shimmers. */
-  shimmer?: boolean;
 }): React.JSX.Element {
   // Minimal view never renders thinking: the intro/summary text is shown as-is,
   // the node's thinking field is intentionally ignored (separated from text).
+  // No shimmer here: text shown in the activity area is always complete (a
+  // still-streaming text is the latest one and lands in the summary slot), so
+  // it is content, not a live indicator.
   return (
     <div
-      className={cn(
-        'w-full min-w-0 text-[15px] text-foreground',
-        shimmer && 'relative overflow-hidden',
-        className,
-      )}
+      className={cn('w-full min-w-0 text-[15px] text-foreground', className)}
       style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       data-testid={testId}
     >
@@ -190,7 +213,6 @@ function AssistantText({
           {node.errorMessage}
         </div>
       )}
-      {shimmer && <ShimmerOverlay />}
     </div>
   );
 }
@@ -200,7 +222,7 @@ function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Elemen
     case 'tool':
       return <ToolLine node={item.node} live />;
     case 'text':
-      return <AssistantText node={item.node} shimmer />;
+      return <AssistantText node={item.node} />;
     case 'system':
       return (
         <SystemBubble
@@ -302,10 +324,36 @@ function WorkingTimer({
  */
 function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.Element {
   const { prefix, body } = getToolCommandParts(node);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Constant-speed-ish shimmer: the band travels 2x element width per cycle,
+  // so a fixed duration would make wide (long-command) lines sweep faster.
+  // Scale the duration with the measured width, clamped to feel like the
+  // Thinking placeholder (2.5s) for short commands and never slower than 5s
+  // for long ones.
+  const [shimmerDurationMs, setShimmerDurationMs] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const element = containerRef.current;
+    if (!element || !live) return;
+    function update(): void {
+      const width = element!.getBoundingClientRect().width;
+      if (width > 0) {
+        const scaled = ((2 * width) / SHIMMER_SPEED_PX_PER_SECOND) * 1000;
+        setShimmerDurationMs(Math.round(Math.min(5000, Math.max(2500, scaled))));
+      }
+    }
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(element);
+    return () => resizeObserver.disconnect();
+  }, [live]);
 
   return (
+    /* w-fit keeps the shimmer sweep tight around the text itself — a full-width
+       box would stretch the same gradient across mostly empty space. */
     <div
-      className="relative overflow-hidden py-0.5 font-mono text-[15px] text-muted-foreground"
+      ref={containerRef}
+      className="relative w-fit max-w-full overflow-hidden py-0.5 font-mono text-[15px] text-muted-foreground"
       style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       data-testid={live ? 'minimal-running-tool' : 'minimal-finished-tool'}
     >
@@ -313,7 +361,7 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
         <span className="shrink-0 text-foreground/80">{prefix}</span>
         <span className="min-w-0 truncate">{body}</span>
       </span>
-      {live && <ShimmerOverlay />}
+      {live && <ShimmerOverlay durationMs={shimmerDurationMs} />}
     </div>
   );
 }

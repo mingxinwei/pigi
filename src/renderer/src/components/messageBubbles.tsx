@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconCopy, IconSparkles } from '@tabler/icons-react';
 import { type UserNode } from '../state/transcriptController';
 import { cn } from '../lib/utils';
@@ -19,7 +19,7 @@ const USER_MESSAGE_MAX_HEIGHT_VH = 0.4;
 export function MessageToolbar({ text }: { text: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = React.useCallback(() => {
+  const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);

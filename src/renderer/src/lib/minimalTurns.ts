@@ -116,7 +116,10 @@ export function analyzeTurn(
         lastThinkingNode = node;
       }
       startAt ??= getAssistantStart(node);
-      endAt = getAssistantEnd(node);
+      // Keep the last defined end: a live final message has no end timestamp
+      // yet, and overwriting with undefined would make the frozen timer jump
+      // forward when message_end lands.
+      endAt = getAssistantEnd(node) ?? endAt;
       if (node.isStreaming) {
         lastAgentNodeActive = true;
       }
@@ -125,7 +128,7 @@ export function analyzeTurn(
       lastToolNode = node;
       if (firstToolIndex === -1) firstToolIndex = index;
       startAt ??= getToolStart(node);
-      endAt = getToolEnd(node);
+      endAt = getToolEnd(node) ?? endAt;
       if (node.status === 'running') {
         lastAgentNodeActive = true;
       }
@@ -160,8 +163,14 @@ export function analyzeTurn(
 
   // A turn with no agent nodes yet (user message just sent, agent_start pending)
   // counts as active while the session is streaming so the timer appears early.
+  // 'error' is a sticky terminal status — it must not keep a dead turn active
+  // (the timer would tick forever on a failed session).
   const isActive =
-    isLastTurn && (lastAgentNodeActive || turn.entries.length === 0 || sessionStatus !== 'idle');
+    isLastTurn &&
+    (lastAgentNodeActive ||
+      turn.entries.length === 0 ||
+      sessionStatus === 'streaming' ||
+      sessionStatus === 'tool_running');
 
   const showThinking =
     lastThinkingNode !== null &&
@@ -206,11 +215,15 @@ export function shouldShowTimer(analysis: MinimalTurnAnalysis): boolean {
   );
 }
 
-/** Format elapsed milliseconds as "1m 20s" (whole seconds, floor). */
+/** Format elapsed milliseconds as "1m 20s" / "2h 5m" (whole seconds, floor). */
 export function formatWorkingDuration(elapsedMs: number): string {
   const totalSeconds = Math.floor(Math.max(0, elapsedMs) / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
   if (minutes > 0) {
     return `${minutes}m ${seconds}s`;
   }

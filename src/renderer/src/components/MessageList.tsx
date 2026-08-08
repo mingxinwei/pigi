@@ -421,37 +421,82 @@ export default React.memo(function MessageList({
 
   // Minimal mode renders every turn without virtualization, so the minimap's
   // active user message comes from DOM positions instead of the virtualizer's
-  // measurement cache. Re-derives on scroll and on transcript changes.
+  // measurement cache.
+  const updateMinimalActiveUserMessage = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const elements = container.querySelectorAll<HTMLElement>('[data-display-index]');
+    const containerRect = container.getBoundingClientRect();
+    const viewportCenter = containerRect.top + containerRect.height / 2;
+    let closestIndex = -1;
+    let closestDistance = Infinity;
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      const distance = Math.abs(rect.top + rect.height / 2 - viewportCenter);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = Number(element.dataset.displayIndex);
+      }
+    }
+    setMinimalActiveUserMessageIndex(closestIndex);
+  }, []);
+
+  // Scroll-driven updates: stable listener, rAF-throttled so a scroll burst
+  // (e.g. continuous auto-scroll pinning) costs at most one pass per frame.
+  const minimalMinimapRafRef = useRef(0);
   useEffect(() => {
     if (!isMinimal) return;
     const container = containerRef.current;
     if (!container) return;
-
-    function updateActiveUserMessage(): void {
-      const elements = container!.querySelectorAll<HTMLElement>('[data-display-index]');
-      const containerRect = container!.getBoundingClientRect();
-      const viewportCenter = containerRect.top + containerRect.height / 2;
-      let closestIndex = -1;
-      let closestDistance = Infinity;
-      for (const element of elements) {
-        const rect = element.getBoundingClientRect();
-        const distance = Math.abs(rect.top + rect.height / 2 - viewportCenter);
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestIndex = Number(element.dataset.displayIndex);
-        }
-      }
-      setMinimalActiveUserMessageIndex(closestIndex);
+    function handleScroll(): void {
+      cancelAnimationFrame(minimalMinimapRafRef.current);
+      minimalMinimapRafRef.current = requestAnimationFrame(updateMinimalActiveUserMessage);
     }
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(minimalMinimapRafRef.current);
+    };
+  }, [isMinimal, updateMinimalActiveUserMessage]);
 
-    updateActiveUserMessage();
-    container.addEventListener('scroll', updateActiveUserMessage, { passive: true });
-    return () => container.removeEventListener('scroll', updateActiveUserMessage);
-  }, [isMinimal, displayNodes]);
+  // Transcript-driven updates: a new turn mounted or content grew. Routed
+  // through the same rAF throttle so a streaming delta burst costs at most
+  // one layout pass per frame.
+  useEffect(() => {
+    if (!isMinimal) return;
+    cancelAnimationFrame(minimalMinimapRafRef.current);
+    minimalMinimapRafRef.current = requestAnimationFrame(updateMinimalActiveUserMessage);
+  }, [isMinimal, displayNodes, updateMinimalActiveUserMessage]);
 
   const activeUserMessageIndex = isMinimal
     ? minimalActiveUserMessageIndex
     : virtualActiveUserMessageIndex;
+
+  // View-mode switch swaps the content layout entirely, so a pixel scrollTop
+  // (and the pin flag) carried over from the other mode is meaningless —
+  // re-derive pinning from where the viewport actually landed.
+  // Guarded to run only on an actual mode change: on mount the restore effect
+  // owns the pin, and deriving here would clobber a restored mid-scroll
+  // position (this effect runs after restore but before its rAF applies,
+  // while the observer effect's mount-time scrollToBottom still has the
+  // container at the bottom → isAtBottom wrongly reads true).
+  const prevIsMinimalRef = useRef(isMinimal);
+  useEffect(() => {
+    if (prevIsMinimalRef.current === isMinimal) return;
+    prevIsMinimalRef.current = isMinimal;
+    const container = containerRef.current;
+    if (!container) return;
+    autoScrollRef.current = isAtBottom(container);
+  }, [isMinimal]);
+
+  // Search is unavailable in minimal mode; drop any stale search state so it
+  // doesn't resurface with outdated targets when switching back.
+  useEffect(() => {
+    if (!isMinimal) return;
+    setSearchOpen(false);
+    setSearchQuery('');
+    setActiveOccurrenceInfo(null);
+  }, [isMinimal]);
 
   function handleScrollToBottom(): void {
     const container = containerRef.current;
@@ -488,6 +533,10 @@ export default React.memo(function MessageList({
     },
     [isMinimal, rowVirtualizer, displayToRenderIndex],
   );
+
+  const releaseAutoScrollPin = useCallback(() => {
+    autoScrollRef.current = false;
+  }, []);
 
   const toggleGroupExpand = useCallback((groupId: string) => {
     autoScrollRef.current = false;
@@ -651,7 +700,11 @@ export default React.memo(function MessageList({
             /* Minimal mode: unvirtualized turn content. rowsWrapperRef gives
                the ResizeObserver pin a box that tracks content growth. */
             <div ref={rowsWrapperRef}>
-              <MinimalView nodes={displayNodes} sessionStatus={sessionStatus} />
+              <MinimalView
+                nodes={displayNodes}
+                sessionStatus={sessionStatus}
+                onExpandDetails={releaseAutoScrollPin}
+              />
             </div>
           ) : (
             /*

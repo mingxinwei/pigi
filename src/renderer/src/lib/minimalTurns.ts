@@ -140,21 +140,25 @@ export function analyzeTurn(
     }
   }
 
-  // The intro is only the agent's pre-work narration: the first text message
-  // that appears BEFORE the first tool call. Text after the first tool call is
-  // the turn's conclusion (or middle narration), never an intro.
-  const introEntry = textEntries.find(
-    (entry) => firstToolIndex !== -1 && entry.index < firstToolIndex,
-  );
-  const intro = introEntry?.node ?? null;
+  // The intro is the turn's first text message, shown above the activity
+  // area. When tools exist it must be their preamble (text before the first
+  // tool); without tools the first text still occupies the intro slot (it
+  // doubles as the summary when it is the turn's only text).
+  const intro =
+    firstToolIndex === -1 || (textEntries.length > 0 && textEntries[0].index < firstToolIndex)
+      ? (textEntries[0]?.node ?? null)
+      : null;
   const summary = textEntries.length > 0 ? textEntries[textEntries.length - 1].node : null;
 
   // Second pass: build the activity stream in transcript order — running tools
-  // (completed ones disappear), middle-of-turn narration, and system markers.
+  // (completed ones disappear), and system markers. Middle narration is
+  // deliberately not collected here: only the intro and the current last text
+  // render as text in minimal view. Error messages stay (they are the turn's
+  // outcome, not narration).
   for (const node of turn.entries) {
     if (node.role === 'assistant') {
       if (node === intro || node === summary) continue;
-      if (node.text.length > 0 || node.errorMessage) {
+      if (node.errorMessage) {
         items.push({ kind: 'text', node });
       }
     } else if (node.role === 'tool') {
@@ -186,7 +190,11 @@ export function analyzeTurn(
   const showThinking =
     lastThinkingNode !== null &&
     (lastThinkingNode.thinkingEndedAt === undefined || !items.some((item) => item.kind === 'tool'));
-  const summaryStarted = summary !== null && summary.text.length > 0;
+  // The final summary starts once the LAST text message has content. When the
+  // turn's only text is its intro (e.g. the agent narrates then keeps working
+  // with tools), that message is not the conclusion yet — the work continues,
+  // so the timer must keep running.
+  const summaryStarted = summary !== null && summary.text.length > 0 && summary !== intro;
 
   // Between consecutive tools (or between the last tool and the summary) the
   // stream has a quiet gap: the finished command vanished but the next
@@ -204,7 +212,12 @@ export function analyzeTurn(
     intro,
     summary,
     items,
-    startAt: startAt ?? turn.userNode?.sentAt,
+    // Anchor the timer to when the user sent the message, not to when the
+    // agent first started: agent_start may arrive seconds later (queueing,
+    // session creation) and would otherwise reset the timer to 0s — most
+    // visible when the run errors out immediately after starting. The agent
+    // timestamps only serve as fallback for user-less turns.
+    startAt: turn.userNode?.sentAt ?? startAt,
     endAt,
     hasTools,
     isActive,

@@ -463,10 +463,35 @@
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 100% 0;
+  from {
+    transform: translateX(-50%);
   }
+  to {
+    transform: translateX(50%);
+  }
+}
+
+/* Shimmer sweep: the overlay span is 200% wide with the highlight band at its
+   center, so one cycle (translateX -50% -> 50%) sweeps the band across the
+   parent once — same distance as a background-position sweep, but run on the
+   compositor (transform only, no per-frame repaint). */
+.shimmer-overlay {
+  animation: shimmer 2.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the live state indication, drop the movement: gentle fade in place. */
+  .shimmer-overlay {
+    animation: shimmer-fade 2.5s ease-in-out infinite;
+  }
+}
+
+@keyframes shimmer-fade {
+  0%,
   100% {
-    background-position: -100% 0;
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.7;
   }
 }

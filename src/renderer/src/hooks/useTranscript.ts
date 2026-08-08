@@ -137,9 +137,13 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
         break;
 
       case 'session_error':
-        useAppStore
-          .getState()
-          .updateSession(sessionPath, { error: pushMessage.error, status: 'error' });
+        // Session creation/resume failed — surface it in the transcript like
+        // any other error (the store's error field alone has no UI consumer).
+        controller.setError(pushMessage.error);
+        useAppStore.getState().updateSession(sessionPath, {
+          error: pushMessage.error,
+          status: controller.state.status,
+        });
         break;
 
       case 'status_sync':
@@ -154,7 +158,12 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
         break;
 
       case 'error':
+        // The prompt call itself rejected (quota, auth, network) — the agent
+        // never produced a message_end, so the error would otherwise be
+        // invisible. Add an error node so it shows up in the message list.
         console.error(`[session ${sessionPath}] error:`, pushMessage.error);
+        controller.setError(pushMessage.error);
+        useAppStore.getState().updateSession(sessionPath, { status: controller.state.status });
         break;
 
       case 'login_open_url':

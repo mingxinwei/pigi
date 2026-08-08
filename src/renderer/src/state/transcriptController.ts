@@ -502,6 +502,17 @@ export class TranscriptController {
 
   /** Show a persistent error message in the transcript (e.g., session creation failed). */
   setError(message: string): void {
+    const nodes = this._state.nodes;
+    // Error pushes can arrive in bursts (quota/auth failures during one
+    // prompt) — update the existing error node instead of stacking copies.
+    const last = nodes[nodes.length - 1];
+    if (last?.role === 'assistant' && last.errorMessage && !last.isStreaming) {
+      this.setState({
+        nodes: [...nodes.slice(0, -1), { ...last, errorMessage: message }],
+        status: 'error',
+      });
+      return;
+    }
     const node: AssistantNode = {
       id: nextNodeId(),
       role: 'assistant',
@@ -510,7 +521,7 @@ export class TranscriptController {
       errorMessage: message,
       isStreaming: false,
     };
-    this.setState({ nodes: [...this._state.nodes, node], status: 'error' });
+    this.setState({ nodes: [...nodes, node], status: 'error' });
   }
 
   // ===========================================================================

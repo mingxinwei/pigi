@@ -59,6 +59,10 @@
 }
 
 :root {
+  /* Strong ease-out for UI motion (built-in ease-out is too weak). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Strong ease-in-out for on-screen movement (the activity-area roll). */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   /* App accent (links, highlights, mini-map, focus rings). Set at runtime from
      themeAccents.ts via --accent-light; fallback mirrors the Indigo default. */
   --system-accent: var(--accent-light, oklch(0.55 0.2 277.1));
@@ -493,5 +497,69 @@
   }
   50% {
     opacity: 0.7;
+  }
+}
+
+/* Activity-area row swap: the new rows roll in from below while the replaced
+   rows roll upward and fade out (both moving up, in sync) — the swap reads
+   as scrolling to the next activity, like a terminal line feeding in.
+   Deliberately calm: 500ms with strong ease-in-out (slow start and landing,
+   no rush). Compositor-only (opacity, transform) so the swap never causes
+   layout jitter. The parent container clips the motion (overflow-hidden). */
+@keyframes minimal-activity-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes minimal-activity-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+.minimal-activity-enter {
+  animation: minimal-activity-enter 500ms var(--ease-in-out);
+}
+
+.minimal-activity-exit {
+  animation: minimal-activity-exit 500ms var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the fades (they aid the state change), drop the movement. */
+  .minimal-activity-enter {
+    animation-name: minimal-activity-fade;
+  }
+  .minimal-activity-exit {
+    animation-name: minimal-activity-fade-out;
+  }
+}
+
+@keyframes minimal-activity-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes minimal-activity-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }

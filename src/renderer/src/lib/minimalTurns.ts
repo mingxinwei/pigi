@@ -39,16 +39,11 @@ export interface MinimalTurnAnalysis {
   endAt: number | undefined;
   hasTools: boolean;
   isActive: boolean;
-  /** The assistant node still in its pre-text phase (thinking or the gap
-   *  between thinking and the first text delta), if any. */
-  thinkingNode: AssistantNode | null;
-  /** Whether the "Thinking..." indicator is visible: thinking lingers after
-   *  its stream ends until a tool starts. */
-  showThinking: boolean;
-  /** The turn's most recent tool, shown while the activity area would
-   *  otherwise be empty: a finished command lingers until the next activity
-   *  (thinking indicator, next tool, narration, summary) replaces it. */
-  fallbackTool: ToolNode | null;
+  /** The turn's most recent activity (thinking or tool call). While the turn
+   *  is active it lingers in the activity area until the next activity
+   *  arrives — the area must never be empty between activities (network gaps
+   *  between thinking end and tool start can take a second). */
+  lastActivity: AssistantNode | ToolNode | null;
 }
 
 /** Split a flat node list into per-user-message turns. System markers
@@ -105,8 +100,7 @@ export function analyzeTurn(
   let hasTools = false;
   let firstToolIndex = -1;
   let lastAgentNodeActive = false;
-  let lastThinkingNode: AssistantNode | null = null;
-  let lastToolNode: ToolNode | null = null;
+  let lastActivity: AssistantNode | ToolNode | null = null;
 
   // First pass: collect text positions and timing info.
   for (let index = 0; index < turn.entries.length; index++) {
@@ -115,8 +109,13 @@ export function analyzeTurn(
       if (node.text.length > 0) {
         textEntries.push({ node, index });
       }
-      if (node.isStreaming && node.text.length === 0) {
-        lastThinkingNode = node;
+      // A node that streams thinking (or is still pre-text) counts as
+      // activity — including after thinking ended, when its text may have
+      // started streaming (the node is no longer "thinking" by the old
+      // text-free test, but the thinking indicator must linger until the
+      // next activity arrives).
+      if (node.thinkingStartedAt !== undefined || (node.isStreaming && node.text.length === 0)) {
+        lastActivity = node;
       }
       startAt ??= getAssistantStart(node);
       // Keep the last defined end: a live final message has no end timestamp
@@ -128,7 +127,7 @@ export function analyzeTurn(
       }
     } else if (node.role === 'tool') {
       hasTools = true;
-      lastToolNode = node;
+      lastActivity = node;
       if (firstToolIndex === -1) firstToolIndex = index;
       startAt ??= getToolStart(node);
       endAt = getToolEnd(node) ?? endAt;
@@ -194,19 +193,6 @@ export function analyzeTurn(
     }
   }
 
-  const showThinking =
-    lastThinkingNode !== null &&
-    (lastThinkingNode.thinkingEndedAt === undefined || !items.some((item) => item.kind === 'tool'));
-
-  // Between consecutive tools (or between the last tool and the end of the
-  // turn) the stream has a quiet gap: the finished command vanished but the
-  // next activity has not arrived yet. Keep the last tool on screen during
-  // that gap; it is replaced as soon as anything else shows up.
-  const fallbackTool =
-    isActive && !showThinking && !items.some((item) => item.kind === 'tool' || item.kind === 'text')
-      ? lastToolNode
-      : null;
-
   return {
     intro,
     summary,
@@ -220,9 +206,7 @@ export function analyzeTurn(
     endAt,
     hasTools,
     isActive,
-    thinkingNode: lastThinkingNode,
-    showThinking,
-    fallbackTool,
+    lastActivity,
   };
 }
 

@@ -90,6 +90,11 @@ const TurnSection = React.memo(function TurnSection({
   onExpandDetails: () => void;
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // The row (or rows) replaced by the current ones, still animating out
+  // (rolling upward) while the new rows roll in from below — the swap reads
+  // as scrolling to the next activity instead of a cut.
+  const [exiting, setExiting] = useState<{ key: string; rows: React.ReactNode } | null>(null);
+  const prevRowsRef = useRef<{ key: string; rows: React.ReactNode } | null>(null);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -97,12 +102,64 @@ const TurnSection = React.memo(function TurnSection({
   const showIntro =
     analysis.intro !== null &&
     (analysis.isActive || (!analysis.hasTools && analysis.intro === analysis.summary));
-  // System markers (context compaction) are standalone rows — user-less turns
-  // render only the marker with a tighter gap than full turns.
   const isPureSystemTurn =
     turn.userNode === null &&
     turn.entries.length > 0 &&
     turn.entries.every((node) => node.role === 'system');
+
+  // Activity rows: running tools, errors and system markers; when the area
+  // would otherwise be empty, the last activity (thinking or tool) lingers
+  // until the next one arrives — the area must never be empty between
+  // activities. Rows are keyed by node id so React reuses the element when
+  // the same tool goes running -> finished (no re-animation); a different
+  // node id remounts the row and plays the enter animation for the swap.
+  const visibleItems = analysis.items.filter(
+    (item) =>
+      item.kind === 'system' ||
+      // Errors are the turn's outcome, not transient activity — they must
+      // stay visible after the turn ends.
+      (item.kind === 'text' && item.node.errorMessage !== undefined) ||
+      analysis.isActive,
+  );
+  const lingering = analysis.isActive && visibleItems.length === 0 ? analysis.lastActivity : null;
+  const rows: React.ReactNode[] = visibleItems.map((item) => (
+    <div key={item.node.id} className="minimal-activity-enter">
+      <TurnItemRenderer item={item} />
+    </div>
+  ));
+  if (lingering) {
+    rows.push(
+      lingering.role === 'assistant' ? (
+        <div
+          key={lingering.id}
+          className="minimal-activity-enter relative w-fit overflow-hidden text-[15px] text-muted-foreground"
+          data-testid="minimal-thinking"
+        >
+          Thinking...
+          <ShimmerOverlay />
+        </div>
+      ) : (
+        <div key={lingering.id} className="minimal-activity-enter">
+          <ToolLine node={lingering} live={false} />
+        </div>
+      ),
+    );
+  }
+  const rowsKey = rows.map((row) => (row as React.ReactElement).key).join('|');
+
+  // When the set of rows changes, keep the previous rows around (absolute,
+  // animating out) so the swap scrolls instead of cutting. The key stays
+  // stable across timer-driven re-renders.
+  useEffect(() => {
+    const prev = prevRowsRef.current;
+    if (prev && prev.key !== rowsKey) {
+      // Keyed by the previous rows' key so a rapid second swap remounts the
+      // exiting block and restarts its roll-out instead of swapping content
+      // mid-animation.
+      setExiting({ key: prev.key, rows: prev.rows });
+    }
+    prevRowsRef.current = { key: rowsKey, rows };
+  }, [rowsKey, rows]);
 
   return (
     <section
@@ -163,30 +220,22 @@ const TurnSection = React.memo(function TurnSection({
             below it, thinking and tool lines show what the agent is doing.
             Middle narration never renders here — only the intro and the
             current last text are visible as text. */
-        <div className="mt-2 flex flex-col gap-1">
+        <div className="mt-2 flex flex-col gap-1 overflow-hidden">
           {showIntro && <AssistantText node={analysis.intro!} testId="minimal-intro" />}
-          {analysis.isActive && analysis.showThinking && (
-            <div
-              className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
-              data-testid="minimal-thinking"
-            >
-              Thinking...
-              <ShimmerOverlay />
-            </div>
-          )}
-          {analysis.items
-            .filter(
-              (item) =>
-                item.kind === 'system' ||
-                // Errors are the turn's outcome, not transient activity — they
-                // must stay visible after the turn ends.
-                (item.kind === 'text' && item.node.errorMessage !== undefined) ||
-                analysis.isActive,
-            )
-            .map((item) => (
-              <TurnItemRenderer key={item.node.id} item={item} />
-            ))}
-          {analysis.fallbackTool && <ToolLine node={analysis.fallbackTool} live={false} />}
+          {/* The inner relative box anchors the exiting rows (absolute, top
+              of the row area) while the current rows flow normally. */}
+          <div className="relative flex flex-col gap-1">
+            {exiting && (
+              <div
+                key={exiting.key}
+                className="minimal-activity-exit pointer-events-none absolute inset-x-0 top-0"
+                onAnimationEnd={() => setExiting(null)}
+              >
+                {exiting.rows}
+              </div>
+            )}
+            {rows}
+          </div>
         </div>
       )}
 

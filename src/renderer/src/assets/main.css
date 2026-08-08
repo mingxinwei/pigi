@@ -468,17 +468,18 @@
 
 @keyframes shimmer {
   from {
-    transform: translateX(-50%);
+    transform: translateX(calc(-1 * var(--shimmer-band-width)));
   }
   to {
-    transform: translateX(50%);
+    transform: translateX(var(--shimmer-scan-width));
   }
 }
 
-/* Shimmer sweep: the overlay span is 200% wide with the highlight band at its
-   center, so one cycle (translateX -50% -> 50%) sweeps the band across the
-   parent once — same distance as a background-position sweep, but run on the
-   compositor (transform only, no per-frame repaint). */
+/* Shimmer sweep: the band is a fixed-width highlight that travels across the
+   text it labels — entering from the left and exiting on the right.
+   --shimmer-scan-width is the measured width of the text element (set by the
+   component), so a long truncated command does not waste the sweep on its
+   hidden tail. Transform-only, run on the compositor. */
 .shimmer-overlay {
   animation: shimmer 2.5s linear infinite;
 }

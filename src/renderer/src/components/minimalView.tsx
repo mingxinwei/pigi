@@ -21,7 +21,10 @@ import ToolBlock from './ToolBlock';
 import ThinkingBlock from './thinkingBlock';
 import { SystemBubble, UserBubble } from './messageBubbles';
 import { getToolCommandParts } from '../lib/toolDisplay';
-import ShimmerOverlay, { SHIMMER_SPEED_PX_PER_SECOND } from './shimmerOverlay';
+import ShimmerOverlay, {
+  SHIMMER_BAND_WIDTH_PX,
+  SHIMMER_SPEED_PX_PER_SECOND,
+} from './shimmerOverlay';
 import { cn } from '../lib/utils';
 
 /**
@@ -383,21 +386,25 @@ function WorkingTimer({
  */
 function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.Element {
   const { prefix, body } = getToolCommandParts(node);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLSpanElement>(null);
 
-  // Constant-speed-ish shimmer: the band travels 2x element width per cycle,
-  // so a fixed duration would make wide (long-command) lines sweep faster.
-  // Scale the duration with the measured width, clamped to feel like the
-  // Thinking placeholder (2.5s) for short commands and never slower than 5s
-  // for long ones.
+  // Constant-speed-ish shimmer: the band travels its own width plus the text
+  // width per cycle (enter + sweep + exit), so a fixed duration would make
+  // wide (long-command) lines sweep faster. Scale the duration with the
+  // measured text width, clamped to feel like the Thinking placeholder
+  // (2.5s) for short commands and never slower than 5s for long ones.
   const [shimmerDurationMs, setShimmerDurationMs] = useState<number | undefined>(undefined);
   useLayoutEffect(() => {
-    const element = containerRef.current;
-    if (!element || !live) return;
+    if (!live) return;
+    const element = bodyRef.current;
+    if (!element) return;
     function update(): void {
-      const width = element!.getBoundingClientRect().width;
+      const target = bodyRef.current;
+      if (!target) return;
+      const width = target.clientWidth;
       if (width > 0) {
-        const scaled = ((2 * width) / SHIMMER_SPEED_PX_PER_SECOND) * 1000;
+        const distance = width + SHIMMER_BAND_WIDTH_PX;
+        const scaled = (distance / SHIMMER_SPEED_PX_PER_SECOND) * 1000;
         setShimmerDurationMs(Math.round(Math.min(5000, Math.max(2500, scaled))));
       }
     }
@@ -411,16 +418,20 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
     /* w-fit keeps the shimmer sweep tight around the text itself — a full-width
        box would stretch the same gradient across mostly empty space. */
     <div
-      ref={containerRef}
       className="relative w-fit max-w-full overflow-hidden py-0.5 font-mono text-[15px] text-muted-foreground"
       style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
       data-testid={live ? 'minimal-running-tool' : 'minimal-finished-tool'}
     >
       <span className="flex items-baseline gap-1">
         <span className="shrink-0 text-foreground/80">{prefix}</span>
-        <span className="min-w-0 truncate">{body}</span>
+        {/* The shimmer band lives inside the text span (relative), so it
+            sweeps only the visible text — a truncated long command does not
+            waste the sweep on its hidden tail. */}
+        <span ref={bodyRef} className="relative min-w-0 truncate">
+          {body}
+          {live && <ShimmerOverlay durationMs={shimmerDurationMs} />}
+        </span>
       </span>
-      {live && <ShimmerOverlay durationMs={shimmerDurationMs} />}
     </div>
   );
 }

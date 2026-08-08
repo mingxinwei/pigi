@@ -96,9 +96,18 @@ const TurnSection = React.memo(function TurnSection({
   // The intro doubles as the conclusion when it is the turn's only text;
   // in that case it is rendered in the conclusion slot, not the activity area.
   const introIsOnlyText = analysis.intro !== null && analysis.intro === analysis.summary;
+  // System markers (context compaction) are standalone rows — user-less turns
+  // render only the marker with a tighter gap than full turns.
+  const isPureSystemTurn =
+    turn.userNode === null &&
+    turn.entries.length > 0 &&
+    turn.entries.every((node) => node.role === 'system');
 
   return (
-    <section className="mt-8 first:mt-0" data-testid="minimal-turn">
+    <section
+      className={cn('mt-8 first:mt-0', isPureSystemTurn && 'mt-2')}
+      data-testid="minimal-turn"
+    >
       {turn.userNode && (
         /* data-display-index lets the minimap locate user messages in the DOM
            (no virtualizer measurements exist in this mode). */

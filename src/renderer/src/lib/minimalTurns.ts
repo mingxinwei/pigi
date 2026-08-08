@@ -53,13 +53,18 @@ export interface MinimalTurnAnalysis {
   fallbackTool: ToolNode | null;
 }
 
-/** Split a flat node list into per-user-message turns. */
+/** Split a flat node list into per-user-message turns. System markers
+ *  (context compaction, compaction progress) get their own user-less turn so
+ *  they render as standalone rows between turns instead of being folded into
+ *  a turn's activity area. */
 export function buildTurns(nodes: TranscriptNode[]): MinimalTurn[] {
   const turns: MinimalTurn[] = [];
   for (let index = 0; index < nodes.length; index++) {
     const node = nodes[index];
     if (node.role === 'user') {
       turns.push({ id: node.id, userNode: node, userIndex: index, entries: [] });
+    } else if (node.role === 'system') {
+      turns.push({ id: `pre-${node.id}`, userNode: null, userIndex: -1, entries: [node] });
     } else if (turns.length === 0) {
       turns.push({ id: `pre-${node.id}`, userNode: null, userIndex: -1, entries: [node] });
     } else {
@@ -161,11 +166,17 @@ export function analyzeTurn(
     }
   }
 
+  // A user-less system-marker turn has no work to time — it must never count
+  // as active (the streaming session would otherwise show it a working timer).
+  const isPureSystemTurn =
+    turn.entries.length > 0 && turn.entries.every((node) => node.role === 'system');
+
   // A turn with no agent nodes yet (user message just sent, agent_start pending)
   // counts as active while the session is streaming so the timer appears early.
   // 'error' is a sticky terminal status — it must not keep a dead turn active
   // (the timer would tick forever on a failed session).
   const isActive =
+    !isPureSystemTurn &&
     isLastTurn &&
     (lastAgentNodeActive ||
       turn.entries.length === 0 ||

@@ -93,9 +93,12 @@ const TurnSection = React.memo(function TurnSection({
   const showTimer = shouldShowTimer(analysis);
   // The turn is done working as soon as the final summary starts streaming.
   const summaryStarted = analysis.summaryStarted;
-  // The intro doubles as the conclusion when it is the turn's only text;
-  // in that case it is rendered in the conclusion slot, not the activity area.
-  const introIsOnlyText = analysis.intro !== null && analysis.intro === analysis.summary;
+  // The intro occupies the slot above the activity area. It disappears when
+  // the turn ends, except for tool-less turns where it doubles as the summary
+  // (the turn's only text must not vanish).
+  const showIntro =
+    analysis.intro !== null &&
+    (analysis.isActive || (!analysis.hasTools && analysis.intro === analysis.summary));
   // System markers (context compaction) are standalone rows — user-less turns
   // render only the marker with a tighter gap than full turns.
   const isPureSystemTurn =
@@ -158,9 +161,12 @@ const TurnSection = React.memo(function TurnSection({
           })}
         </div>
       ) : (
-        /* Collapsed: live activity below the working timer — intro narration
-            and running tool lines disappear when the turn ends. */
+        /* Collapsed: the intro (first text) sits above the activity area;
+            below it, thinking and tool lines show what the agent is doing.
+            Middle narration never renders here — only the intro and the
+            current last text are visible as text. */
         <div className="mt-2 flex flex-col gap-1">
+          {showIntro && <AssistantText node={analysis.intro!} testId="minimal-intro" />}
           {analysis.isActive && analysis.showThinking && (
             <div
               className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
@@ -169,9 +175,6 @@ const TurnSection = React.memo(function TurnSection({
               Thinking...
               <ShimmerOverlay />
             </div>
-          )}
-          {analysis.intro && !introIsOnlyText && analysis.isActive && (
-            <AssistantText node={analysis.intro} testId="minimal-intro" />
           )}
           {analysis.items
             .filter(
@@ -189,7 +192,7 @@ const TurnSection = React.memo(function TurnSection({
         </div>
       )}
 
-      {analysis.summary && (
+      {analysis.summary && analysis.summary !== analysis.intro && (
         <AssistantText node={analysis.summary} className="mt-4" testId="minimal-summary" />
       )}
     </section>

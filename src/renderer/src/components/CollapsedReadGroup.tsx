@@ -9,6 +9,7 @@ import {
 } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
 import { type ToolNode, type AssistantNode, getToolArgs } from '../state/transcriptController';
+import { collapseCommandNewlines } from '../lib/toolDisplay';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
 import type { ReadGroupEntry } from '../lib/readGrouping';
 import ToolBlock from './ToolBlock';
@@ -32,9 +33,7 @@ function getCommandLabel(node: ToolNode): string {
     return `read ${path}`;
   }
   if (node.name === 'bash') {
-    // Same single-line treatment as getToolCommandParts: multi-line commands
-    // must not break the one-line label (middle truncation, group rows).
-    return String(args?.command ?? '').replace(/\s*\n\s*/g, ' ');
+    return collapseCommandNewlines(String(args?.command ?? ''));
   }
   return node.name;
 }

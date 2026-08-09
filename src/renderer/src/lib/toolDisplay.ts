@@ -5,6 +5,15 @@ export interface ToolCommandParts {
   body: string;
 }
 
+/**
+ * Commands render as a single line everywhere (tool card, read-group labels,
+ * activity feed): collapse newlines to spaces so a multi-line script never
+ * breaks the one-line layout or the middle-truncation.
+ */
+export function collapseCommandNewlines(command: string): string {
+  return command.replace(/\s*\n\s*/g, ' ');
+}
+
 /** Regex for the [N more lines in file…] hint emitted by the pi read tool. */
 export const READ_MORE_LINES_RE = /^\[\d+ more lines in file\. Use offset=\d+ to continue\.\]$/;
 
@@ -16,13 +25,7 @@ export function getToolCommandParts(node: ToolNode): ToolCommandParts {
 
   switch (node.name) {
     case 'bash':
-      // Commands render as a single line everywhere (tool card, read-group
-      // labels, activity feed): collapse newlines to spaces so a multi-line
-      // script never breaks the one-line layout or the middle-truncation.
-      return {
-        prefix: '$',
-        body: String(args?.command ?? '').replace(/\s*\n\s*/g, ' '),
-      };
+      return { prefix: '$', body: collapseCommandNewlines(String(args?.command ?? '')) };
     case 'read': {
       const path = String(args?.path ?? '');
       const offset = typeof args?.offset === 'number' ? args.offset : undefined;
@@ -41,9 +44,14 @@ export function getToolCommandParts(node: ToolNode): ToolCommandParts {
       return { prefix: node.name, body: String(args?.path ?? '') };
     default: {
       if (!args) return { prefix: node.name, body: '' };
-      // Show the first string argument value as context
+      // Show the first string argument value as context, on a single line
+      // like every other command body (a multi-line first argument would
+      // break the same one-line surfaces).
       const firstValue = Object.values(args).find((v) => typeof v === 'string');
-      return { prefix: node.name, body: typeof firstValue === 'string' ? firstValue : '' };
+      return {
+        prefix: node.name,
+        body: typeof firstValue === 'string' ? collapseCommandNewlines(firstValue) : '',
+      };
     }
   }
 }

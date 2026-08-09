@@ -157,19 +157,6 @@ export default React.memo(function SessionToolbar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuRadioItem
-                    value="compact_read"
-                    className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
-                  >
-                    Compact
-                  </DropdownMenuRadioItem>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  Collapse consecutive read-only tool calls into a single group
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuRadioItem
                     value="minimal"
                     className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
                   >
@@ -178,6 +165,19 @@ export default React.memo(function SessionToolbar({
                 </TooltipTrigger>
                 <TooltipContent side="left">
                   Minimal activity view: working timer, tool cards, final summary
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuRadioItem
+                    value="compact_read"
+                    className="pl-2 pr-8 py-1.5 text-[13px] transition-colors data-[state=checked]:bg-[var(--system-accent)]/10 data-[state=checked]:text-[var(--system-accent)] data-[state=checked]:focus:bg-[var(--system-accent)]/10 data-[state=checked]:focus:text-[var(--system-accent)] data-[state=checked]:focus:**:text-[var(--system-accent)]"
+                  >
+                    Compact
+                  </DropdownMenuRadioItem>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  Collapse consecutive read-only tool calls into a single group
                 </TooltipContent>
               </Tooltip>
               <Tooltip>

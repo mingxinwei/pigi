@@ -15,6 +15,7 @@
 
 ### Changed
 
+- In the Minimal view's activity line, an over-long command now ellipsizes in the middle and keeps its ending visible (the useful part — filenames, flags, final arguments) instead of cutting the end off.
 - Collapsing an expanded turn in the Minimal view now feels like the terminal panel: the fold and the settle are two separate motions (a short beat between them when the header is pinned), unpinned turns fold in place instead of rolling back to the bottom, and canceling a fold mid-way springs the details smoothly back open instead of jumping.
 - The settle-back animations in the Minimal view (when a turn finishes, when details collapse) now follow the same motion curve as the rest of the app instead of their own — nothing feels linear next to the terminal's open/close anymore.
 

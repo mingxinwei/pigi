@@ -841,6 +841,13 @@ function WorkingTimer({
 // Running tool line
 // =============================================================================
 
+/** Characters kept at the end of an over-long activity command. The head
+ *  shrinks with an ellipsis and this tail stays visible, so the line
+ *  ellipsizes in the middle rather than the end — the end of a path/command
+ *  is usually the useful part (filename, line range, final args). Same
+ *  convention as the collapsed-read-group labels. */
+const COMMAND_TAIL_CHARS = 20;
+
 /**
  * A tool call as a plain text line. While the tool is running it sweeps a
  * shimmer; the finished variant stays on screen (without shimmer) during
@@ -849,6 +856,7 @@ function WorkingTimer({
 function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.Element {
   const { prefix, body } = getToolCommandParts(node);
   const bodyRef = useRef<HTMLSpanElement>(null);
+  const showTail = body.length > COMMAND_TAIL_CHARS;
 
   // Constant-speed-ish shimmer: the band travels its own width plus the text
   // width per cycle (enter + sweep + exit), so a fixed duration would make
@@ -888,9 +896,18 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
         <span className="shrink-0 text-foreground/80">{prefix}</span>
         {/* The shimmer band lives inside the text span (relative), so it
             sweeps only the visible text — a truncated long command does not
-            waste the sweep on its hidden tail. */}
-        <span ref={bodyRef} className="relative min-w-0 truncate">
-          {body}
+            waste the sweep on its hidden tail. An over-long command splits
+            into a shrinking head and a fixed tail so the useful end stays
+            visible (middle ellipsis, like the collapsed-read-group labels). */}
+        <span ref={bodyRef} className="relative flex min-w-0 flex-1 items-baseline">
+          {showTail ? (
+            <>
+              <span className="truncate">{body.slice(0, -COMMAND_TAIL_CHARS)}</span>
+              <span className="shrink-0 whitespace-pre">{body.slice(-COMMAND_TAIL_CHARS)}</span>
+            </>
+          ) : (
+            <span className="truncate">{body}</span>
+          )}
           {live && <ShimmerOverlay durationMs={shimmerDurationMs} />}
         </span>
       </span>

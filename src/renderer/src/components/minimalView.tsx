@@ -36,11 +36,13 @@ import { cn } from '../lib/utils';
  *
  * Each user message starts a turn: the agent's first text message (intro) is
  * rendered at the top, followed by a "Working for Xm Ys" timer and a divider.
- * The activity stream below shimmers only on live indicators (the Thinking
- * placeholder, the running tool line); text content always renders static.
- * A finished command lingers (static) during quiet gaps until the next
- * activity replaces it. The turn ends with the agent's final text message
- * (summary), rendered without its thinking.
+ * Below them sits the activity feed: the turn's recent activities (tools,
+ * thinking, narration), at most MAX_ACTIVITY_ROWS rows, each guaranteed
+ * MIN_ACTIVITY_VISIBLE_MS of visibility before being replaced. The feed is
+ * event-driven and never queues — during a burst faster than the eye can
+ * follow, only the latest pending arrival survives (middle ones drop), so
+ * the display can never lag behind reality. The turn ends with the agent's
+ * final text message (summary), rendered without its thinking.
  */
 
 interface MinimalViewProps {
@@ -76,6 +78,14 @@ export default function MinimalView({
   );
 }
 
+/** Each feed row stays visible at least this long before being replaced —
+ *  rapid tool bursts otherwise flicker past faster than they can be read. */
+const MIN_ACTIVITY_VISIBLE_MS = 1000;
+/** The feed holds at most this many rows. */
+const MAX_ACTIVITY_ROWS = 1;
+/** Shared empty feed for ended turns (stable reference, no re-renders). */
+const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
+
 // =============================================================================
 // Turn
 // =============================================================================
@@ -105,43 +115,128 @@ const TurnSection = React.memo(function TurnSection({
     turn.entries.length > 0 &&
     turn.entries.every((node) => node.role === 'system');
 
-  // Activity rows: running tools, errors and system markers; when the area
-  // would otherwise be empty, the last activity (thinking, narration or
-  // tool) lingers until the next one arrives — the area must never be empty
-  // between activities, and every activity is transient: replaced by the
-  // next one, gone when the turn ends. Rows are keyed by node id so React
-  // reuses the element when the same tool goes running -> finished.
-  const visibleItems = analysis.items.filter(
-    (item) =>
-      item.kind === 'system' ||
-      // Errors are the turn's outcome, not transient activity — they must
-      // stay visible after the turn ends.
-      (item.kind === 'text' && item.node.errorMessage !== undefined) ||
-      analysis.isActive,
-  );
-  const lingering = analysis.isActive && visibleItems.length === 0 ? analysis.lastActivity : null;
-  const rows: React.ReactNode[] = visibleItems.map((item) => (
+  // Activity feed: the turn's recent activities (tools, thinking, narration),
+  // at most MAX_ACTIVITY_ROWS rows, each guaranteed MIN_ACTIVITY_VISIBLE_MS
+  // of visibility. Rows render from the transcript by key, so in-place
+  // updates (streaming text, running -> finished) pass through instantly —
+  // only row swaps are paced. Errors and system markers are not activities:
+  // they render as pinned rows above the feed.
+  const activityKeys = turn.entries
+    .filter(
+      (node) =>
+        node.role === 'tool' ||
+        (node.role === 'assistant' && node.errorMessage === undefined && node !== analysis.intro),
+    )
+    .map((node) => node.id);
+  const activityKeysJoined = activityKeys.join('|');
+
+  const [feed, setFeed] = useState<Array<{ key: string; shownAt: number }>>([]);
+  const seenKeysRef = useRef<Set<string>>(new Set());
+  const pendingKeyRef = useRef<string | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!analysis.isActive) return;
+    const newKeys = activityKeysJoined
+      .split('|')
+      .filter((key) => key.length > 0 && !seenKeysRef.current.has(key));
+    if (newKeys.length === 0) return;
+    for (const key of newKeys) seenKeysRef.current.add(key);
+
+    const now = Date.now();
+    if (feed.length === 0) {
+      // The turn's first activities (or a hydrating in-flight turn): show the
+      // most recent ones directly — never replay history through pacing.
+      setFeed(newKeys.slice(-MAX_ACTIVITY_ROWS).map((key) => ({ key, shownAt: now })));
+      return;
+    }
+
+    let next = [...feed];
+    for (const key of newKeys) {
+      if (next.length < MAX_ACTIVITY_ROWS) {
+        next.push({ key, shownAt: now });
+        continue;
+      }
+      const waitMs = MIN_ACTIVITY_VISIBLE_MS - (now - next[0].shownAt);
+      if (waitMs <= 0) {
+        next = [...next.slice(1), { key, shownAt: Date.now() }];
+      } else {
+        // Both slots are young: park the arrival in the single pending slot
+        // (a newer arrival overwrites it — middle activities drop, never
+        // queue) and flush it in once the oldest row has been seen.
+        pendingKeyRef.current = key;
+        if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = setTimeout(() => {
+          flushTimerRef.current = null;
+          const pendingKey = pendingKeyRef.current;
+          pendingKeyRef.current = null;
+          if (pendingKey !== null) {
+            setFeed((current) => [...current.slice(1), { key: pendingKey, shownAt: Date.now() }]);
+          }
+        }, waitMs);
+      }
+    }
+    if (next.length !== feed.length || next.some((row, index) => row.key !== feed[index]?.key)) {
+      setFeed(next);
+    }
+  }, [activityKeysJoined, analysis.isActive, feed]);
+
+  // The feed is ignored the moment the turn ends (never paced) so "Worked"
+  // and the summary arrive crisply; any parked pending flush is cancelled.
+  useEffect(() => {
+    if (analysis.isActive) return;
+    pendingKeyRef.current = null;
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+  }, [analysis.isActive]);
+
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, []);
+
+  // Pinned rows (errors, system markers) render above the feed; feed rows
+  // resolve their key against the transcript so content updates stream
+  // through without re-entering the feed.
+  const nodeById = new Map(turn.entries.map((node) => [node.id, node]));
+  const pinnedRows: React.ReactNode[] = analysis.items.map((item) => (
     <TurnItemRenderer key={item.node.id} item={item} />
   ));
-  if (lingering) {
-    rows.push(
-      lingering.role === 'assistant' ? (
-        lingering.text.length > 0 ? (
-          <NarrationLine key={lingering.id} node={lingering} />
-        ) : (
+  // The feed sits in a fixed-height slot so swapping thinking / narration /
+  // tool lines (22.5px vs 26.5px tall) never moves the layout. Only the
+  // active turn renders the slot — an ended turn's activity area collapses.
+  const feedRows: React.ReactNode[] = [];
+  const visibleFeed = analysis.isActive ? feed : NO_FEED_ROWS;
+  for (const { key } of visibleFeed) {
+    const node = nodeById.get(key);
+    if (!node) continue;
+    if (node.role === 'tool') {
+      feedRows.push(<ToolLine key={key} node={node} live={node.status === 'running'} />);
+    } else if (node.role === 'assistant') {
+      // The intro renders in its fixed slot above the feed — once it has
+      // text it must never also stream as a narration row. (A text-empty
+      // intro still passes through as the thinking row: the intro slot has
+      // nothing to show yet, and it is indistinguishable from any other
+      // thinking at that point.)
+      if (node === analysis.intro && node.text.length > 0) continue;
+      if (node.text.length > 0) {
+        feedRows.push(<NarrationLine key={key} node={node} />);
+      } else {
+        feedRows.push(
           <div
-            key={lingering.id}
+            key={key}
             className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
             data-testid="minimal-thinking"
           >
             Thinking...
             <ShimmerOverlay />
-          </div>
-        )
-      ) : (
-        <ToolLine key={lingering.id} node={lingering} live={false} />
-      ),
-    );
+          </div>,
+        );
+      }
+    }
   }
 
   return (
@@ -200,11 +295,15 @@ const TurnSection = React.memo(function TurnSection({
         </div>
       ) : (
         /* Collapsed: the intro (first text) sits above the activity area;
-            below it, the single current activity (thinking, narration or
-            tool) shows what the agent is doing. */
+            below it, pinned rows (errors, system markers), then the feed in
+            its fixed-height slot — the single current activity (thinking,
+            narration or tool) shows what the agent is doing. */
         <div className="mt-2 flex flex-col gap-1">
           {showIntro && <AssistantText node={analysis.intro!} testId="minimal-intro" />}
-          {rows}
+          {pinnedRows}
+          {analysis.isActive && (
+            <div className="flex h-[27px] items-center overflow-hidden">{feedRows}</div>
+          )}
         </div>
       )}
 
@@ -247,11 +346,8 @@ function AssistantText({
 
 function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Element {
   switch (item.kind) {
-    case 'tool':
-      return <ToolLine node={item.node} live />;
     case 'text':
-      // Only errors land here — narration goes through the single activity
-      // slot (lastActivity). Errors are the turn's outcome, full block.
+      // Pinned error message — the turn's outcome, full block.
       return <AssistantText node={item.node} />;
     case 'system':
       return (

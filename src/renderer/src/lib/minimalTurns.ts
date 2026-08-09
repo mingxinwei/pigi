@@ -25,13 +25,15 @@ export interface MinimalTurn {
 }
 
 export type MinimalTurnItem =
-  | { kind: 'tool'; node: ToolNode }
   | { kind: 'text'; node: AssistantNode }
   | { kind: 'system'; node: SystemNode };
 
 export interface MinimalTurnAnalysis {
   intro: AssistantNode | null;
   summary: AssistantNode | null;
+  /** Pinned rows rendered outside the activity feed: error messages (the
+   *  turn's outcome) and system markers. Tools and narration are NOT here —
+   *  they flow through the turn's activity feed. */
   items: MinimalTurnItem[];
   /** When the agent started working on this turn (first agent node timestamp). */
   startAt: number | undefined;
@@ -39,11 +41,6 @@ export interface MinimalTurnAnalysis {
   endAt: number | undefined;
   hasTools: boolean;
   isActive: boolean;
-  /** The turn's most recent activity (thinking or tool call). While the turn
-   *  is active it lingers in the activity area until the next activity
-   *  arrives — the area must never be empty between activities (network gaps
-   *  between thinking end and tool start can take a second). */
-  lastActivity: AssistantNode | ToolNode | null;
 }
 
 /** Split a flat node list into per-user-message turns. System markers
@@ -100,7 +97,6 @@ export function analyzeTurn(
   let hasTools = false;
   let firstToolIndex = -1;
   let lastAgentNodeActive = false;
-  let lastActivity: AssistantNode | ToolNode | null = null;
 
   // First pass: collect text positions and timing info.
   for (let index = 0; index < turn.entries.length; index++) {
@@ -108,17 +104,6 @@ export function analyzeTurn(
     if (node.role === 'assistant') {
       if (node.text.length > 0) {
         textEntries.push({ node, index });
-        // Narration is activity like any other: the current text message
-        // occupies the single activity slot until the next activity arrives.
-        lastActivity = node;
-      }
-      // A node that streams thinking (or is still pre-text) counts as
-      // activity — including after thinking ended, when its text may have
-      // started streaming (the node is no longer "thinking" by the old
-      // text-free test, but the thinking indicator must linger until the
-      // next activity arrives).
-      if (node.thinkingStartedAt !== undefined || (node.isStreaming && node.text.length === 0)) {
-        lastActivity = node;
       }
       startAt ??= getAssistantStart(node);
       // Keep the last defined end: a live final message has no end timestamp
@@ -130,7 +115,6 @@ export function analyzeTurn(
       }
     } else if (node.role === 'tool') {
       hasTools = true;
-      lastActivity = node;
       if (firstToolIndex === -1) firstToolIndex = index;
       startAt ??= getToolStart(node);
       endAt = getToolEnd(node) ?? endAt;
@@ -176,20 +160,13 @@ export function analyzeTurn(
       ? lastTextEntry.node
       : null;
 
-  // Second pass: build the activity stream in transcript order — running tools
-  // (completed ones disappear), error messages (the turn's outcome, not
-  // narration), and system markers. Narration (middle narration and the final
-  // summary message) is NOT collected here: it occupies the single activity
-  // slot via lastActivity, exactly like thinking and tools — transient, one
-  // at a time, replaced by the next activity.
+  // Second pass: pinned rows only — error messages (the turn's outcome, not
+  // transient activity) and system markers. Tools, thinking and narration
+  // flow through the activity feed (see minimalView), not this list.
   for (const node of turn.entries) {
     if (node.role === 'assistant') {
       if (node.errorMessage) {
         items.push({ kind: 'text', node });
-      }
-    } else if (node.role === 'tool') {
-      if (node.status === 'running') {
-        items.push({ kind: 'tool', node });
       }
     } else if (node.role === 'system') {
       items.push({ kind: 'system', node });
@@ -209,7 +186,6 @@ export function analyzeTurn(
     endAt,
     hasTools,
     isActive,
-    lastActivity,
   };
 }
 

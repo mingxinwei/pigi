@@ -274,6 +274,13 @@ export default React.memo(function MessageList({
     lastNodeIdRef.current = lastNode?.id ?? null;
   }, [displayNodes, isMinimal]);
 
+  // While a just-expanded details area settles (one frame: the details mount,
+  // the pin padding is re-fit, the viewport rolls to the details bottom), the
+  // auto-scroll ResizeObserver must stand down — its scrollToBottom would
+  // otherwise fight the roll (it targets the old bottom, computed while the
+  // padding is still in place) and leave the viewport wherever it clamped.
+  const expandSettlingRef = useRef(false);
+
   // Auto-scroll + wheel handler.
   //
   // Pinning is done synchronously inside ResizeObserver callbacks, which run
@@ -435,6 +442,7 @@ export default React.memo(function MessageList({
     }
 
     const rowsWrapperRo = new ResizeObserver(() => {
+      if (expandSettlingRef.current) return;
       if (pinTopTurnIdRef.current !== null) {
         pinVerifiedOrRepin();
       } else {
@@ -444,6 +452,7 @@ export default React.memo(function MessageList({
     rowsWrapperRo.observe(rowsWrapper);
 
     const containerRo = new ResizeObserver(() => {
+      if (expandSettlingRef.current) return;
       if (pinTopTurnIdRef.current !== null) {
         pinVerifiedOrRepin();
       } else {
@@ -826,19 +835,61 @@ export default React.memo(function MessageList({
     if (pinTopTurnIdRef.current !== null) {
       lastPinnedTurnIdRef.current = pinTopTurnIdRef.current;
     }
-    // Expanding details must also drop the minimal-mode top pin (and its
-    // viewport-height padding), or the ResizeObserver would glue the turn
-    // back to the viewport top and defeat the expand-time scroll.
+    // Expanding details must also drop the minimal-mode top pin (or the
+    // ResizeObserver would glue the turn back to the viewport top and
+    // defeat the expand-time scroll). The viewport-height padding stays in
+    // place for now: dropping it before React's commit would shrink the
+    // scroll range while the details are still closed, and the browser
+    // would clamp scrollTop — yanking the working header down even for a
+    // short expansion. It is re-fit (or dropped) after the commit below.
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
-    clearTopPin();
-    // Expanding while the turn is still running: land on the very bottom of
-    // the list — the newest activity is what the user is about to read — and
-    // follow it as it grows.
+    pinTopTurnIdRef.current = null;
+    // Expanding while the turn is still running: the newest activity is what
+    // the user is about to read, so the viewport lands on the bottom of the
+    // expanded details — not the bottom of the whole list (the header would
+    // be yanked to wherever it sits in the document flow, even for a short
+    // expansion). Runs after React's commit (details mounted, padding still
+    // holding the scroll range open): the padding is then re-fit to fill
+    // only what the details do not cover — a short expansion keeps the
+    // working header glued exactly where it was, a long one leaves no
+    // padding and just rolls to the details bottom.
     if (isActive) {
       autoScrollRef.current = true;
-      const container = containerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
+      expandSettlingRef.current = true;
+      requestAnimationFrame(() => {
+        const c = containerRef.current;
+        const wrapper = rowsWrapperRef.current;
+        expandSettlingRef.current = false;
+        if (!c || !wrapper) return;
+        const details = c.querySelector('[data-testid=minimal-details]');
+        if (!details) return;
+        // Mounting the details would trigger the auto-scroll ResizeObserver
+        // before this frame (padding still in place, so it would scroll to
+        // the old bottom) — the settling flag above kept it standing down.
+        const containerRect = c.getBoundingClientRect();
+        const detailsRect = details.getBoundingClientRect();
+        // Scroll before re-fitting the padding: shrinking the padding clamps
+        // an over-long scrollTop back to the new bottom, which would cancel
+        // the roll below. Rolling first lands the details bottom exactly on
+        // the viewport edge, then the padding re-fit cannot clamp it (the
+        // new bottom equals that scroll position).
+        if (detailsRect.bottom > containerRect.bottom) {
+          c.scrollTop += detailsRect.bottom - containerRect.bottom;
+        }
+        const fill = Math.max(0, containerRect.height - (detailsRect.bottom - containerRect.top));
+        wrapper.style.paddingBottom = `${fill}px`;
+      });
+    } else {
+      // A finished turn expands without moving the viewport: drop the pin
+      // padding after the commit — it still held the scroll range open, so
+      // nothing clamps mid-transition.
+      expandSettlingRef.current = true;
+      requestAnimationFrame(() => {
+        expandSettlingRef.current = false;
+        const wrapper = rowsWrapperRef.current;
+        if (wrapper) wrapper.style.paddingBottom = '';
+      });
     }
   }, []);
 

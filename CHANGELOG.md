@@ -21,7 +21,7 @@
 ### Fixed
 
 - In the Minimal view, switching away from a session and back while a turn is still running no longer drops the working area's pin: the turn is re-pinned (viewport-height padding and all) once the session resumes, even when the transcript is still replaying.
-- In the Minimal view, expanding a running turn's details now lands on the very bottom of the list (the newest activity), and collapsing the details while the turn is still running restores the top pin and its padding instead of leaving the layout unpinned.
+- In the Minimal view, expanding a running turn's details keeps the working header exactly where it was — the details open in place, and the viewport rolls only as far as the details bottom (the newest activity); a short expansion does not move the viewport at all. Collapsing the details while the turn is still running restores the top pin and its padding instead of leaving the layout unpinned.
 - In the Minimal view, collapsing expanded details no longer lags behind its own animation: the fold's per-frame height now overrides the CSS height transition (only opacity stays on the transition), so the details shrink at the intended pace and the leftover sliver at the end no longer pops away.
 - Closing the terminal panel no longer leaves the chat suspended above it: the chat now slides down in sync with the panel again (the transform is dropped only after the close animation settles, so sticky headers still keep working).
 - In the Minimal view, scrolling with the mouse while a turn is pinned no longer results in the view being pulled to the bottom when the turn ends — the pin and padding are dropped in place instead of gliding.

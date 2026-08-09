@@ -1103,18 +1103,31 @@ function App(): React.JSX.Element {
   // The chat content slides up (GPU transform) by the terminal height when the
   // panel opens, in sync with the panel, so nothing re-lays-out per frame. Shared
   // by the active-session and draft layouts so both ride above the terminal.
-  // Once the close animation settles the transform must be dropped entirely:
-  // any lingering transform (even identity) turns this layer into a containing
-  // block, silently breaking every `position: sticky` descendant (the minimal
-  // view's expanded-details header, overflow clamps, ...).
-  const [terminalPushTransform, setTerminalPushTransform] = useState(() =>
-    terminalOpen ? `translateY(-${terminalHeight}px)` : 'none',
-  );
+  // Closing is the mirror: the transform returns to zero immediately so the chat
+  // slides down in sync with the panel (holding -height for the close would
+  // expose a bare strip between the chat and the descending panel). Once the
+  // close animation settles the transform must be dropped entirely: any lingering
+  // transform (even identity) turns this layer into a containing block, silently
+  // breaking every `position: sticky` descendant (the minimal view's
+  // expanded-details header, overflow clamps, ...).
+  const [terminalPushSettled, setTerminalPushSettled] = useState(false);
   useEffect(() => {
-    if (terminalOpen) return;
-    const timer = setTimeout(() => setTerminalPushTransform('none'), 260);
+    if (terminalOpen) {
+      // Opening: the next close must animate back to zero, so clear the
+      // settled flag (deferred a frame out of the effect body — a synchronous
+      // setState here would trigger a cascading render).
+      const clearTimer = setTimeout(() => setTerminalPushSettled(false), 0);
+      return () => clearTimeout(clearTimer);
+    }
+    // Closing: once the slide-down has settled, drop the transform entirely.
+    const timer = setTimeout(() => setTerminalPushSettled(true), 260);
     return () => clearTimeout(timer);
   }, [terminalHeight, terminalOpen]);
+  const terminalPushTransform = terminalOpen
+    ? `translateY(-${terminalHeight}px)`
+    : terminalPushSettled
+      ? 'none'
+      : 'translateY(0)';
   const terminalPushClassName = `absolute inset-0 flex flex-col will-change-transform ${
     terminalDragging
       ? 'transition-none'
@@ -1124,9 +1137,7 @@ function App(): React.JSX.Element {
             : 'duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
         }`
   }`;
-  const terminalPushStyle = {
-    transform: terminalOpen ? `translateY(-${terminalHeight}px)` : terminalPushTransform,
-  };
+  const terminalPushStyle = { transform: terminalPushTransform };
 
   return (
     <SidebarProvider

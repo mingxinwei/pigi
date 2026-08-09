@@ -154,6 +154,11 @@ export default React.memo(function MessageList({
   // In-flight layout-restore animation (cancelled the moment the user
   // scrolls, so their position is never yanked back).
   const restoreAnimRef = useRef<{ cancel: () => void } | null>(null);
+  // Set when the user wheels while a minimal turn is pinned: at turn end the
+  // restore glide is skipped (the user's scroll intent wins — they have
+  // moved to read something else, so the view must not glide away). Reset
+  // each time a new turn gets pinned.
+  const userScrolledDuringPinRef = useRef(false);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -252,6 +257,7 @@ export default React.memo(function MessageList({
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
       if (isMinimal) {
         pinTopTurnIdRef.current = lastNode.id;
+        userScrolledDuringPinRef.current = false;
         autoScrollRef.current = false;
         const container = containerRef.current;
         if (container && rowsWrapperRef.current) {
@@ -355,7 +361,11 @@ export default React.memo(function MessageList({
       // padding and stay reachable at the top; a user scroll glides away but
       // the next content change re-pins the turn. The pin only ends when the
       // turn finishes, the details are expanded, the scroll-to-bottom button
-      // is used, or the view/session changes.
+      // is used, or the view/session changes. The flag below only cancels
+      // the end-of-turn glide, never the pin itself.
+      if (pinTopTurnIdRef.current !== null) {
+        userScrolledDuringPinRef.current = true;
+      }
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
       } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(container!)) {
@@ -411,6 +421,8 @@ export default React.memo(function MessageList({
     let cancelled = false;
 
     // A restored session must not be yanked back to a stale pinned turn.
+    restoreAnimRef.current?.cancel();
+    restoreAnimRef.current = null;
     clearTopPin();
 
     const savedPosition = sessionPath
@@ -560,6 +572,9 @@ export default React.memo(function MessageList({
   useEffect(() => {
     if (prevIsMinimalRef.current === isMinimal) return;
     prevIsMinimalRef.current = isMinimal;
+    // A mode switch must not be clobbered by an in-flight restore glide.
+    restoreAnimRef.current?.cancel();
+    restoreAnimRef.current = null;
     clearTopPin();
     const container = containerRef.current;
     if (!container) return;
@@ -592,6 +607,14 @@ export default React.memo(function MessageList({
   // keeps the view at the bottom through the ResizeObserver.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
     if (pinTopTurnIdRef.current !== turnId) return;
+    if (userScrolledDuringPinRef.current) {
+      // The user scrolled while the pin was held: their position wins —
+      // drop the pin and padding without gliding anywhere.
+      pinTopTurnIdRef.current = null;
+      const wrapper = rowsWrapperRef.current;
+      if (wrapper) wrapper.style.paddingBottom = '';
+      return;
+    }
     pinTopTurnIdRef.current = null;
     const container = containerRef.current;
     const wrapper = rowsWrapperRef.current;

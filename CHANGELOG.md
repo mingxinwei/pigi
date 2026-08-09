@@ -11,6 +11,13 @@
 
 ### Fixed
 
+- In the Minimal view, collapsing expanded details no longer lags behind its own animation: the fold's per-frame height now overrides the CSS height transition (only opacity stays on the transition), so the details shrink at the intended pace and the leftover sliver at the end no longer pops away.
+- Closing the terminal panel no longer leaves the chat suspended above it: the chat now slides down in sync with the panel again (the transform is dropped only after the close animation settles, so sticky headers still keep working).
+- In the Minimal view, scrolling with the mouse while a turn is pinned no longer results in the view being pulled to the bottom when the turn ends — the pin and padding are dropped in place instead of gliding.
+- Switching sessions or view modes mid-restore-animation no longer lets the animation's tail end override the restored scroll position.
+
+### Fixed
+
 - In the Minimal view, the opening text of a turn no longer appears twice (once in its fixed spot, once as a scrolling activity line) while it is still streaming.
 
 ### Changed

@@ -567,6 +567,13 @@ const TurnSection = React.memo(function TurnSection({
           style={{
             height: detailsHeight === null ? undefined : `${detailsHeight}px`,
             transitionDuration: `${COLLAPSE_MS}ms`,
+            // During the fold the rAF below drives height frame-by-frame;
+            // the CSS height transition would fight it (every per-frame
+            // inline change restarts the transition, so the rendered height
+            // only closes ~18% of the gap per frame — the fold lags and the
+            // leftover height pops away when the details unmounts). Leave
+            // only opacity on the transition; height is fully rAF-owned.
+            transitionProperty: detailsPhase === 'collapsing' ? 'opacity' : undefined,
           }}
         >
           {' '}

@@ -40,6 +40,9 @@ function isRenderableNode(node: TranscriptNode): boolean {
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
+/** Restore animation for the minimal view's top-pin release, matching the
+ *  terminal panel's open/close rhythm (340ms, fast-then-ease-out). */
+const RESTORE_LAYOUT_MS = 340;
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
@@ -145,6 +148,9 @@ export default React.memo(function MessageList({
   // viewport (set when a new user message arrives, cleared the moment the
   // user scrolls or the view/session changes).
   const pinTopTurnIdRef = useRef<string | null>(null);
+  // In-flight layout-restore animation (cancelled the moment the user
+  // scrolls, so their position is never yanked back).
+  const restoreAnimRef = useRef<{ cancel: () => void } | null>(null);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -338,6 +344,9 @@ export default React.memo(function MessageList({
     setContainerWidth(container.clientWidth);
 
     function handleWheel(event: WheelEvent): void {
+      // A mid-flight restore animation must not fight the user's scroll.
+      restoreAnimRef.current?.cancel();
+      restoreAnimRef.current = null;
       if (event.deltaY !== 0) {
         // Any user scroll takes over from the top pin (and re-enables
         // bottom-follow only when the user reaches the bottom).
@@ -571,11 +580,36 @@ export default React.memo(function MessageList({
     }
   }
 
-  // When the pinned turn finishes, release the pin and its padding so the
-  // message list settles back into a normal layout (the turn's summary is
-  // already in view; no forced scroll).
+  // When the pinned turn finishes (after its summary has fully revealed —
+  // MinimalView gates onTurnEnd on that), restore the normal layout with a
+  // terminal-style slide instead of a snap: animate scrollTop to the
+  // post-padding bottom position, then drop the padding (the target equals
+  // the new max scrollTop, so nothing jumps).
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
-    if (pinTopTurnIdRef.current === turnId) clearTopPin();
+    if (pinTopTurnIdRef.current !== turnId) return;
+    pinTopTurnIdRef.current = null;
+    const container = containerRef.current;
+    const wrapper = rowsWrapperRef.current;
+    if (!container || !wrapper) return;
+    const paddingPx = parseFloat(wrapper.style.paddingBottom) || 0;
+    if (paddingPx <= 0) return;
+    autoScrollRef.current = false;
+    const target = Math.max(0, container.scrollHeight - paddingPx - container.clientHeight);
+    let cancelled = false;
+    const { promise, cancel } = animateScrollTop(container, target, RESTORE_LAYOUT_MS);
+    restoreAnimRef.current = {
+      cancel: () => {
+        cancelled = true;
+        cancel();
+      },
+    };
+    void promise.then(() => {
+      restoreAnimRef.current = null;
+      wrapper.style.paddingBottom = '';
+      // Re-assert the true bottom in case layout shifted during the
+      // animation; skipped when the user took over scrolling mid-flight.
+      if (!cancelled) container.scrollTop = container.scrollHeight;
+    });
   }, []);
 
   function handleScrollToBottom(): void {
@@ -910,6 +944,51 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
     case 'system':
       return 56;
   }
+}
+
+/** Animates scrollTop toward target with an ease-out curve, returning a
+ *  cancel handle (the user's own scroll must always win). */
+function animateScrollTop(
+  container: HTMLElement,
+  target: number,
+  durationMs: number,
+): { promise: Promise<void>; cancel: () => void } {
+  const start = container.scrollTop;
+  const delta = target - start;
+  let raf = 0;
+  let cancelled = false;
+  let resolvePromise: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  if (Math.abs(delta) < 1) {
+    resolvePromise();
+    return { promise, cancel: () => {} };
+  }
+  const startAt = performance.now();
+  const tick = (now: number): void => {
+    if (cancelled) {
+      resolvePromise();
+      return;
+    }
+    const progress = Math.min(1, (now - startAt) / durationMs);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    container.scrollTop = start + delta * eased;
+    if (progress < 1) {
+      raf = requestAnimationFrame(tick);
+    } else {
+      resolvePromise();
+    }
+  };
+  raf = requestAnimationFrame(tick);
+  return {
+    promise,
+    cancel: () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      resolvePromise();
+    },
+  };
 }
 
 function isAtBottom(container: HTMLDivElement): boolean {

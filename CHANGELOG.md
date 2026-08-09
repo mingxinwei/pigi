@@ -7,6 +7,7 @@
 - New "Minimal" view mode in the message toolbar's view dropdown: each of your messages opens a turn with a live "Working for Xm Ys" timer (click it to expand the full tool cards and thinking), a shimmer line shows what the agent is doing right now, a finished command stays until the next activity replaces it, and the turn closes with the agent's final summary. Scrolling behaves exactly like the other views — auto-follow on new messages, saved positions, and the user-message minimap all work.
 - In the Minimal view's activity area, each activity (thinking, command, narration) stays on screen at least a second: when commands fly by faster than that, the intermediate ones are skipped and the latest one takes the line as soon as it is readable — the area never queues up and never lags behind what the agent is actually doing. The activity line keeps a fixed height, so nothing jumps as it switches between thinking, commands, and narration.
 - In the Minimal view, sending a new message pins the turn's working area to the top of the message list with open space below it — the work has the whole window to grow into instead of being squeezed at the bottom of a long history. When the turn finishes, the list settles back to a normal layout automatically.
+- When a turn in the Minimal view finishes, its final summary now streams out quickly instead of appearing all at once (the text is already complete, so it just reads like the streaming it came from), and the list then glides back to the normal layout with a smooth motion instead of snapping.
 
 ### Fixed
 

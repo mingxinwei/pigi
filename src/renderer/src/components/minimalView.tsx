@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronRight } from '@tabler/icons-react';
 import {
   type AgentStatus,
@@ -110,15 +110,36 @@ const TurnSection = React.memo(function TurnSection({
   onTurnEnd?: (turnId: string) => void;
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  // Fires once when the turn flips from active to finished: the activity
-  // area collapses, so MessageList can release the top pin and its padding.
-  const wasActiveRef = useRef(analysis.isActive);
+  // The final summary of a just-finished turn reveals itself in a fast fake
+  // stream (the text is already complete) before the layout restores — the
+  // content must be fully rendered before the view settles.
+  const [revealingSummary, setRevealingSummary] = useState(false);
+  const [wasActive, setWasActive] = useState(() => analysis.isActive);
+  const [justEnded, setJustEnded] = useState(false);
+  // Set during render (adjust-state pattern): the ended turn's very first
+  // render must already show the revealer, or the full summary would flash
+  // for a frame before streaming from zero.
+  if (wasActive && !analysis.isActive) {
+    setWasActive(false);
+    setJustEnded(true);
+    if (analysis.summary && analysis.summary !== analysis.intro) {
+      setRevealingSummary(true);
+    }
+  }
   useEffect(() => {
-    if (wasActiveRef.current && !analysis.isActive) {
+    if (!justEnded) return;
+    // No summary to reveal: restore the layout immediately. With a
+    // summary, RevealText's onComplete fires onTurnEnd once revealed.
+    if (!analysis.summary || analysis.summary === analysis.intro) {
       onTurnEnd?.(turn.id);
     }
-    wasActiveRef.current = analysis.isActive;
-  }, [analysis.isActive, onTurnEnd, turn.id]);
+  }, [analysis.intro, analysis.summary, justEnded, onTurnEnd, turn.id]);
+
+  // Fired once by RevealText when the summary has fully streamed in — only
+  // then does MessageList restore the normal layout (never mid-reveal).
+  const handleRevealComplete = useCallback(() => {
+    onTurnEnd?.(turn.id);
+  }, [onTurnEnd, turn.id]);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -324,9 +345,24 @@ const TurnSection = React.memo(function TurnSection({
         </div>
       )}
 
-      {analysis.summary && analysis.summary !== analysis.intro && (
-        <AssistantText node={analysis.summary} className="mt-4" testId="minimal-summary" />
-      )}
+      {analysis.summary &&
+        analysis.summary !== analysis.intro &&
+        (revealingSummary ? (
+          /* Reveal the completed summary in a fast fake stream (the content
+             is already fully available) so the turn's ending reads like the
+             streaming it just came from. onComplete restores the layout. */
+          <div
+            className="mt-4 w-full min-w-0 text-[15px] text-foreground"
+            style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
+            data-testid="minimal-summary"
+          >
+            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
+              {(revealed) => <MarkdownMessage text={revealed} />}
+            </RevealText>
+          </div>
+        ) : (
+          <AssistantText node={analysis.summary} className="mt-4" testId="minimal-summary" />
+        ))}
     </section>
   );
 });
@@ -386,6 +422,39 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
       <MarkdownMessage text={node.text} />
     </div>
   );
+}
+
+/** Reveals a complete text in a fast fake stream: the content is already
+ *  fully available, so this only paces the reveal (~2ms per character,
+ *  clamped to 250–900ms) to read like the streaming it just came from.
+ *  Children receive the revealed prefix and re-render as it grows. */
+function RevealText({
+  text,
+  onComplete,
+  children,
+}: {
+  text: string;
+  onComplete: () => void;
+  children: (revealed: string) => React.ReactNode;
+}): React.JSX.Element {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (text.length === 0) return;
+    const durationMs = Math.min(900, Math.max(250, text.length * 2));
+    const startAt = performance.now();
+    let raf = 0;
+    const tick = (now: number): void => {
+      const progress = Math.min(1, (now - startAt) / durationMs);
+      setShown(Math.floor(text.length * progress));
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [text]);
+  useEffect(() => {
+    if (shown >= text.length) onComplete();
+  }, [onComplete, shown, text]);
+  return <>{children(text.slice(0, shown))}</>;
 }
 
 /** Full-detail rendering for an expanded turn: complete tool cards, thinking blocks, text. */

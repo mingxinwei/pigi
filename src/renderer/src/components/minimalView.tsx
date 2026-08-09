@@ -51,12 +51,16 @@ interface MinimalViewProps {
   /** Called when the user expands/collapses a turn's details — MessageList
    *  uses it to release the auto-scroll pin so the viewport stays put. */
   onExpandDetails: () => void;
+  /** Called when a turn finishes (its activity area collapses) — MessageList
+   *  uses it to release the top pin and its viewport-height padding. */
+  onTurnEnd?: (turnId: string) => void;
 }
 
 export default function MinimalView({
   nodes,
   sessionStatus,
   onExpandDetails,
+  onTurnEnd,
 }: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
   const analyses = useMemo(
@@ -72,6 +76,7 @@ export default function MinimalView({
           turn={turn}
           analysis={analyses[index]}
           onExpandDetails={onExpandDetails}
+          onTurnEnd={onTurnEnd}
         />
       ))}
     </div>
@@ -97,12 +102,23 @@ const TurnSection = React.memo(function TurnSection({
   turn,
   analysis,
   onExpandDetails,
+  onTurnEnd,
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
   onExpandDetails: () => void;
+  onTurnEnd?: (turnId: string) => void;
 }): React.JSX.Element {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // Fires once when the turn flips from active to finished: the activity
+  // area collapses, so MessageList can release the top pin and its padding.
+  const wasActiveRef = useRef(analysis.isActive);
+  useEffect(() => {
+    if (wasActiveRef.current && !analysis.isActive) {
+      onTurnEnd?.(turn.id);
+    }
+    wasActiveRef.current = analysis.isActive;
+  }, [analysis.isActive, onTurnEnd, turn.id]);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -243,6 +259,7 @@ const TurnSection = React.memo(function TurnSection({
     <section
       className={cn('mt-8 first:mt-0', isPureSystemTurn && 'mt-2')}
       data-testid="minimal-turn"
+      data-turn-id={turn.id}
     >
       {turn.userNode && (
         /* data-display-index lets the minimap locate user messages in the DOM

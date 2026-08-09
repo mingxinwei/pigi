@@ -141,6 +141,10 @@ export default React.memo(function MessageList({
   const containerRef = useRef<HTMLDivElement>(null);
   const rowsWrapperRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
+  // Minimal mode: the turn whose top edge is pinned to the top of the
+  // viewport (set when a new user message arrives, cleared the moment the
+  // user scrolls or the view/session changes).
+  const pinTopTurnIdRef = useRef<string | null>(null);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -225,14 +229,31 @@ export default React.memo(function MessageList({
   // scrollHeight includes those gaps — so its target is never the true bottom.
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
-  // Resume auto-scroll when a new user message appears
+  // Resume auto-scroll when a new user message appears. In minimal mode a
+  // new turn instead pins its TOP edge to the top of the viewport: the work
+  // area gets the whole window as its canvas and grows downward. While the
+  // pin is active the content wrapper gets a viewport-height padding at the
+  // bottom — without it the browser clamps scrollTop once the turn is
+  // shorter than the viewport, and the turn can never reach the top. The
+  // ResizeObserver below re-asserts the pin as content grows. Any user
+  // scroll, the scroll-to-bottom button, or a view/session switch cancels
+  // the pin and removes the padding.
   useLayoutEffect(() => {
     const lastNode = displayNodes[displayNodes.length - 1];
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
-      autoScrollRef.current = true;
+      if (isMinimal) {
+        pinTopTurnIdRef.current = lastNode.id;
+        autoScrollRef.current = false;
+        const container = containerRef.current;
+        if (container && rowsWrapperRef.current) {
+          rowsWrapperRef.current.style.paddingBottom = `${container.clientHeight}px`;
+        }
+      } else {
+        autoScrollRef.current = true;
+      }
     }
     lastNodeIdRef.current = lastNode?.id ?? null;
-  }, [displayNodes]);
+  }, [displayNodes, isMinimal]);
 
   // Auto-scroll + wheel handler.
   //
@@ -267,22 +288,61 @@ export default React.memo(function MessageList({
     const rowsWrapper = rowsWrapperRef.current;
     if (!container || !rowsWrapper) return;
 
+    // Pinned turn lookup: the turn whose top edge stays glued to the
+    // viewport top while it grows (see pinTopTurnIdRef).
+    function findPinnedTurn(): HTMLElement | null {
+      const targetId = pinTopTurnIdRef.current;
+      if (targetId === null) return null;
+      const current = containerRef.current;
+      if (!current) return null;
+      for (const element of current.querySelectorAll('[data-turn-id]')) {
+        if (element.getAttribute('data-turn-id') === targetId) {
+          return element as HTMLElement;
+        }
+      }
+      return null;
+    }
+
     function scrollToBottom(): void {
       if (!autoScrollRef.current) return;
       container!.scrollTop = container!.scrollHeight;
     }
 
-    const rowsWrapperRo = new ResizeObserver(scrollToBottom);
+    function pinTopToViewport(): void {
+      const turnEl = findPinnedTurn();
+      if (!turnEl) return;
+      container!.scrollTop =
+        turnEl.getBoundingClientRect().top -
+        container!.getBoundingClientRect().top +
+        container!.scrollTop;
+    }
+
+    const rowsWrapperRo = new ResizeObserver(() => {
+      if (pinTopTurnIdRef.current !== null) {
+        pinTopToViewport();
+      } else {
+        scrollToBottom();
+      }
+    });
     rowsWrapperRo.observe(rowsWrapper);
 
     const containerRo = new ResizeObserver(() => {
-      scrollToBottom();
+      if (pinTopTurnIdRef.current !== null) {
+        pinTopToViewport();
+      } else {
+        scrollToBottom();
+      }
       setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
     setContainerWidth(container.clientWidth);
 
     function handleWheel(event: WheelEvent): void {
+      if (event.deltaY !== 0) {
+        // Any user scroll takes over from the top pin (and re-enables
+        // bottom-follow only when the user reaches the bottom).
+        clearTopPin();
+      }
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
       } else if (event.deltaY > 0 && !autoScrollRef.current && isAtBottom(container!)) {
@@ -336,6 +396,9 @@ export default React.memo(function MessageList({
   // tracks the true bottom even if content height changed.
   useEffect(() => {
     let cancelled = false;
+
+    // A restored session must not be yanked back to a stale pinned turn.
+    clearTopPin();
 
     const savedPosition = sessionPath
       ? useAppStore.getState().scrollPositions.get(sessionPath)
@@ -484,6 +547,7 @@ export default React.memo(function MessageList({
   useEffect(() => {
     if (prevIsMinimalRef.current === isMinimal) return;
     prevIsMinimalRef.current = isMinimal;
+    clearTopPin();
     const container = containerRef.current;
     if (!container) return;
     autoScrollRef.current = isAtBottom(container);
@@ -498,9 +562,26 @@ export default React.memo(function MessageList({
     setActiveOccurrenceInfo(null);
   }, [isMinimal]);
 
+  // Cancel the minimal-mode top pin: stop gluing the turn to the viewport
+  // top and drop the viewport-height padding that let it scroll up there.
+  function clearTopPin(): void {
+    pinTopTurnIdRef.current = null;
+    if (rowsWrapperRef.current) {
+      rowsWrapperRef.current.style.paddingBottom = '';
+    }
+  }
+
+  // When the pinned turn finishes, release the pin and its padding so the
+  // message list settles back into a normal layout (the turn's summary is
+  // already in view; no forced scroll).
+  const handleMinimalTurnEnd = useCallback((turnId: string) => {
+    if (pinTopTurnIdRef.current === turnId) clearTopPin();
+  }, []);
+
   function handleScrollToBottom(): void {
     const container = containerRef.current;
     if (!container) return;
+    clearTopPin();
     autoScrollRef.current = true;
     container.scrollTop = container.scrollHeight;
     // Re-assert next frame in case an item measurement lands right after the
@@ -704,6 +785,7 @@ export default React.memo(function MessageList({
                 nodes={displayNodes}
                 sessionStatus={sessionStatus}
                 onExpandDetails={releaseAutoScrollPin}
+                onTurnEnd={handleMinimalTurnEnd}
               />
             </div>
           ) : (

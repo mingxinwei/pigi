@@ -893,19 +893,21 @@ export default React.memo(function MessageList({
     }
   }, []);
 
-  const handleCollapseStart = useCallback(() => {
+  const handleCollapseChange = useCallback((isCollapsing: boolean) => {
     // The collapse animation owns the viewport for its whole duration:
     // stand the auto-scroll ResizeObserver down and drop the auto-scroll
     // flag (the commit that starts the animation would otherwise scroll the
-    // viewport to the bottom, then the fold would fight it).
-    expandSettlingRef.current = true;
-    autoScrollRef.current = false;
-  }, []);
-
-  const handleCollapseEnd = useCallback(() => {
-    requestAnimationFrame(() => {
-      expandSettlingRef.current = false;
-    });
+    // viewport to the bottom, then the fold would fight it). On end, let
+    // the observer resume next frame (after the collapsed layout has
+    // committed, so its mount cannot fight the animation).
+    if (isCollapsing) {
+      expandSettlingRef.current = true;
+      autoScrollRef.current = false;
+    } else {
+      requestAnimationFrame(() => {
+        expandSettlingRef.current = false;
+      });
+    }
   }, []);
 
   // Details collapsed while the turn is still running: the working area must
@@ -1097,8 +1099,7 @@ export default React.memo(function MessageList({
                 onExpandDetails={releaseAutoScrollPin}
                 onTurnEnd={handleMinimalTurnEnd}
                 onCollapseDetails={handleCollapseDetails}
-                onCollapseStart={handleCollapseStart}
-                onCollapseEnd={handleCollapseEnd}
+                onCollapseChange={handleCollapseChange}
                 rowsWrapperRef={rowsWrapperRef}
                 scrollContainerRef={containerRef}
               />

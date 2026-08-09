@@ -10,15 +10,14 @@
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
     "skipLibCheck": true,
     "noImplicitAny": true,
     "paths": {
       "@/*": [
-        "src/renderer/src/*"
+        "./src/renderer/src/*"
       ],
       "@renderer/*": [
-        "src/renderer/src/*"
+        "./src/renderer/src/*"
       ]
     }
   }

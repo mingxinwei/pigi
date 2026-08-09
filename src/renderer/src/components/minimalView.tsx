@@ -153,16 +153,35 @@ const TurnSection = React.memo(function TurnSection({
       setRevealingSummary(true);
     }
   }
-  useLayoutEffect(() => {
+  // The reveal needs a short pause after its last character before the
+  // layout restores, so the full summary has a beat to land in the pinned
+  // working area before the view glides down to the normal layout.
+  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
     if (!justEnded) return;
-    // The turn has ended: restore the layout immediately — the summary is
-    // about to reveal, and it must appear at the bottom of the list like
-    // any fresh content (MessageList drops the pin, removes the padding and
-    // scrolls to the bottom; the reveal stream then keeps the view pinned
-    // there via its ResizeObserver). useLayoutEffect so the scroll lands
-    // before the first revealed frame paints.
-    onTurnEnd?.(turn.id);
-  }, [justEnded, onTurnEnd, turn.id]);
+    // No summary to reveal (or the summary is the intro): restore the
+    // layout right away. With a distinct summary, RevealText's onComplete
+    // fires onTurnEnd after the reveal (plus a short beat).
+    if (!analysis.summary || analysis.summary === analysis.intro) {
+      onTurnEnd?.(turn.id);
+    }
+  }, [analysis.intro, analysis.summary, justEnded, onTurnEnd, turn.id]);
+
+  // Fired once by RevealText when the summary has fully streamed in: wait
+  // a short beat so the completed summary is clearly seen in the working
+  // area, then restore the normal layout (the view glides to the bottom).
+  const handleRevealComplete = useCallback(() => {
+    if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+    restoreTimerRef.current = setTimeout(() => {
+      restoreTimerRef.current = null;
+      onTurnEnd?.(turn.id);
+    }, SUMMARY_RESTORE_DELAY_MS);
+  }, [onTurnEnd, turn.id]);
+  useEffect(() => {
+    return () => {
+      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+    };
+  }, []);
 
   // Details collapse animation: the outer div animates its height (measured
   // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
@@ -587,7 +606,7 @@ const TurnSection = React.memo(function TurnSection({
             style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
             data-testid="minimal-summary"
           >
-            <RevealText text={analysis.summary.text}>
+            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
               {(revealed) => <MarkdownMessage text={revealed} />}
             </RevealText>
           </div>
@@ -658,12 +677,15 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
 /** Reveals a complete text in a fast fake stream: the content is already
  *  fully available, so this only paces the reveal (~2ms per character,
  *  clamped to 250–900ms) to read like the streaming it just came from.
- *  Children receive the revealed prefix and re-render as it grows. */
+ *  Children receive the revealed prefix and re-render as it grows.
+ *  onComplete fires once when the reveal finishes. */
 function RevealText({
   text,
+  onComplete,
   children,
 }: {
   text: string;
+  onComplete: () => void;
   children: (revealed: string) => React.ReactNode;
 }): React.JSX.Element {
   const [shown, setShown] = useState(0);
@@ -680,6 +702,9 @@ function RevealText({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [text]);
+  useEffect(() => {
+    if (shown >= text.length) onComplete();
+  }, [onComplete, shown, text]);
   return <>{children(text.slice(0, shown))}</>;
 }
 
@@ -838,6 +863,11 @@ function WorkingTimer({
  *  is usually the useful part (filename, line range, final args). Same
  *  convention as the collapsed-read-group labels. */
 const COMMAND_TAIL_CHARS = 20;
+
+/** Beat after the summary has fully streamed in, before the layout glides
+ *  back to normal — the completed summary gets a moment to land in the
+ *  pinned working area first. */
+const SUMMARY_RESTORE_DELAY_MS = 200;
 
 /**
  * A tool call as a plain text line in the activity feed. Every feed row is

@@ -20,6 +20,7 @@ import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
+import { terminalEase } from '../lib/easing';
 import MessageSearch, { type MessageSearchTarget, type OccurrenceResult } from './MessageSearch';
 import { useHighlightTextNodes, findOccurrenceRanges } from '../lib/highlightMatches';
 import { buildRenderItems, type RenderItem } from '../lib/readGrouping';
@@ -651,6 +652,12 @@ export default React.memo(function MessageList({
 
   const releaseAutoScrollPin = useCallback(() => {
     autoScrollRef.current = false;
+    // Expanding details must also drop the minimal-mode top pin (and its
+    // viewport-height padding), or the ResizeObserver would glue the turn
+    // back to the viewport top and defeat the expand-time scroll.
+    restoreAnimRef.current?.cancel();
+    restoreAnimRef.current = null;
+    clearTopPin();
   }, []);
 
   const toggleGroupExpand = useCallback((groupId: string) => {
@@ -820,6 +827,7 @@ export default React.memo(function MessageList({
                 sessionStatus={sessionStatus}
                 onExpandDetails={releaseAutoScrollPin}
                 onTurnEnd={handleMinimalTurnEnd}
+                scrollContainerRef={containerRef}
               />
             </div>
           ) : (
@@ -961,7 +969,8 @@ function animateScrollTop(
   const promise = new Promise<void>((resolve) => {
     resolvePromise = resolve;
   });
-  if (Math.abs(delta) < 1) {
+  if (Math.abs(delta) < 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    container.scrollTop = target;
     resolvePromise();
     return { promise, cancel: () => {} };
   }
@@ -972,7 +981,7 @@ function animateScrollTop(
       return;
     }
     const progress = Math.min(1, (now - startAt) / durationMs);
-    const eased = 1 - Math.pow(1 - progress, 3);
+    const eased = terminalEase(progress);
     container.scrollTop = start + delta * eased;
     if (progress < 1) {
       raf = requestAnimationFrame(tick);

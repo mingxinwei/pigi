@@ -21,6 +21,7 @@ import ToolBlock from './ToolBlock';
 import ThinkingBlock from './thinkingBlock';
 import { SystemBubble, UserBubble } from './messageBubbles';
 import { getToolCommandParts } from '../lib/toolDisplay';
+import { terminalEase } from '../lib/easing';
 import ShimmerOverlay, {
   SHIMMER_BAND_WIDTH_PX,
   SHIMMER_SPEED_PX_PER_SECOND,
@@ -54,6 +55,10 @@ interface MinimalViewProps {
   /** Called when a turn finishes (its activity area collapses) — MessageList
    *  uses it to release the top pin and its viewport-height padding. */
   onTurnEnd?: (turnId: string) => void;
+  /** The message list scroll container: the details-collapse animation
+   *  follows it so the sticky header stays glued to the top of the list
+   *  while the details fold up beneath it. */
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export default function MinimalView({
@@ -61,6 +66,7 @@ export default function MinimalView({
   sessionStatus,
   onExpandDetails,
   onTurnEnd,
+  scrollContainerRef,
 }: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
   const analyses = useMemo(
@@ -77,6 +83,7 @@ export default function MinimalView({
           analysis={analyses[index]}
           onExpandDetails={onExpandDetails}
           onTurnEnd={onTurnEnd}
+          scrollContainerRef={scrollContainerRef}
         />
       ))}
     </div>
@@ -88,6 +95,18 @@ export default function MinimalView({
 const MIN_ACTIVITY_VISIBLE_MS = 1000;
 /** The feed holds at most this many rows. */
 const MAX_ACTIVITY_ROWS = 1;
+/** Details collapse animation: exactly the terminal panel's close rhythm
+ *  (240ms on the shared cubic-bezier(0.32,0.72,0,1) accelerate curve). The
+ *  curve is front-loaded — half the time covers 96% of the motion — so at
+ *  240ms the tail is imperceptible and the fold reads as crisp, not as a
+ *  slow creep into the stop. */
+const COLLAPSE_MS = 240;
+/** Pause after the fold completes, before the viewport rolls to its rest
+ *  position — a deliberate beat so the two motions read as separate
+ *  steps, never one blur. */
+const COLLAPSE_HOLD_MS = 300;
+/** The collapsed layout drops open with the terminal-open feel, slower. */
+const COLLAPSE_EXPAND_MS = 520;
 /** Shared empty feed for ended turns (stable reference, no re-renders). */
 const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
 
@@ -103,13 +122,21 @@ const TurnSection = React.memo(function TurnSection({
   analysis,
   onExpandDetails,
   onTurnEnd,
+  scrollContainerRef,
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
   onExpandDetails: () => void;
   onTurnEnd?: (turnId: string) => void;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [detailsPhase, setDetailsPhase] = useState<'expanded' | 'collapsing' | 'collapsed'>(
+    'collapsed',
+  );
+  // Set true when a collapse animation completes, so the collapsed layout
+  // that renders next plays its own expand-in; historic turns render
+  // directly without it.
+  const [collapsedAnimateIn, setCollapsedAnimateIn] = useState(false);
   // The final summary of a just-finished turn reveals itself in a fast fake
   // stream (the text is already complete) before the layout restores — the
   // content must be fully rendered before the view settles.
@@ -140,6 +167,188 @@ const TurnSection = React.memo(function TurnSection({
   const handleRevealComplete = useCallback(() => {
     onTurnEnd?.(turn.id);
   }, [onTurnEnd, turn.id]);
+
+  // Details collapse animation: the outer div animates its height (measured
+  // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
+  // in auto-height containers (Chrome does not interpolate fr tracks there),
+  // so we drive height explicitly. null = auto (natural height).
+  const [detailsHeight, setDetailsHeight] = useState<number | null>(null);
+  // The details inner div: measured at collapse start, and its last entry is
+  // the scroll target when expanding a working turn.
+  const detailsRef = useRef<HTMLDivElement>(null);
+
+  // Expanding details grows the content; release the scroll pin first so the
+  // viewport isn't yanked away from the turn being opened. A working turn
+  // jumps straight to its newest activity (the live state); a finished turn
+  // keeps the current view and shows its details from the first entry.
+  // Collapsing runs a staged animation: the details shrink first, then the
+  // collapsed layout drops open — see the phase effect below.
+  const scrollDetailsToLatestRef = useRef(false);
+  const handleToggleDetails = useCallback(() => {
+    onExpandDetails();
+    if (detailsPhase === 'collapsing') {
+      // Clicking mid-collapse cancels it: animate the height back from the
+      // current fold to the natural height, then release it to auto (so
+      // streaming content is never clipped). The release must wait for the
+      // height transition to finish — auto cannot transition, so releasing
+      // mid-flight would snap the details open instantly.
+      const inner = detailsRef.current;
+      if (inner) {
+        const naturalHeight = inner.getBoundingClientRect().height;
+        setDetailsHeight(naturalHeight);
+        setTimeout(() => setDetailsHeight(null), COLLAPSE_MS);
+      }
+      setDetailsPhase('expanded');
+      return;
+    }
+    const expanding = detailsPhase === 'collapsed';
+    if (expanding) {
+      // Expanding releases any fixed height left over from a previous
+      // collapse, or the details would mount clipped at zero.
+      setDetailsHeight(null);
+    }
+    if (!expanding && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // Reduced motion: collapse instantly, no fold, no roll.
+      setDetailsPhase('collapsed');
+      setCollapsedAnimateIn(true);
+      return;
+    }
+    setDetailsPhase(expanding ? 'expanded' : 'collapsing');
+    if (expanding && analysis.isActive) {
+      scrollDetailsToLatestRef.current = true;
+    }
+  }, [analysis.isActive, detailsPhase, onExpandDetails]);
+
+  // Collapse staging runs in two sequential phases — the details shrink
+  // away first (COLLAPSE_MS, terminal-close rhythm), then, once it is fully
+  // folded, the viewport glides to its rest position. The shrink is
+  // rAF-driven: every frame sets the details height from the same progress
+  // curve that counter-scrolls the sticky header, so the fold never pushes
+  // the header away from where it was clicked. The roll only happens after
+  // the fold completes, so the two motions never fight each other.
+  //
+  // The roll target depends on where the header was:
+  //  - pinned at the top: the list rests where the header sits exactly at
+  //    the top edge (its document-flow position), or at the list bottom if
+  //    there is not enough content below to pin it there — the header
+  //    settles at its natural place instead of being yanked.
+  //  - not pinned: no roll at all — the turn folds in place, unless the
+  //    current scroll would clamp when the details content leaves
+  //    scrollHeight, in which case it eases to the post-removal bottom.
+  useEffect(() => {
+    if (detailsPhase !== 'collapsing') return;
+    const inner = detailsRef.current;
+    const container = scrollContainerRef?.current;
+    const outer = inner?.parentElement;
+    if (inner && container && outer) {
+      const startHeight = inner.getBoundingClientRect().height;
+      const startScrollTop = container.scrollTop;
+      const containerTop = container.getBoundingClientRect().top;
+      const timerRow = inner.closest('section')?.querySelector('[data-testid="minimal-timer-row"]');
+      const timerTop = timerRow?.getBoundingClientRect().top;
+      const isPinned = timerTop !== undefined && Math.abs(timerTop - containerTop) < 64;
+      // The header's document-flow position (relative to the container's
+      // content top): temporarily drop the sticky so the measured top is the
+      // natural one. Synchronous measure + restore — no paint in between.
+      let docFlowTop = 0;
+      const wrap = timerRow?.parentElement;
+      if (timerRow !== undefined && timerRow !== null && wrap) {
+        const savedPosition = (wrap as HTMLElement).style.position;
+        (wrap as HTMLElement).style.position = 'static';
+        docFlowTop = timerRow.getBoundingClientRect().top - containerTop + container.scrollTop;
+        (wrap as HTMLElement).style.position = savedPosition;
+      }
+      // Where the list rests once the details content leaves scrollHeight
+      // (it stays measurable until the collapsed layout unmounts it).
+      const restTarget = Math.max(0, container.scrollHeight - startHeight - container.clientHeight);
+      const rollTarget = isPinned
+        ? Math.min(docFlowTop, restTarget)
+        : Math.min(startScrollTop, restTarget);
+      const startAt = performance.now();
+      let raf = 0;
+      let holdTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (): void => {
+        setDetailsPhase('collapsed');
+        setCollapsedAnimateIn(true);
+      };
+      // Phase 2: after a long beat (COLLAPSE_HOLD_MS — the fold and the
+      // roll are two deliberate steps), glide to the rest position on the
+      // same crisp 240ms terminal rhythm as the fold, then mount the
+      // collapsed layout. The beat exists only for a pinned header (where
+      // the roll follows the fold); an unpinned fold has no second motion,
+      // so it proceeds straight to the collapsed layout — a pause there
+      // would just read as a stutter.
+      const startRoll = (): void => {
+        const proceed = (): void => {
+          const from = container.scrollTop;
+          const distance = Math.abs(rollTarget - from);
+          if (distance < 1) {
+            finish();
+            return;
+          }
+          const rollStartAt = performance.now();
+          const rollTick = (): void => {
+            const elapsed = performance.now() - rollStartAt;
+            const progress = Math.min(1, elapsed / COLLAPSE_MS);
+            container.scrollTop = from + (rollTarget - from) * terminalEase(progress);
+            if (progress < 1) {
+              raf = requestAnimationFrame(rollTick);
+            } else {
+              finish();
+            }
+          };
+          raf = requestAnimationFrame(rollTick);
+        };
+        if (isPinned) {
+          holdTimer = setTimeout(proceed, COLLAPSE_HOLD_MS);
+        } else {
+          proceed();
+        }
+      };
+      // Phase 1: fold the details. While pinned, the viewport rolls toward
+      // the header's document-flow position on the same eased curve that
+      // shrinks the details — at that scrollTop the header sits exactly at
+      // the top edge, so it stays glued at its click position the whole
+      // fold (the document-flow position is fixed, so this is feedforward,
+      // not a feedback loop that could oscillate). Unpinned, the fold
+      // happens in place and the viewport does not move.
+      const collapseTick = (): void => {
+        const elapsed = performance.now() - startAt;
+        const progress = Math.min(1, elapsed / COLLAPSE_MS);
+        const eased = terminalEase(progress);
+        outer.style.height = `${Math.round(startHeight * (1 - eased))}px`;
+        if (isPinned) {
+          container.scrollTop = startScrollTop + (docFlowTop - startScrollTop) * eased;
+        }
+        if (progress < 1) {
+          raf = requestAnimationFrame(collapseTick);
+        } else {
+          // Phase 1 ends at (or near) the roll target already; startRoll
+          // skips straight to the hold when there is nothing left to roll.
+          startRoll();
+        }
+      };
+      raf = requestAnimationFrame(collapseTick);
+      return () => {
+        cancelAnimationFrame(raf);
+        if (holdTimer !== undefined) clearTimeout(holdTimer);
+      };
+    }
+    const timer = setTimeout(() => {
+      setDetailsPhase('collapsed');
+      setCollapsedAnimateIn(true);
+    }, COLLAPSE_MS + COLLAPSE_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [detailsPhase, scrollContainerRef]);
+
+  // Runs right after the details mount (layout phase, before paint): the
+  // scroll lands in the same frame as the expansion — no flash of the turn's
+  // first entry, no fight with MessageList's scroll management.
+  useLayoutEffect(() => {
+    if (detailsPhase !== 'expanded' || !scrollDetailsToLatestRef.current) return;
+    scrollDetailsToLatestRef.current = false;
+    detailsRef.current?.lastElementChild?.scrollIntoView({ block: 'end' });
+  }, [detailsPhase]);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -291,16 +500,21 @@ const TurnSection = React.memo(function TurnSection({
       )}
 
       {showTimer && (
-        <>
+        /* While the details are expanded (or collapsing) the timer row (with
+           its chevron) is sticky at the viewport top: scrolling through a
+           long activity list keeps the expand/collapse control reachable.
+           Only then — in collapsed turns the row would briefly stick while
+           the turn scrolls past, which reads as flicker. */
+        <div
+          className={cn(
+            'flex flex-col',
+            detailsPhase !== 'collapsed' && 'sticky top-0 z-10 bg-background',
+          )}
+        >
           <button
             type="button"
-            onClick={() => {
-              // Expanding grows the content; release the bottom pin first so
-              // the viewport isn't yanked away from the turn being opened.
-              onExpandDetails();
-              setDetailsExpanded((value) => !value);
-            }}
-            aria-expanded={detailsExpanded}
+            onClick={handleToggleDetails}
+            aria-expanded={detailsPhase !== 'collapsed'}
             className="flex w-full items-center gap-1.5 pt-3 pb-1 text-left"
             data-testid="minimal-timer-row"
           >
@@ -314,35 +528,56 @@ const TurnSection = React.memo(function TurnSection({
             <IconChevronRight
               className={cn(
                 'size-4 shrink-0 text-muted-foreground/50 transition-transform',
-                detailsExpanded && 'rotate-90',
+                detailsPhase !== 'collapsed' && 'rotate-90',
               )}
             />
           </button>
           <div className="h-px bg-border/60" data-testid="minimal-divider" />
-        </>
+        </div>
       )}
 
-      {detailsExpanded ? (
-        /* Expanded: the turn's full activity — every tool call as a card,
-            thinking blocks, and narration text (conclusion excluded). */
-        <div className="mt-3 flex flex-col gap-2">
-          {turn.entries.map((node) => {
-            if (node === analysis.summary) return null;
-            return <DetailItem key={node.id} node={node} />;
-          })}
+      {detailsPhase !== 'collapsed' ? (
+        /* Expanded (or collapsing away): the turn's full activity — every
+           tool call as a card, thinking blocks, and narration text
+           (conclusion excluded). The outer div animates its height to zero
+           (measured at collapse start — grid-template-rows 0fr<->1fr does
+           not interpolate in auto-height containers) while the content
+           fades, so the details visibly fold back into the header instead
+           of vanishing. */
+        <div
+          className={cn(
+            'mt-3 transition-[height,opacity] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            detailsPhase === 'collapsing' && 'opacity-0',
+          )}
+          style={{
+            height: detailsHeight === null ? undefined : `${detailsHeight}px`,
+            transitionDuration: `${COLLAPSE_MS}ms`,
+          }}
+        >
+          {' '}
+          <div ref={detailsRef} className="overflow-hidden" data-testid="minimal-details">
+            <div className="flex flex-col gap-2 pb-1">
+              {turn.entries.map((node) => {
+                if (node === analysis.summary) return null;
+                return <DetailItem key={node.id} node={node} />;
+              })}
+            </div>
+          </div>
         </div>
       ) : (
         /* Collapsed: the intro (first text) sits above the activity area;
-            below it, pinned rows (errors, system markers), then the feed in
-            its fixed-height slot — the single current activity (thinking,
-            narration or tool) shows what the agent is doing. */
-        <div className="mt-2 flex flex-col gap-1">
-          {showIntro && <AssistantText node={analysis.intro!} testId="minimal-intro" />}
-          {pinnedRows}
-          {analysis.isActive && (
-            <div className="flex h-[27px] items-center overflow-hidden">{feedRows}</div>
-          )}
-        </div>
+           below it, pinned rows (errors, system markers), then the feed in
+           its fixed-height slot — the single current activity (thinking,
+           narration or tool) shows what the agent is doing. Mounted with an
+           expand-in animation only when it follows a collapse. */
+        <CollapsedContent
+          animateIn={collapsedAnimateIn}
+          showIntro={showIntro}
+          intro={analysis.intro}
+          pinnedRows={pinnedRows}
+          feedRows={feedRows}
+          isActive={analysis.isActive}
+        />
       )}
 
       {analysis.summary &&
@@ -455,6 +690,73 @@ function RevealText({
     if (shown >= text.length) onComplete();
   }, [onComplete, shown, text]);
   return <>{children(text.slice(0, shown))}</>;
+}
+
+/** The collapsed turn layout (intro, pinned rows, activity feed) in its
+ *  fixed feed slot. When it mounts right after a collapse it starts at zero
+ *  height and drops open slowly (terminal-open feel), so the eye follows
+ *  the content down from the header instead of it popping in place.
+ *  Historic/initial renders (animateIn=false) show directly, no animation. */
+function CollapsedContent({
+  animateIn,
+  showIntro,
+  intro,
+  pinnedRows,
+  feedRows,
+  isActive,
+}: {
+  animateIn: boolean;
+  showIntro: boolean;
+  intro: AssistantNode | null;
+  pinnedRows: React.ReactNode[];
+  feedRows: React.ReactNode[];
+  isActive: boolean;
+}): React.JSX.Element {
+  // null = auto (natural height). Start at 0 when animating in; the height
+  // is released back to auto after the transition so later content changes
+  // (feed updates) are never clipped.
+  const [height, setHeight] = useState<number | null>(() => (animateIn ? 0 : null));
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+    };
+  }, []);
+  const innerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!animateIn) return;
+    const inner = innerRef.current;
+    if (!inner) return;
+    const target = inner.getBoundingClientRect().height;
+    // Next frame: animate 0 -> natural height, then release to auto once the
+    // transition has landed. (requestAnimationFrame defers the setState out
+    // of the effect body so no cascading-render warning.)
+    const raf = requestAnimationFrame(() => {
+      setHeight(target);
+      releaseTimerRef.current = setTimeout(() => setHeight(null), COLLAPSE_EXPAND_MS);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [animateIn]);
+  return (
+    <div
+      className={cn(
+        'mt-2 transition-[height,opacity] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+        height === 0 && 'opacity-0',
+      )}
+      style={{
+        height: height === null ? undefined : `${height}px`,
+        transitionDuration: `${COLLAPSE_EXPAND_MS}ms`,
+      }}
+    >
+      <div ref={innerRef} className="overflow-hidden">
+        <div className="flex flex-col gap-1">
+          {showIntro && <AssistantText node={intro!} testId="minimal-intro" />}
+          {pinnedRows}
+          {isActive && <div className="flex h-[27px] items-center overflow-hidden">{feedRows}</div>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Full-detail rendering for an expanded turn: complete tool cards, thinking blocks, text. */

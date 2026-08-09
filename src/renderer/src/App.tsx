@@ -1103,6 +1103,18 @@ function App(): React.JSX.Element {
   // The chat content slides up (GPU transform) by the terminal height when the
   // panel opens, in sync with the panel, so nothing re-lays-out per frame. Shared
   // by the active-session and draft layouts so both ride above the terminal.
+  // Once the close animation settles the transform must be dropped entirely:
+  // any lingering transform (even identity) turns this layer into a containing
+  // block, silently breaking every `position: sticky` descendant (the minimal
+  // view's expanded-details header, overflow clamps, ...).
+  const [terminalPushTransform, setTerminalPushTransform] = useState(() =>
+    terminalOpen ? `translateY(-${terminalHeight}px)` : 'none',
+  );
+  useEffect(() => {
+    if (terminalOpen) return;
+    const timer = setTimeout(() => setTerminalPushTransform('none'), 260);
+    return () => clearTimeout(timer);
+  }, [terminalHeight, terminalOpen]);
   const terminalPushClassName = `absolute inset-0 flex flex-col will-change-transform ${
     terminalDragging
       ? 'transition-none'
@@ -1113,7 +1125,7 @@ function App(): React.JSX.Element {
         }`
   }`;
   const terminalPushStyle = {
-    transform: terminalOpen ? `translateY(-${terminalHeight}px)` : 'translateY(0)',
+    transform: terminalOpen ? `translateY(-${terminalHeight}px)` : terminalPushTransform,
   };
 
   return (

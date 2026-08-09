@@ -13,9 +13,16 @@
 
 - In the Minimal view, the opening text of a turn no longer appears twice (once in its fixed spot, once as a scrolling activity line) while it is still streaming.
 
+### Changed
+
+- Collapsing an expanded turn in the Minimal view now feels like the terminal panel: the fold and the settle are two separate motions (a short beat between them when the header is pinned), unpinned turns fold in place instead of rolling back to the bottom, and canceling a fold mid-way springs the details smoothly back open instead of jumping.
+- The settle-back animations in the Minimal view (when a turn finishes, when details collapse) now follow the same motion curve as the rest of the app instead of their own — nothing feels linear next to the terminal's open/close anymore.
+
 ### Fixed
 
 - Subagents no longer start a second copy of the app to run in; they use the standalone pi CLI from your shell environment instead, which is lighter and does not crash on startup.
+- In the Minimal view, the sticky working header no longer loses its pin after the terminal panel is opened and closed — previously the panel's animation left a lingering transform that silently disabled every sticky header behind it.
+- Collapsing an unpinned turn in the Minimal view no longer waits half a second after the fold finishes before showing the collapsed content.
 
 ## [0.4.2] - 2026-08-07
 

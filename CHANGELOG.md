@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Subagents no longer start a second copy of the app to run in; they use the standalone pi CLI from your shell environment instead, which is lighter and does not crash on startup.
+
 ## [0.4.2] - 2026-08-07
 
 ### Added

@@ -16,7 +16,13 @@ export function getToolCommandParts(node: ToolNode): ToolCommandParts {
 
   switch (node.name) {
     case 'bash':
-      return { prefix: '$', body: String(args?.command ?? '') };
+      // Commands render as a single line everywhere (tool card, read-group
+      // labels, activity feed): collapse newlines to spaces so a multi-line
+      // script never breaks the one-line layout or the middle-truncation.
+      return {
+        prefix: '$',
+        body: String(args?.command ?? '').replace(/\s*\n\s*/g, ' '),
+      };
     case 'read': {
       const path = String(args?.path ?? '');
       const offset = typeof args?.offset === 'number' ? args.offset : undefined;

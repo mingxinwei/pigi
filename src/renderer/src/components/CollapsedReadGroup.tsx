@@ -32,7 +32,9 @@ function getCommandLabel(node: ToolNode): string {
     return `read ${path}`;
   }
   if (node.name === 'bash') {
-    return String(args?.command ?? '');
+    // Same single-line treatment as getToolCommandParts: multi-line commands
+    // must not break the one-line label (middle truncation, group rows).
+    return String(args?.command ?? '').replace(/\s*\n\s*/g, ' ');
   }
   return node.name;
 }

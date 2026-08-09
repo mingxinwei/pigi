@@ -3,12 +3,14 @@
 ## [Unreleased]
 
 ### Added
+
 - New "Minimal" view mode in the message toolbar's view dropdown: each of your messages opens a turn with a live "Working for Xm Ys" timer (click it to expand the full tool cards and thinking), a shimmer line shows what the agent is doing right now, a finished command stays until the next activity replaces it, and the turn closes with the agent's final summary. Scrolling behaves exactly like the other views — auto-follow on new messages, saved positions, and the user-message minimap all work.
 - In the Minimal view's activity area, each activity (thinking, command, narration) stays on screen at least a second: when commands fly by faster than that, the intermediate ones are skipped and the latest one takes the line as soon as it is readable — the area never queues up and never lags behind what the agent is actually doing. The activity line keeps a fixed height, so nothing jumps as it switches between thinking, commands, and narration.
 - In the Minimal view, sending a new message pins the turn's working area to the top of the message list with open space below it — the work has the whole window to grow into instead of being squeezed at the bottom of a long history. When the turn finishes, the list settles back to a normal layout automatically.
 - When a turn in the Minimal view finishes, its final summary now streams out quickly instead of appearing all at once (the text is already complete, so it just reads like the streaming it came from), and the list then glides back to the normal layout with a smooth motion instead of snapping.
 
 ### Changed
+
 - In the Minimal view, the final summary of a just-finished turn now reveals in place in the working area, and once it has fully streamed in (with a short beat to land) the view glides back to the normal bottom layout in a slow, deliberate motion — quick acceleration, cruise, short settle — instead of snapping or dropping instantly.
 - While a turn in the Minimal view is running, its working area now stays pinned at the top for the whole run — scrolling with the mouse no longer releases it, so the live activity keeps its place and the open space below until the summary appears.
 - In the Minimal view's activity line, the shimmer sweep now covers the whole row (starting from the command prefix) instead of only the text after it, always starts from the left edge when a command appears, and keeps sweeping until the row is actually replaced by the next activity — a finished command no longer goes quiet before it is swapped out.
@@ -17,6 +19,9 @@
 - The settle-back animations in the Minimal view (when a turn finishes, when details collapse) now follow the same motion curve as the rest of the app instead of their own — nothing feels linear next to the terminal's open/close anymore.
 
 ### Fixed
+
+- In the Minimal view, switching away from a session and back while a turn is still running no longer drops the working area's pin: the turn is re-pinned (viewport-height padding and all) once the session resumes, even when the transcript is still replaying.
+- In the Minimal view, expanding a running turn's details now lands on the very bottom of the list (the newest activity), and collapsing the details while the turn is still running restores the top pin and its padding instead of leaving the layout unpinned.
 - In the Minimal view, collapsing expanded details no longer lags behind its own animation: the fold's per-frame height now overrides the CSS height transition (only opacity stays on the transition), so the details shrink at the intended pace and the leftover sliver at the end no longer pops away.
 - Closing the terminal panel no longer leaves the chat suspended above it: the chat now slides down in sync with the panel again (the transform is dropped only after the close animation settles, so sticky headers still keep working).
 - In the Minimal view, scrolling with the mouse while a turn is pinned no longer results in the view being pulled to the bottom when the turn ends — the pin and padding are dropped in place instead of gliding.

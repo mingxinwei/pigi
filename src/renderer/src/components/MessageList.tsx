@@ -151,6 +151,10 @@ export default React.memo(function MessageList({
   // viewport (set when a new user message arrives, cleared the moment the
   // user scrolls or the view/session changes).
   const pinTopTurnIdRef = useRef<string | null>(null);
+  // The turn that was pinned before details expanded (or the pin was
+  // released for another reason) — collapsing details while the turn is
+  // still running re-pins this turn.
+  const lastPinnedTurnIdRef = useRef<string | null>(null);
   // In-flight layout-restore animation (cancelled the moment the user
   // scrolls, so their position is never yanked back).
   const restoreAnimRef = useRef<{ cancel: () => void } | null>(null);
@@ -298,6 +302,83 @@ export default React.memo(function MessageList({
   // row-DOM resize, which rowsWrapperRo cannot see).
   // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
   // different element, so the observers must re-bind.
+  // Pinned turn lookup: the turn whose top edge stays glued to the
+  // viewport top while it grows (see pinTopTurnIdRef).
+  const findPinnedTurn = useCallback((): HTMLElement | null => {
+    const targetId = pinTopTurnIdRef.current;
+    if (targetId === null) return null;
+    const current = containerRef.current;
+    if (!current) return null;
+    for (const element of current.querySelectorAll('[data-turn-id]')) {
+      if (element.getAttribute('data-turn-id') === targetId) {
+        return element as HTMLElement;
+      }
+    }
+    return null;
+  }, []);
+
+  // Re-glues the pinned turn's top edge to the viewport top (call after
+  // content grew or a pin was (re-)established).
+  const pinTopToViewport = useCallback(() => {
+    const turnEl = findPinnedTurn();
+    const container = containerRef.current;
+    if (!turnEl || !container) return;
+    container.scrollTop =
+      turnEl.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+  }, [findPinnedTurn]);
+
+  // DOM fallback for the re-pin: the transcript (and session status) can
+  // still be mid-load right after a session switch, so the node-based
+  // running-turn check may miss a turn that is about to resume. Poll for the
+  // working timer instead. Deliberately NOT tied to the restore effect's
+  // cleanup — that effect re-runs on every streaming commit (its cleanup
+  // would kill the pending retry), so the retry chain manages itself and
+  // stops when it finds the timer (or exhausts its attempts).
+  const retryPinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryPinAttemptRef = useRef(0);
+  const scheduleRetryPin = useCallback(() => {
+    if (retryPinTimerRef.current) return;
+    retryPinTimerRef.current = setTimeout(() => {
+      retryPinTimerRef.current = null;
+      const container = containerRef.current;
+      if (!container) return;
+      const workingTimers = container.querySelectorAll(
+        '[data-testid=minimal-working-timer][data-active="true"]',
+      );
+      // The last active timer is the turn that is actually running now — a
+      // replay can light up several, but only the newest is the live one.
+      const workingTimer = workingTimers[workingTimers.length - 1];
+      const turnEl = workingTimer?.closest<HTMLElement>('[data-turn-id]');
+      if (workingTimer && turnEl) {
+        pinTopTurnIdRef.current = turnEl.dataset.turnId ?? null;
+        userScrolledDuringPinRef.current = false;
+        autoScrollRef.current = false;
+        const wrapper = rowsWrapperRef.current;
+        if (wrapper) {
+          wrapper.style.paddingBottom = `${container.clientHeight}px`;
+          pinTopToViewport();
+          // The transcript may still be replaying (heights settling), so the
+          // turn's position measured now can be stale — re-glue it after the
+          // layout has had a frame to settle.
+          requestAnimationFrame(() => {
+            if (pinTopTurnIdRef.current !== null) pinTopToViewport();
+          });
+        }
+        retryPinAttemptRef.current = 0;
+        return;
+      }
+      retryPinAttemptRef.current += 1;
+      // The transcript replay can take a couple of seconds; keep polling
+      // well past it (the chain stops on its own once a working turn is
+      // found, and never runs when no turn is running at all).
+      if (retryPinAttemptRef.current <= 20) {
+        scheduleRetryPin();
+      }
+    }, 250);
+  }, [pinTopToViewport]);
+
   useEffect(() => {
     const container = containerRef.current;
     const rowsWrapper = rowsWrapperRef.current;
@@ -332,9 +413,30 @@ export default React.memo(function MessageList({
         container!.scrollTop;
     }
 
+    // The transcript replay after a session switch can momentarily light up
+    // working timers on turns that have already finished (or that vanish
+    // once the replay settles), so a retry may pin the wrong turn. Verify
+    // the pinned turn still exists and is still working before gluing it to
+    // the top; otherwise drop the pin and let the retry chain find the turn
+    // that is actually running.
+    function pinVerifiedOrRepin(): void {
+      const turnEl = findPinnedTurn();
+      if (
+        !turnEl ||
+        !turnEl.querySelector('[data-testid=minimal-working-timer][data-active="true"]')
+      ) {
+        pinTopTurnIdRef.current = null;
+        clearTopPin();
+        retryPinAttemptRef.current = 0;
+        scheduleRetryPin();
+        return;
+      }
+      pinTopToViewport();
+    }
+
     const rowsWrapperRo = new ResizeObserver(() => {
       if (pinTopTurnIdRef.current !== null) {
-        pinTopToViewport();
+        pinVerifiedOrRepin();
       } else {
         scrollToBottom();
       }
@@ -343,7 +445,7 @@ export default React.memo(function MessageList({
 
     const containerRo = new ResizeObserver(() => {
       if (pinTopTurnIdRef.current !== null) {
-        pinTopToViewport();
+        pinVerifiedOrRepin();
       } else {
         scrollToBottom();
       }
@@ -392,7 +494,7 @@ export default React.memo(function MessageList({
       container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [isMinimal]);
+  }, [isMinimal, scheduleRetryPin]);
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
@@ -417,13 +519,47 @@ export default React.memo(function MessageList({
   // Restore saved scroll position on session change, or auto-scroll to bottom.
   // -1 sentinel means user was at bottom → enable auto-scroll so ResizeObserver
   // tracks the true bottom even if content height changed.
+  // Guarded to run only on an actual session change: the restore logic reads
+  // displayNodes/sessionStatus, which change on every streaming commit —
+  // re-running it there would re-pin and yank the viewport mid-stream.
+  const prevSessionPathRef = useRef(sessionPath);
   useEffect(() => {
+    if (prevSessionPathRef.current === sessionPath) return;
+    prevSessionPathRef.current = sessionPath;
     let cancelled = false;
 
-    // A restored session must not be yanked back to a stale pinned turn.
+    // Re-pin a still-running minimal turn: switching away and back while a
+    // turn executes must keep the working area pinned (padding and all). A
+    // running turn ends with an assistant node still streaming, so accept
+    // either the bare user node (nothing streamed yet) or a live assistant
+    // node.
+    const lastNode = displayNodes[displayNodes.length - 1];
+    const hasRunningTurn =
+      lastNode?.role === 'user' || (lastNode?.role === 'assistant' && sessionStatus !== 'idle');
+    if (isMinimal && hasRunningTurn) {
+      pinTopTurnIdRef.current = lastNode.id;
+      userScrolledDuringPinRef.current = false;
+      autoScrollRef.current = false;
+      const container = containerRef.current;
+      const wrapper = rowsWrapperRef.current;
+      if (container && wrapper) {
+        wrapper.style.paddingBottom = `${container.clientHeight}px`;
+        pinTopToViewport();
+      }
+      // A running turn takes over the viewport: skip the saved-position
+      // restore entirely (it would override the re-pin).
+      return () => {
+        cancelled = true;
+      };
+    }
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
     clearTopPin();
+    // The node check above may have missed a turn that is about to resume
+    // (transcript still loading, agent not resumed yet): keep polling the
+    // DOM for its working timer.
+    retryPinAttemptRef.current = 0;
+    scheduleRetryPin();
 
     const savedPosition = sessionPath
       ? useAppStore.getState().scrollPositions.get(sessionPath)
@@ -451,7 +587,7 @@ export default React.memo(function MessageList({
     return () => {
       cancelled = true;
     };
-  }, [sessionPath]);
+  }, [displayNodes, isMinimal, pinTopToViewport, scheduleRetryPin, sessionPath, sessionStatus]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
@@ -680,15 +816,52 @@ export default React.memo(function MessageList({
     [isMinimal, rowVirtualizer, displayToRenderIndex],
   );
 
-  const releaseAutoScrollPin = useCallback(() => {
+  const releaseAutoScrollPin = useCallback((isActive: boolean) => {
     autoScrollRef.current = false;
+    // Remember which turn was pinned so collapsing details can re-pin it
+    // while the turn keeps running — but only when there IS a pinned turn:
+    // a collapse click also reaches here (handleToggleDetails calls this
+    // unconditionally) with the pin already released, and overwriting with
+    // null would lose the target we need to restore.
+    if (pinTopTurnIdRef.current !== null) {
+      lastPinnedTurnIdRef.current = pinTopTurnIdRef.current;
+    }
     // Expanding details must also drop the minimal-mode top pin (and its
     // viewport-height padding), or the ResizeObserver would glue the turn
     // back to the viewport top and defeat the expand-time scroll.
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
     clearTopPin();
+    // Expanding while the turn is still running: land on the very bottom of
+    // the list — the newest activity is what the user is about to read — and
+    // follow it as it grows.
+    if (isActive) {
+      autoScrollRef.current = true;
+      const container = containerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    }
   }, []);
+
+  // Details collapsed while the turn is still running: the working area must
+  // go back to being pinned to the viewport top (viewport-height padding and
+  // all) — the pin was only dropped so the expanded details could be read.
+  const handleCollapseDetails = useCallback(
+    (isActive: boolean) => {
+      if (!isActive) return;
+      const turnId = lastPinnedTurnIdRef.current;
+      if (!turnId) return;
+      pinTopTurnIdRef.current = turnId;
+      userScrolledDuringPinRef.current = false;
+      autoScrollRef.current = false;
+      const container = containerRef.current;
+      const wrapper = rowsWrapperRef.current;
+      if (container && wrapper) {
+        wrapper.style.paddingBottom = `${container.clientHeight}px`;
+        pinTopToViewport();
+      }
+    },
+    [pinTopToViewport],
+  );
 
   const toggleGroupExpand = useCallback((groupId: string) => {
     autoScrollRef.current = false;
@@ -857,6 +1030,7 @@ export default React.memo(function MessageList({
                 sessionStatus={sessionStatus}
                 onExpandDetails={releaseAutoScrollPin}
                 onTurnEnd={handleMinimalTurnEnd}
+                onCollapseDetails={handleCollapseDetails}
                 scrollContainerRef={containerRef}
               />
             </div>

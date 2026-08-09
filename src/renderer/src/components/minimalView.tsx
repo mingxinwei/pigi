@@ -50,11 +50,17 @@ interface MinimalViewProps {
   nodes: TranscriptNode[];
   sessionStatus: AgentStatus;
   /** Called when the user expands/collapses a turn's details — MessageList
-   *  uses it to release the auto-scroll pin so the viewport stays put. */
-  onExpandDetails: () => void;
+   *  uses it to release the auto-scroll pin so the viewport stays put. The
+   *  argument says whether the turn is still running (expanding a running
+   *  turn lands on the bottom of the list). */
+  onExpandDetails: (isActive: boolean) => void;
   /** Called when a turn finishes (its activity area collapses) — MessageList
    *  uses it to release the top pin and its viewport-height padding. */
   onTurnEnd?: (turnId: string) => void;
+  /** Called when expanded details collapse while the turn is still running —
+   *  MessageList re-pins the working area (the pin was only dropped so the
+   *  details could be read). */
+  onCollapseDetails?: (isActive: boolean) => void;
   /** The message list scroll container: the details-collapse animation
    *  follows it so the sticky header stays glued to the top of the list
    *  while the details fold up beneath it. */
@@ -66,6 +72,7 @@ export default function MinimalView({
   sessionStatus,
   onExpandDetails,
   onTurnEnd,
+  onCollapseDetails,
   scrollContainerRef,
 }: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
@@ -83,6 +90,7 @@ export default function MinimalView({
           analysis={analyses[index]}
           onExpandDetails={onExpandDetails}
           onTurnEnd={onTurnEnd}
+          onCollapseDetails={onCollapseDetails}
           scrollContainerRef={scrollContainerRef}
         />
       ))}
@@ -122,12 +130,14 @@ const TurnSection = React.memo(function TurnSection({
   analysis,
   onExpandDetails,
   onTurnEnd,
+  onCollapseDetails,
   scrollContainerRef,
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
-  onExpandDetails: () => void;
+  onExpandDetails: (isActive: boolean) => void;
   onTurnEnd?: (turnId: string) => void;
+  onCollapseDetails?: (isActive: boolean) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
   const [detailsPhase, setDetailsPhase] = useState<'expanded' | 'collapsing' | 'collapsed'>(
@@ -194,13 +204,22 @@ const TurnSection = React.memo(function TurnSection({
 
   // Expanding details grows the content; release the scroll pin first so the
   // viewport isn't yanked away from the turn being opened. A working turn
-  // jumps straight to its newest activity (the live state); a finished turn
-  // keeps the current view and shows its details from the first entry.
-  // Collapsing runs a staged animation: the details shrink first, then the
-  // collapsed layout drops open — see the phase effect below.
-  const scrollDetailsToLatestRef = useRef(false);
+  // lands on the bottom of the list (MessageList scrolls there — the newest
+  // activity is what the user is about to read); a finished turn keeps the
+  // current view and shows its details from the first entry. Collapsing runs
+  // a staged animation: the details shrink first, then the collapsed layout
+  // drops open — see the phase effect below.
+  // The latest values are read through refs by the collapse effect's
+  // animation callbacks (the effect itself must not re-run mid-collapse);
+  // the refs are refreshed after every render.
+  const activeRef = useRef(analysis.isActive);
+  const onCollapseDetailsRef = useRef(onCollapseDetails);
+  useEffect(() => {
+    activeRef.current = analysis.isActive;
+    onCollapseDetailsRef.current = onCollapseDetails;
+  });
   const handleToggleDetails = useCallback(() => {
-    onExpandDetails();
+    onExpandDetails(activeRef.current);
     if (detailsPhase === 'collapsing') {
       // Clicking mid-collapse cancels it: animate the height back from the
       // current fold to the natural height, then release it to auto (so
@@ -229,10 +248,7 @@ const TurnSection = React.memo(function TurnSection({
       return;
     }
     setDetailsPhase(expanding ? 'expanded' : 'collapsing');
-    if (expanding && analysis.isActive) {
-      scrollDetailsToLatestRef.current = true;
-    }
-  }, [analysis.isActive, detailsPhase, onExpandDetails]);
+  }, [detailsPhase, onExpandDetails]);
 
   // Collapse staging runs in two sequential phases — the details shrink
   // away first (COLLAPSE_MS, terminal-close rhythm), then, once it is fully
@@ -285,6 +301,10 @@ const TurnSection = React.memo(function TurnSection({
       const finish = (): void => {
         setDetailsPhase('collapsed');
         setCollapsedAnimateIn(true);
+        // Collapsing while the turn is still running: the working area goes
+        // back to being pinned (padding included) — the pin was only dropped
+        // so the expanded details could be read.
+        onCollapseDetailsRef.current?.(activeRef.current);
       };
       // Phase 2: after a long beat (COLLAPSE_HOLD_MS — the fold and the
       // roll are two deliberate steps), glide to the rest position on the
@@ -356,14 +376,6 @@ const TurnSection = React.memo(function TurnSection({
     return () => clearTimeout(timer);
   }, [detailsPhase, scrollContainerRef]);
 
-  // Runs right after the details mount (layout phase, before paint): the
-  // scroll lands in the same frame as the expansion — no flash of the turn's
-  // first entry, no fight with MessageList's scroll management.
-  useLayoutEffect(() => {
-    if (detailsPhase !== 'expanded' || !scrollDetailsToLatestRef.current) return;
-    scrollDetailsToLatestRef.current = false;
-    detailsRef.current?.lastElementChild?.scrollIntoView({ block: 'end' });
-  }, [detailsPhase]);
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
   // the turn ends, except for tool-less turns where it doubles as the summary
@@ -853,6 +865,7 @@ function WorkingTimer({
     <span
       className="text-[15px] text-muted-foreground tabular-nums"
       data-testid="minimal-working-timer"
+      data-active={active ? 'true' : undefined}
     >
       {active ? 'Working for ' : 'Worked for '}
       {formatWorkingDuration(elapsedMs)}

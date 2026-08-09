@@ -21,6 +21,12 @@ interface ShimmerOverlayProps {
 export default function ShimmerOverlay({ durationMs }: ShimmerOverlayProps): React.JSX.Element {
   const overlayRef = useRef<HTMLSpanElement>(null);
   const [scanWidth, setScanWidth] = useState(0);
+  // The band only starts once the scan width has been measured. Until then
+  // animation-name is pinned to 'none'; flipping it back to the class
+  // animation restarts it from the beginning — so a freshly shown row's
+  // sweep always starts at the left edge instead of joining a cycle that
+  // began while the element had zero width.
+  const [measured, setMeasured] = useState(false);
 
   // The band sweeps only the text it labels: measure the parent (the text
   // span it is placed inside), so truncated long commands do not waste the
@@ -29,7 +35,11 @@ export default function ShimmerOverlay({ durationMs }: ShimmerOverlayProps): Rea
   useLayoutEffect(() => {
     const parent = overlayRef.current?.parentElement;
     if (!parent) return;
-    const update = (): void => setScanWidth(parent.clientWidth);
+    const update = (): void => {
+      const width = parent.clientWidth;
+      setScanWidth(width);
+      if (width > 0) setMeasured(true);
+    };
     update();
     const resizeObserver = new ResizeObserver(update);
     resizeObserver.observe(parent);
@@ -43,6 +53,8 @@ export default function ShimmerOverlay({ durationMs }: ShimmerOverlayProps): Rea
     '--shimmer-band-width': `${SHIMMER_BAND_WIDTH_PX}px`,
     '--shimmer-scan-width': `${scanWidth}px`,
     animationDuration: durationMs !== undefined ? `${durationMs}ms` : undefined,
+    // undefined = the class animation applies; 'none' = hold until measured.
+    animationName: measured ? undefined : 'none',
   } as React.CSSProperties;
 
   return (

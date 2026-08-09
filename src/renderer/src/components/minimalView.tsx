@@ -153,20 +153,16 @@ const TurnSection = React.memo(function TurnSection({
       setRevealingSummary(true);
     }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!justEnded) return;
-    // No summary to reveal: restore the layout immediately. With a
-    // summary, RevealText's onComplete fires onTurnEnd once revealed.
-    if (!analysis.summary || analysis.summary === analysis.intro) {
-      onTurnEnd?.(turn.id);
-    }
-  }, [analysis.intro, analysis.summary, justEnded, onTurnEnd, turn.id]);
-
-  // Fired once by RevealText when the summary has fully streamed in — only
-  // then does MessageList restore the normal layout (never mid-reveal).
-  const handleRevealComplete = useCallback(() => {
+    // The turn has ended: restore the layout immediately — the summary is
+    // about to reveal, and it must appear at the bottom of the list like
+    // any fresh content (MessageList drops the pin, removes the padding and
+    // scrolls to the bottom; the reveal stream then keeps the view pinned
+    // there via its ResizeObserver). useLayoutEffect so the scroll lands
+    // before the first revealed frame paints.
     onTurnEnd?.(turn.id);
-  }, [onTurnEnd, turn.id]);
+  }, [justEnded, onTurnEnd, turn.id]);
 
   // Details collapse animation: the outer div animates its height (measured
   // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
@@ -460,7 +456,7 @@ const TurnSection = React.memo(function TurnSection({
     const node = nodeById.get(key);
     if (!node) continue;
     if (node.role === 'tool') {
-      feedRows.push(<ToolLine key={key} node={node} live={node.status === 'running'} />);
+      feedRows.push(<ToolLine key={key} node={node} />);
     } else if (node.role === 'assistant') {
       // The intro renders in its fixed slot above the feed — once it has
       // text it must never also stream as a narration row. (A text-empty
@@ -591,7 +587,7 @@ const TurnSection = React.memo(function TurnSection({
             style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
             data-testid="minimal-summary"
           >
-            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
+            <RevealText text={analysis.summary.text}>
               {(revealed) => <MarkdownMessage text={revealed} />}
             </RevealText>
           </div>
@@ -665,11 +661,9 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
  *  Children receive the revealed prefix and re-render as it grows. */
 function RevealText({
   text,
-  onComplete,
   children,
 }: {
   text: string;
-  onComplete: () => void;
   children: (revealed: string) => React.ReactNode;
 }): React.JSX.Element {
   const [shown, setShown] = useState(0);
@@ -686,9 +680,6 @@ function RevealText({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [text]);
-  useEffect(() => {
-    if (shown >= text.length) onComplete();
-  }, [onComplete, shown, text]);
   return <>{children(text.slice(0, shown))}</>;
 }
 
@@ -849,11 +840,12 @@ function WorkingTimer({
 const COMMAND_TAIL_CHARS = 20;
 
 /**
- * A tool call as a plain text line. While the tool is running it sweeps a
- * shimmer; the finished variant stays on screen (without shimmer) during
- * quiet gaps until the next activity replaces it.
+ * A tool call as a plain text line in the activity feed. Every feed row is
+ * live while it is shown — the shimmer sweeps continuously until the row is
+ * replaced (the tool's own status does not stop it: a finished command keeps
+ * its live look until the next activity takes its place).
  */
-function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.Element {
+function ToolLine({ node }: { node: ToolNode }): React.JSX.Element {
   const { prefix, body } = getToolCommandParts(node);
   const bodyRef = useRef<HTMLSpanElement>(null);
   const showTail = body.length > COMMAND_TAIL_CHARS;
@@ -865,7 +857,6 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
   // (2.5s) for short commands and never slower than 5s for long ones.
   const [shimmerDurationMs, setShimmerDurationMs] = useState<number | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!live) return;
     const element = bodyRef.current;
     if (!element) return;
     function update(): void {
@@ -882,24 +873,24 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
     const resizeObserver = new ResizeObserver(update);
     resizeObserver.observe(element);
     return () => resizeObserver.disconnect();
-  }, [live]);
+  }, []);
 
   return (
     /* w-fit keeps the shimmer sweep tight around the text itself — a full-width
-       box would stretch the same gradient across mostly empty space. */
+       box would stretch the same gradient across mostly empty space. The
+       shimmer band covers the whole row (prefix included), sweeping in from
+       the row's left edge like the Thinking placeholder does. */
     <div
       className="relative w-fit max-w-full overflow-hidden py-0.5 font-mono text-[15px] text-muted-foreground"
       style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
-      data-testid={live ? 'minimal-running-tool' : 'minimal-finished-tool'}
+      data-testid="minimal-running-tool"
     >
       <span className="flex items-baseline gap-1">
         <span className="shrink-0 text-foreground/80">{prefix}</span>
-        {/* The shimmer band lives inside the text span (relative), so it
-            sweeps only the visible text — a truncated long command does not
-            waste the sweep on its hidden tail. An over-long command splits
-            into a shrinking head and a fixed tail so the useful end stays
-            visible (middle ellipsis, like the collapsed-read-group labels). */}
-        <span ref={bodyRef} className="relative flex min-w-0 flex-1 items-baseline">
+        {/* An over-long command splits into a shrinking head and a fixed tail
+            so the useful end stays visible (middle ellipsis, like the
+            collapsed-read-group labels). */}
+        <span ref={bodyRef} className="flex min-w-0 flex-1 items-baseline">
           {showTail ? (
             <>
               <span className="truncate">{body.slice(0, -COMMAND_TAIL_CHARS)}</span>
@@ -908,9 +899,9 @@ function ToolLine({ node, live }: { node: ToolNode; live: boolean }): React.JSX.
           ) : (
             <span className="truncate">{body}</span>
           )}
-          {live && <ShimmerOverlay durationMs={shimmerDurationMs} />}
         </span>
       </span>
+      <ShimmerOverlay durationMs={shimmerDurationMs} />
     </div>
   );
 }

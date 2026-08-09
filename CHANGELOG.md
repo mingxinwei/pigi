@@ -15,6 +15,9 @@
 
 ### Changed
 
+- In the Minimal view, the final summary of a just-finished turn now appears at the bottom of the list right away: the moment the turn ends, the view drops to the bottom and the summary streams in there (with the list following along) instead of revealing above the fold and only then scrolling down.
+- While a turn in the Minimal view is running, its working area now stays pinned at the top for the whole run — scrolling with the mouse no longer releases it, so the live activity keeps its place and the open space below until the summary appears.
+- In the Minimal view's activity line, the shimmer sweep now covers the whole row (starting from the command prefix) instead of only the text after it, always starts from the left edge when a command appears, and keeps sweeping until the row is actually replaced by the next activity — a finished command no longer goes quiet before it is swapped out.
 - In the Minimal view's activity line, an over-long command now ellipsizes in the middle and keeps its ending visible (the useful part — filenames, flags, final arguments) instead of cutting the end off.
 - Collapsing an expanded turn in the Minimal view now feels like the terminal panel: the fold and the settle are two separate motions (a short beat between them when the header is pinned), unpinned turns fold in place instead of rolling back to the bottom, and canceling a fold mid-way springs the details smoothly back open instead of jumping.
 - The settle-back animations in the Minimal view (when a turn finishes, when details collapse) now follow the same motion curve as the rest of the app instead of their own — nothing feels linear next to the terminal's open/close anymore.

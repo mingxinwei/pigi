@@ -61,6 +61,16 @@ interface MinimalViewProps {
    *  MessageList re-pins the working area (the pin was only dropped so the
    *  details could be read). */
   onCollapseDetails?: (isActive: boolean) => void;
+  /** Called when the collapse animation starts/ends — MessageList stands its
+   *  auto-scroll ResizeObserver down for the animation's duration (its
+   *  scrollToBottom would fight the fold), and drops the auto-scroll flag so
+   *  the commit that starts the animation cannot yank the viewport. */
+  onCollapseStart?: () => void;
+  onCollapseEnd?: () => void;
+  /** The rows wrapper (MessageList's padding target): the active-turn
+   *  collapse grows the padding back to the viewport height while the
+   *  details fold, so the list bottom never rises into the viewport. */
+  rowsWrapperRef?: React.RefObject<HTMLDivElement | null>;
   /** The message list scroll container: the details-collapse animation
    *  follows it so the sticky header stays glued to the top of the list
    *  while the details fold up beneath it. */
@@ -73,6 +83,9 @@ export default function MinimalView({
   onExpandDetails,
   onTurnEnd,
   onCollapseDetails,
+  onCollapseStart,
+  onCollapseEnd,
+  rowsWrapperRef,
   scrollContainerRef,
 }: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
@@ -91,6 +104,9 @@ export default function MinimalView({
           onExpandDetails={onExpandDetails}
           onTurnEnd={onTurnEnd}
           onCollapseDetails={onCollapseDetails}
+          onCollapseStart={onCollapseStart}
+          onCollapseEnd={onCollapseEnd}
+          rowsWrapperRef={rowsWrapperRef}
           scrollContainerRef={scrollContainerRef}
         />
       ))}
@@ -131,6 +147,9 @@ const TurnSection = React.memo(function TurnSection({
   onExpandDetails,
   onTurnEnd,
   onCollapseDetails,
+  onCollapseStart,
+  onCollapseEnd,
+  rowsWrapperRef,
   scrollContainerRef,
 }: {
   turn: MinimalTurn;
@@ -138,6 +157,9 @@ const TurnSection = React.memo(function TurnSection({
   onExpandDetails: (isActive: boolean) => void;
   onTurnEnd?: (turnId: string) => void;
   onCollapseDetails?: (isActive: boolean) => void;
+  onCollapseStart?: () => void;
+  onCollapseEnd?: () => void;
+  rowsWrapperRef?: React.RefObject<HTMLDivElement | null>;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
   const [detailsPhase, setDetailsPhase] = useState<'expanded' | 'collapsing' | 'collapsed'>(
@@ -214,12 +236,22 @@ const TurnSection = React.memo(function TurnSection({
   // the refs are refreshed after every render.
   const activeRef = useRef(analysis.isActive);
   const onCollapseDetailsRef = useRef(onCollapseDetails);
+  const onCollapseStartRef = useRef(onCollapseStart);
+  const onCollapseEndRef = useRef(onCollapseEnd);
   useEffect(() => {
     activeRef.current = analysis.isActive;
     onCollapseDetailsRef.current = onCollapseDetails;
+    onCollapseStartRef.current = onCollapseStart;
+    onCollapseEndRef.current = onCollapseEnd;
   });
   const handleToggleDetails = useCallback(() => {
-    onExpandDetails(activeRef.current);
+    // Only an expand releases the pin (the collapse owns the viewport: it
+    // folds in place, then glides to the pin). Calling the release here for
+    // a collapse would re-run the expand-time logic — re-measuring the
+    // details, re-fitting the padding, rolling to the details bottom — on
+    // the very frame the fold starts.
+    const expanding = detailsPhase === 'collapsed' || detailsPhase === 'collapsing';
+    if (expanding) onExpandDetails(activeRef.current);
     if (detailsPhase === 'collapsing') {
       // Clicking mid-collapse cancels it: animate the height back from the
       // current fold to the natural height, then release it to auto (so
@@ -235,7 +267,6 @@ const TurnSection = React.memo(function TurnSection({
       setDetailsPhase('expanded');
       return;
     }
-    const expanding = detailsPhase === 'collapsed';
     if (expanding) {
       // Expanding releases any fixed height left over from a previous
       // collapse, or the details would mount clipped at zero.
@@ -268,13 +299,93 @@ const TurnSection = React.memo(function TurnSection({
   //    scrollHeight, in which case it eases to the post-removal bottom.
   useEffect(() => {
     if (detailsPhase !== 'collapsing') return;
+    // Stand the auto-scroll ResizeObserver down for the whole animation: its
+    // scrollToBottom would fight the fold (the details shrink every frame,
+    // so it would chase a moving bottom). MessageList also drops the
+    // auto-scroll flag here, so the commit that starts the animation cannot
+    // yank the viewport to the bottom either.
+    onCollapseStartRef.current?.();
     const inner = detailsRef.current;
     const container = scrollContainerRef?.current;
     const outer = inner?.parentElement;
     if (inner && container && outer) {
+      const isActive = activeRef.current;
       const startHeight = inner.getBoundingClientRect().height;
       const startScrollTop = container.scrollTop;
       const containerTop = container.getBoundingClientRect().top;
+      const startAt = performance.now();
+      let raf = 0;
+      let holdTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (): void => {
+        setDetailsPhase('collapsed');
+        setCollapsedAnimateIn(true);
+        // Collapsing while the turn is still running: the working area goes
+        // back to being pinned (padding included) — the pin was only dropped
+        // so the expanded details could be read. By now the viewport is
+        // already at the pinned position, so the re-pin is a zero delta.
+        onCollapseDetailsRef.current?.(activeRef.current);
+        // Let the ResizeObserver resume next frame (after the collapsed
+        // layout has committed, so its mount cannot fight the animation).
+        onCollapseEndRef.current?.();
+      };
+      if (isActive) {
+        // Working turn: the collapse restores the pin, so the viewport's
+        // final position is the pinned one — the turn's top edge glued to
+        // the container top. Phase 1 folds the details while the padding
+        // grows back to the viewport height (the fold would otherwise pull
+        // the list bottom up into the viewport and clamp the scroll), the
+        // viewport itself not moving. Phase 2 then glides the viewport to
+        // the pin position, where finish() re-pins with a zero delta.
+        const wrapper = rowsWrapperRef?.current;
+        const section = inner.closest('section');
+        const sectionTop = section ? section.getBoundingClientRect().top : containerTop;
+        const pinScrollTop = startScrollTop + (sectionTop - containerTop);
+        const fillStart = parseFloat(wrapper?.style.paddingBottom ?? '') || 0;
+        const fillTarget = container.clientHeight;
+        const startRoll = (): void => {
+          const from = container.scrollTop;
+          const distance = Math.abs(pinScrollTop - from);
+          if (distance < 1) {
+            finish();
+            return;
+          }
+          const rollStartAt = performance.now();
+          const rollTick = (): void => {
+            const elapsed = performance.now() - rollStartAt;
+            const progress = Math.min(1, elapsed / COLLAPSE_MS);
+            container.scrollTop = from + (pinScrollTop - from) * terminalEase(progress);
+            if (progress < 1) {
+              raf = requestAnimationFrame(rollTick);
+            } else {
+              finish();
+            }
+          };
+          raf = requestAnimationFrame(rollTick);
+        };
+        const foldTick = (): void => {
+          const elapsed = performance.now() - startAt;
+          const progress = Math.min(1, elapsed / COLLAPSE_MS);
+          const eased = terminalEase(progress);
+          outer.style.height = `${Math.round(startHeight * (1 - eased))}px`;
+          if (wrapper) {
+            wrapper.style.paddingBottom = `${Math.round(fillStart + (fillTarget - fillStart) * eased)}px`;
+          }
+          if (progress < 1) {
+            raf = requestAnimationFrame(foldTick);
+          } else {
+            startRoll();
+          }
+        };
+        raf = requestAnimationFrame(foldTick);
+        return () => {
+          cancelAnimationFrame(raf);
+          if (holdTimer !== undefined) clearTimeout(holdTimer);
+        };
+      }
+      // A finished turn expands without moving the viewport, so its fold
+      // keeps the current view: the header either rests where it was
+      // clicked (document-flow position) or, when there is not enough
+      // content below, at the post-removal bottom — whichever is closer.
       const timerRow = inner.closest('section')?.querySelector('[data-testid="minimal-timer-row"]');
       const timerTop = timerRow?.getBoundingClientRect().top;
       const isPinned = timerTop !== undefined && Math.abs(timerTop - containerTop) < 64;
@@ -295,17 +406,6 @@ const TurnSection = React.memo(function TurnSection({
       const rollTarget = isPinned
         ? Math.min(docFlowTop, restTarget)
         : Math.min(startScrollTop, restTarget);
-      const startAt = performance.now();
-      let raf = 0;
-      let holdTimer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (): void => {
-        setDetailsPhase('collapsed');
-        setCollapsedAnimateIn(true);
-        // Collapsing while the turn is still running: the working area goes
-        // back to being pinned (padding included) — the pin was only dropped
-        // so the expanded details could be read.
-        onCollapseDetailsRef.current?.(activeRef.current);
-      };
       // Phase 2: after a long beat (COLLAPSE_HOLD_MS — the fold and the
       // roll are two deliberate steps), glide to the rest position on the
       // same crisp 240ms terminal rhythm as the fold, then mount the
@@ -372,9 +472,11 @@ const TurnSection = React.memo(function TurnSection({
     const timer = setTimeout(() => {
       setDetailsPhase('collapsed');
       setCollapsedAnimateIn(true);
+      onCollapseDetailsRef.current?.(activeRef.current);
+      onCollapseEndRef.current?.();
     }, COLLAPSE_MS + COLLAPSE_HOLD_MS);
     return () => clearTimeout(timer);
-  }, [detailsPhase, scrollContainerRef]);
+  }, [detailsPhase, scrollContainerRef, rowsWrapperRef]);
 
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when

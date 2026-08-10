@@ -744,12 +744,13 @@ export default React.memo(function MessageList({
     }
   }
 
-  // When the pinned turn finishes, the summary starts revealing right away
-  // — restore the normal layout with a terminal-style slide instead of a
-  // snap: animate scrollTop to the post-padding bottom position (the reveal
-  // streams while the view glides down), then drop the padding — the target
-  // equals the new max scrollTop, so nothing jumps. The remaining reveal
-  // keeps the view at the bottom through the ResizeObserver.
+  // When the pinned turn finishes, the layout restores immediately — glide
+  // scrollTop to the post-padding bottom position while the summary streams
+  // in there (like a normal message produced at the bottom of the list), then
+  // drop the padding — the target equals the new max scrollTop, so nothing
+  // jumps. The remaining reveal keeps the view at the bottom through the
+  // ResizeObserver; if the user scrolled during the pin, their position wins
+  // and the pin is dropped in place without gliding.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
     if (pinTopTurnIdRef.current !== turnId) return;
     if (userScrolledDuringPinRef.current) {

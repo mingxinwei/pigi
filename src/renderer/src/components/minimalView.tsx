@@ -182,35 +182,15 @@ const TurnSection = React.memo(function TurnSection({
       setRevealingSummary(true);
     }
   }
-  // The reveal needs a short pause after its last character before the
-  // layout restores, so the full summary has a beat to land in the pinned
-  // working area before the view glides down to the normal layout.
-  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The turn's ending restores the normal layout right away (MessageList
+  // drops the pin and padding and glides the view to the bottom) while the
+  // summary streams in there — the turn reads like a normal message being
+  // produced at the bottom of the list, instead of revealing pinned at the
+  // top and then sliding down.
   useEffect(() => {
     if (!justEnded) return;
-    // No summary to reveal (or the summary is the intro): restore the
-    // layout right away. With a distinct summary, RevealText's onComplete
-    // fires onTurnEnd after the reveal (plus a short beat).
-    if (!analysis.summary || analysis.summary === analysis.intro) {
-      onTurnEnd?.(turn.id);
-    }
-  }, [analysis.intro, analysis.summary, justEnded, onTurnEnd, turn.id]);
-
-  // Fired once by RevealText when the summary has fully streamed in: wait
-  // a short beat so the completed summary is clearly seen in the working
-  // area, then restore the normal layout (the view glides to the bottom).
-  const handleRevealComplete = useCallback(() => {
-    if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
-    restoreTimerRef.current = setTimeout(() => {
-      restoreTimerRef.current = null;
-      onTurnEnd?.(turn.id);
-    }, SUMMARY_RESTORE_DELAY_MS);
-  }, [onTurnEnd, turn.id]);
-  useEffect(() => {
-    return () => {
-      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
-    };
-  }, []);
+    onTurnEnd?.(turn.id);
+  }, [justEnded, onTurnEnd, turn.id]);
 
   // Details collapse animation: the outer div animates its height (measured
   // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
@@ -727,15 +707,15 @@ const TurnSection = React.memo(function TurnSection({
       {analysis.summary &&
         analysis.summary !== analysis.intro &&
         (revealingSummary ? (
-          /* Reveal the completed summary in a fast fake stream (the content
-             is already fully available) so the turn's ending reads like the
-             streaming it just came from. onComplete restores the layout. */
+          /* Reveal the completed summary in a smooth fake stream (the
+             content is already fully available) so the turn's ending reads
+             like the streaming it just came from. */
           <div
             className="mt-4 w-full min-w-0 text-[15px] text-foreground"
             style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
             data-testid="minimal-summary"
           >
-            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
+            <RevealText text={analysis.summary.text}>
               {(revealed) => <MarkdownMessage text={revealed} />}
             </RevealText>
           </div>
@@ -803,38 +783,39 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
   );
 }
 
-/** Reveals a complete text in a fast fake stream: the content is already
- *  fully available, so this only paces the reveal (~2ms per character,
- *  clamped to 250–900ms) to read like the streaming it just came from.
- *  Children receive the revealed prefix and re-render as it grows.
- *  onComplete fires once when the reveal finishes. */
+/** Reveals a complete text in a smooth fake stream: the content is
+ *  already fully available, so this only paces the reveal. Words are the
+ *  reveal unit (like a real API token stream — characters would flash
+ *  half-rendered markdown, e.g. a lone "*"), at a steady clip scaled to
+ *  the text length (clamped 300–1500ms). Children receive the revealed
+ *  prefix and re-render as it grows. */
 function RevealText({
   text,
-  onComplete,
   children,
 }: {
   text: string;
-  onComplete: () => void;
   children: (revealed: string) => React.ReactNode;
 }): React.JSX.Element {
+  const tokens = useMemo(() => text.split(/(?<=\s)/), [text]);
   const [shown, setShown] = useState(0);
   useEffect(() => {
     if (text.length === 0) return;
-    const durationMs = Math.min(900, Math.max(250, text.length * 2));
+    // Split on word boundaries (done in the useMemo above), keeping the
+    // separators so the revealed slices join back into the exact original
+    // text. The pacing scales with the token count, clamped 300–1500ms.
+    const durationMs = Math.min(1500, Math.max(120, tokens.length * 24));
     const startAt = performance.now();
     let raf = 0;
     const tick = (now: number): void => {
       const progress = Math.min(1, (now - startAt) / durationMs);
-      setShown(Math.floor(text.length * progress));
+      setShown(Math.floor(tokens.length * progress));
       if (progress < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [text]);
-  useEffect(() => {
-    if (shown >= text.length) onComplete();
-  }, [onComplete, shown, text]);
-  return <>{children(text.slice(0, shown))}</>;
+  }, [tokens, text]);
+  const revealed = tokens.slice(0, shown).join('');
+  return <>{children(revealed)}</>;
 }
 
 /** The collapsed turn layout (intro, pinned rows, activity feed) in its
@@ -993,11 +974,6 @@ function WorkingTimer({
  *  is usually the useful part (filename, line range, final args). Same
  *  convention as the collapsed-read-group labels. */
 const COMMAND_TAIL_CHARS = 20;
-
-/** Beat after the summary has fully streamed in, before the layout glides
- *  back to normal — the completed summary gets a moment to land in the
- *  pinned working area first. */
-const SUMMARY_RESTORE_DELAY_MS = 200;
 
 /**
  * A tool call as a plain text line in the activity feed. Every feed row is

@@ -37,13 +37,17 @@ import { cn } from '../lib/utils';
  *
  * Each user message starts a turn: the agent's first text message (intro) is
  * rendered at the top, followed by a "Working for Xm Ys" timer and a divider.
- * Below them sits the activity feed: the turn's recent activities (tools,
- * thinking, narration), at most MAX_ACTIVITY_ROWS rows, each guaranteed
- * MIN_ACTIVITY_VISIBLE_MS of visibility before being replaced. The feed is
- * event-driven and never queues — during a burst faster than the eye can
- * follow, only the latest pending arrival survives (middle ones drop), so
- * the display can never lag behind reality. The turn ends with the agent's
- * final text message (summary), rendered without its thinking.
+ * Below them sits the activity feed: the turn's current activity (a running
+ * tool, or a thinking placeholder), at most MAX_ACTIVITY_ROWS rows, each
+ * guaranteed MIN_ACTIVITY_VISIBLE_MS of visibility before being replaced.
+ * The feed is event-driven and never queues — during a burst faster than
+ * the eye can follow, only the latest pending arrival survives (middle ones
+ * drop), so the display can never lag behind reality. A row whose activity
+ * ends (a tool finishes, a thinking message starts writing text) is removed
+ * immediately — it must not hang around under the next message. Text-bearing
+ * messages render below the intro in the current-message slot, newest
+ * replacing the previous one; the turn ends with the agent's final text
+ * message (the summary) landing there.
  */
 
 interface MinimalViewProps {
@@ -68,10 +72,6 @@ interface MinimalViewProps {
    *  callback structurally pairs start and end, so every exit path (finish,
    *  cleanup, fallback) re-arms the observers. */
   onCollapseChange?: (isCollapsing: boolean) => void;
-  /** Reports the revealer's current height while a finished turn's summary
-   *  streams in — MessageList shrinks the pin's spacer by that height, so
-   *  the text replaces the open space and nothing jumps. */
-  onSummaryGrowth?: (height: number) => void;
   /** Reports each working turn's section height — once the content outgrows
    *  the viewport, MessageList follows the output like a normal message
    *  (the pin stays armed but the viewport rides the growing content). */
@@ -97,7 +97,6 @@ export default function MinimalView({
   onTurnEnd,
   onCollapseDetails,
   onCollapseChange,
-  onSummaryGrowth,
   onOutputGrowth,
   onCollapseFill,
   topPaddingPx,
@@ -116,11 +115,11 @@ export default function MinimalView({
           key={turn.id}
           turn={turn}
           analysis={analyses[index]}
+          isLastTurn={index === turns.length - 1}
           onExpandDetails={onExpandDetails}
           onTurnEnd={onTurnEnd}
           onCollapseDetails={onCollapseDetails}
           onCollapseChange={onCollapseChange}
-          onSummaryGrowth={onSummaryGrowth}
           onOutputGrowth={onOutputGrowth}
           onCollapseFill={onCollapseFill}
           topPaddingPx={topPaddingPx}
@@ -161,11 +160,11 @@ const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
 const TurnSection = React.memo(function TurnSection({
   turn,
   analysis,
+  isLastTurn,
   onExpandDetails,
   onTurnEnd,
   onCollapseDetails,
   onCollapseChange,
-  onSummaryGrowth,
   onOutputGrowth,
   onCollapseFill,
   topPaddingPx,
@@ -173,11 +172,13 @@ const TurnSection = React.memo(function TurnSection({
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
+  /** Whether this is the last turn in the list — its collapse rolls the
+   *  viewport to the very top (nothing follows below). */
+  isLastTurn: boolean;
   onExpandDetails: (isActive: boolean) => void;
   onTurnEnd?: (turnId: string) => void;
   onCollapseDetails?: (isActive: boolean) => void;
   onCollapseChange?: (isCollapsing: boolean) => void;
-  onSummaryGrowth?: (height: number) => void;
   /** See MinimalViewProps.onOutputGrowth. */
   onOutputGrowth?: (height: number) => void;
   onCollapseFill?: (paddingPx: number) => void;
@@ -191,68 +192,24 @@ const TurnSection = React.memo(function TurnSection({
   // that renders next plays its own expand-in; historic turns render
   // directly without it.
   const [collapsedAnimateIn, setCollapsedAnimateIn] = useState(false);
-  // The final summary of a just-finished turn reveals itself in a fast fake
-  // stream (the text is already complete) before the layout restores — the
-  // content must be fully rendered before the view settles.
-  const [revealingSummary, setRevealingSummary] = useState(false);
   const [wasActive, setWasActive] = useState(() => analysis.isActive);
   const [justEnded, setJustEnded] = useState(false);
   // Set during render (adjust-state pattern): the ended turn's very first
-  // render must already show the revealer, or the full summary would flash
-  // for a frame before streaming from zero.
+  // render already shows the finished state (Worked timer, summary in the
+  // current-message slot — it streamed in live before the turn ended), so
+  // no reveal window exists: the layout restore fires immediately.
   if (wasActive && !analysis.isActive) {
     setWasActive(false);
     setJustEnded(true);
-    if (analysis.summary && analysis.summary !== analysis.intro) {
-      setRevealingSummary(true);
-    }
   }
-  // The turn's ending reveals the summary in place (pinned working area),
-  // while the pin's padding shrinks by the summary height — the text
-  // replaces the open space, so the layout never jumps. Once the summary has
-  // fully streamed in (plus a short beat), the normal layout is restored
-  // (MessageList glides the view to the bottom). A turn without a distinct
-  // summary (or whose summary arrived outside the reveal window) restores
-  // right away.
-  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The turn ended: MessageList restores the layout right away (glide the
+  // pinned view to the content bottom, drop the spacer). The summary was
+  // already streaming live in the current-message slot, so there is nothing
+  // to pace or wait for.
   useEffect(() => {
     if (!justEnded) return;
-    if (!analysis.summary || analysis.summary === analysis.intro || !revealingSummary) {
-      onTurnEnd?.(turn.id);
-    }
-  }, [analysis.intro, analysis.summary, revealingSummary, justEnded, onTurnEnd, turn.id]);
-
-  // Fired once by RevealText when the summary has fully streamed in: a
-  // short beat lets the completed summary land, then the layout restores.
-  const handleRevealComplete = useCallback(() => {
-    if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
-    restoreTimerRef.current = setTimeout(() => {
-      restoreTimerRef.current = null;
-      onTurnEnd?.(turn.id);
-    }, SUMMARY_RESTORE_DELAY_MS);
-  }, [onTurnEnd, turn.id]);
-  useEffect(() => {
-    return () => {
-      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
-    };
-  }, []);
-
-  // While the summary reveals, its height replaces the pin's viewport-height
-  // padding one for one (total height stays constant, so the pinned working
-  // area never moves). MessageList owns the padding — it is reported through
-  // onSummaryGrowth every time the revealer grows (ResizeObserver, so the
-  // hand-over tracks every frame of the stream).
-  const summaryRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!revealingSummary) return;
-    const summaryEl = summaryRef.current;
-    if (!summaryEl) return;
-    const observer = new ResizeObserver(() => {
-      onSummaryGrowth?.(summaryEl.getBoundingClientRect().height);
-    });
-    observer.observe(summaryEl);
-    return () => observer.disconnect();
-  }, [revealingSummary, onSummaryGrowth]);
+    onTurnEnd?.(turn.id);
+  }, [justEnded, onTurnEnd, turn.id]);
 
   // While the turn is active, the section's height tracks the content
   // streaming in below the pinned working area. Once it outgrows the
@@ -381,6 +338,30 @@ const TurnSection = React.memo(function TurnSection({
       const finish = (): void => {
         setDetailsPhase('collapsed');
         setCollapsedAnimateIn(true);
+        // The last message's collapsed layout expands in over
+        // COLLAPSE_EXPAND_MS, growing scrollHeight — the roll target was
+        // measured before it mounted (mounting at zero height momentarily
+        // shrinks the scroll range and clamps the viewport off the bottom).
+        // Glue the viewport to the live bottom until the expand-in lands,
+        // so it rests exactly on the true bottom ("can't scroll any
+        // further"). A working turn never does this: its collapse restores
+        // the pin, which owns the viewport position.
+        if (isLastTurn && !activeRef.current) {
+          const chaseStartAt = performance.now();
+          // Intentionally not tracked in the effect's rAF id: finish() sets
+          // detailsPhase to 'collapsed', which re-runs this effect and its
+          // cleanup cancels the shared `raf` — killing the chase after its
+          // first frame would leave the viewport ~30px short of the true
+          // bottom. The loop is bounded (COLLAPSE_EXPAND_MS) and harmless
+          // past unmount (the container stays mounted).
+          const chaseTick = (): void => {
+            container.scrollTop = container.scrollHeight - container.clientHeight;
+            if (performance.now() - chaseStartAt < COLLAPSE_EXPAND_MS) {
+              requestAnimationFrame(chaseTick);
+            }
+          };
+          requestAnimationFrame(chaseTick);
+        }
         // Collapsing while the turn is still running: the working area goes
         // back to being pinned (padding included) — the pin was only dropped
         // so the expanded details could be read. By now the viewport is
@@ -468,9 +449,16 @@ const TurnSection = React.memo(function TurnSection({
       // Where the list rests once the details content leaves scrollHeight
       // (it stays measurable until the collapsed layout unmounts it).
       const restTarget = Math.max(0, container.scrollHeight - startHeight - container.clientHeight);
-      const rollTarget = isPinned
-        ? Math.min(docFlowTop, restTarget)
-        : Math.min(startScrollTop, restTarget);
+      // The last message's collapse lands the viewport at the very bottom
+      // (the post-collapse maxScroll — nothing left to scroll down to):
+      // after the fold the turn is the last content in the list, so the
+      // natural rest is its bottom, wherever the user had scrolled inside
+      // the details.
+      const rollTarget = isLastTurn
+        ? restTarget
+        : isPinned
+          ? Math.min(docFlowTop, restTarget)
+          : Math.min(startScrollTop, restTarget);
       // Phase 2: after a long beat (COLLAPSE_HOLD_MS — the fold and the
       // roll are two deliberate steps), glide to the rest position on the
       // same crisp 240ms terminal rhythm as the fold, then mount the
@@ -559,17 +547,40 @@ const TurnSection = React.memo(function TurnSection({
     turn.entries.length > 0 &&
     turn.entries.every((node) => node.role === 'system');
 
-  // Activity feed: the turn's recent activities (tools, thinking, narration),
-  // at most MAX_ACTIVITY_ROWS rows, each guaranteed MIN_ACTIVITY_VISIBLE_MS
-  // of visibility. Rows render from the transcript by key, so in-place
-  // updates (streaming text, running -> finished) pass through instantly —
-  // only row swaps are paced. Errors and system markers are not activities:
-  // they render as pinned rows above the feed.
+  // The current assistant message: the newest text-bearing message after the
+  // intro (intro excluded — it has its own fixed slot above). Each new
+  // message replaces the previous one, so the slot always shows what the
+  // agent is writing right now; the turn's final text (the summary) lands
+  // here too and simply stays. Streaming text grows in place via the
+  // transcript. Thinking-only messages have no text and do not occupy the
+  // slot (they pass through the activity feed as thinking rows).
+  const currentMsg = useMemo(() => {
+    let last: AssistantNode | null = null;
+    for (const node of turn.entries) {
+      if (node.role === 'assistant' && node.text.length > 0 && node !== analysis.intro) {
+        last = node;
+      }
+    }
+    return last;
+  }, [turn.entries, analysis.intro]);
+
+  // Activity feed: the turn's current activity — at most MAX_ACTIVITY_ROWS
+  // rows, each guaranteed MIN_ACTIVITY_VISIBLE_MS of visibility. Rows
+  // render from the transcript by key, so in-place updates (streaming text,
+  // running -> finished) pass through instantly — only row swaps are
+  // paced. Only LIVE activities enter the feed: a running tool, or a
+  // text-empty assistant message (the agent thinking). The moment an
+  // activity ends — a thinking message starts writing text (it moves to the
+  // current-message slot), or a tool finishes — its row is removed right
+  // away instead of waiting for the next arrival to push it out (a final
+  // tool followed by the summary must not hang around either). Errors and
+  // system markers are not activities: they render as pinned rows above the
+  // feed.
   const activityKeys = turn.entries
     .filter(
       (node) =>
-        node.role === 'tool' ||
-        (node.role === 'assistant' && node.errorMessage === undefined && node !== analysis.intro),
+        (node.role === 'tool' && node.status === 'running') ||
+        (node.role === 'assistant' && node.errorMessage === undefined && node.text.length === 0),
     )
     .map((node) => node.id);
   const activityKeysJoined = activityKeys.join('|');
@@ -581,6 +592,30 @@ const TurnSection = React.memo(function TurnSection({
 
   useEffect(() => {
     if (!analysis.isActive) return;
+    const activeKeys = new Set(activityKeysJoined.split('|').filter((key) => key.length > 0));
+    // A row whose activity ended still gets its MIN_ACTIVITY_VISIBLE_MS of
+    // screen time (no fast flicker on quick back-to-back activities), but it
+    // must not hang around either: once fully shown it is removed
+    // immediately, without waiting for the next arrival to push it out (a
+    // final tool followed by the summary would otherwise hang until the
+    // turn ended).
+    const staleRows = feed.filter((row) => !activeKeys.has(row.key));
+    if (staleRows.length > 0) {
+      const now = Date.now();
+      const waitMs =
+        Math.min(...staleRows.map((row) => row.shownAt)) + MIN_ACTIVITY_VISIBLE_MS - now;
+      // Deferred (rAF / timer) so the update is not a synchronous setState
+      // inside the effect (cascading-render lint) — a single frame of
+      // latency is invisible, and the re-run converges immediately.
+      const removeStale = (): void =>
+        setFeed((current) => current.filter((row) => activeKeys.has(row.key)));
+      if (waitMs <= 0) {
+        const frame = requestAnimationFrame(removeStale);
+        return () => cancelAnimationFrame(frame);
+      }
+      const timer = setTimeout(removeStale, waitMs);
+      return () => clearTimeout(timer);
+    }
     const newKeys = activityKeysJoined
       .split('|')
       .filter((key) => key.length > 0 && !seenKeysRef.current.has(key));
@@ -623,6 +658,7 @@ const TurnSection = React.memo(function TurnSection({
     if (next.length !== feed.length || next.some((row, index) => row.key !== feed[index]?.key)) {
       setFeed(next);
     }
+    return undefined;
   }, [activityKeysJoined, analysis.isActive, feed]);
 
   // The feed is ignored the moment the turn ends (never paced) so "Worked"
@@ -660,26 +696,19 @@ const TurnSection = React.memo(function TurnSection({
     if (node.role === 'tool') {
       feedRows.push(<ToolLine key={key} node={node} />);
     } else if (node.role === 'assistant') {
-      // The intro renders in its fixed slot above the feed — once it has
-      // text it must never also stream as a narration row. (A text-empty
-      // intro still passes through as the thinking row: the intro slot has
-      // nothing to show yet, and it is indistinguishable from any other
-      // thinking at that point.)
-      if (node === analysis.intro && node.text.length > 0) continue;
-      if (node.text.length > 0) {
-        feedRows.push(<NarrationLine key={key} node={node} />);
-      } else {
-        feedRows.push(
-          <div
-            key={key}
-            className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
-            data-testid="minimal-thinking"
-          >
-            Thinking...
-            <ShimmerOverlay />
-          </div>,
-        );
-      }
+      // Text-bearing messages render in the current-message slot (newest
+      // replaces the previous), never as feed rows; a text-empty assistant
+      // message is the agent thinking — the live indicator row.
+      feedRows.push(
+        <div
+          key={key}
+          className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
+          data-testid="minimal-thinking"
+        >
+          Thinking...
+          <ShimmerOverlay />
+        </div>,
+      );
     }
   }
 
@@ -737,8 +766,8 @@ const TurnSection = React.memo(function TurnSection({
 
       {detailsPhase !== 'collapsed' ? (
         /* Expanded (or collapsing away): the turn's full activity — every
-           tool call as a card, thinking blocks, and narration text
-           (conclusion excluded). The outer div animates its height to zero
+           tool call as a card, thinking blocks, narration text and the
+           final summary. The outer div animates its height to zero
            (measured at collapse start — grid-template-rows 0fr<->1fr does
            not interpolate in auto-height containers) while the content
            fades, so the details visibly fold back into the header instead
@@ -763,50 +792,30 @@ const TurnSection = React.memo(function TurnSection({
           {' '}
           <div ref={detailsRef} className="overflow-hidden" data-testid="minimal-details">
             <div className="flex flex-col gap-2 pb-1">
-              {turn.entries.map((node) => {
-                if (node === analysis.summary) return null;
-                return <DetailItem key={node.id} node={node} />;
-              })}
+              {turn.entries.map((node) => (
+                <DetailItem key={node.id} node={node} />
+              ))}
             </div>
           </div>
         </div>
       ) : (
         /* Collapsed: the intro (first text) sits above the activity area;
-           below it, pinned rows (errors, system markers), then the feed in
-           its fixed-height slot — the single current activity (thinking,
-           narration or tool) shows what the agent is doing. Mounted with an
-           expand-in animation only when it follows a collapse. */
+           below it the current assistant message (newest replaces the
+           previous one — the turn's final summary lands here too), then
+           pinned rows (errors, system markers), then the feed in its
+           fixed-height slot — the current thinking or tool shows what the
+           agent is doing. Mounted with an expand-in animation only when it
+           follows a collapse. */
         <CollapsedContent
           animateIn={collapsedAnimateIn}
           showIntro={showIntro}
           intro={analysis.intro}
+          currentMsg={currentMsg}
           pinnedRows={pinnedRows}
           feedRows={feedRows}
           isActive={analysis.isActive}
         />
       )}
-
-      {analysis.summary &&
-        analysis.summary !== analysis.intro &&
-        (revealingSummary ? (
-          /* Reveal the completed summary in a smooth fake stream (the
-             content is already fully available) so the turn's ending reads
-             like the streaming it just came from. The revealer's height
-             replaces the pin's padding as it grows (see the layout effect
-             above); onComplete restores the layout. */
-          <div
-            ref={summaryRef}
-            className="mt-4 w-full min-w-0 text-[15px] text-foreground"
-            style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
-            data-testid="minimal-summary"
-          >
-            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
-              {(revealed) => <MarkdownMessage text={revealed} />}
-            </RevealText>
-          </div>
-        ) : (
-          <AssistantText node={analysis.summary} className="mt-4" testId="minimal-summary" />
-        ))}
     </section>
   );
 });
@@ -858,60 +867,6 @@ function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Elemen
   }
 }
 
-/** A narration message (middle narration or the final summary message) as a
- *  single truncated line in the activity stream. */
-function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
-  return (
-    <div className="line-clamp-1 text-[15px] text-muted-foreground" data-testid="minimal-narration">
-      <MarkdownMessage text={node.text} />
-    </div>
-  );
-}
-
-/** Reveals a complete text in a smooth fake stream: the content is
- *  already fully available, so this only paces the reveal. Characters are
- *  the reveal unit (like a real API token stream — characters would flash
- *  half-rendered markdown, e.g. a lone "*"), at a steady clip of
- *  CHARACTER_REVEAL_MS per character (a real streaming model produces
- *  roughly one character every 16–33ms, so the pace reads as live typing).
- *  Children receive the revealed prefix and re-render as it grows. */
-const CHARACTER_REVEAL_MS = 24;
-function RevealText({
-  text,
-  onComplete,
-  children,
-}: {
-  text: string;
-  onComplete: () => void;
-  children: (revealed: string) => React.ReactNode;
-}): React.JSX.Element {
-  // Split by Unicode code point (emoji and surrogate pairs stay intact).
-  const tokens = useMemo(() => [...text], [text]);
-  const [shown, setShown] = useState(0);
-  useEffect(() => {
-    if (text.length === 0) return;
-    // The pacing scales with the character count — a long summary streams
-    // for as long as it would have taken the model to write it, a short
-    // one is done almost instantly (no artificial upper cap: clamping
-    // would collapse a long text into a one-frame flash).
-    const durationMs = Math.max(CHARACTER_REVEAL_MS, tokens.length * CHARACTER_REVEAL_MS);
-    const startAt = performance.now();
-    let raf = 0;
-    const tick = (now: number): void => {
-      const progress = Math.min(1, (now - startAt) / durationMs);
-      setShown(Math.floor(tokens.length * progress));
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [tokens, text]);
-  useEffect(() => {
-    if (shown >= tokens.length) onComplete();
-  }, [onComplete, shown, tokens.length]);
-  const revealed = tokens.slice(0, shown).join('');
-  return <>{children(revealed)}</>;
-}
-
 /** The collapsed turn layout (intro, pinned rows, activity feed) in its
  *  fixed feed slot. When it mounts right after a collapse it starts at zero
  *  height and drops open slowly (terminal-open feel), so the eye follows
@@ -921,6 +876,7 @@ function CollapsedContent({
   animateIn,
   showIntro,
   intro,
+  currentMsg,
   pinnedRows,
   feedRows,
   isActive,
@@ -928,6 +884,7 @@ function CollapsedContent({
   animateIn: boolean;
   showIntro: boolean;
   intro: AssistantNode | null;
+  currentMsg: AssistantNode | null;
   pinnedRows: React.ReactNode[];
   feedRows: React.ReactNode[];
   isActive: boolean;
@@ -971,6 +928,15 @@ function CollapsedContent({
       <div ref={innerRef} className="overflow-hidden">
         <div className="flex flex-col gap-1">
           {showIntro && <AssistantText node={intro!} testId="minimal-intro" />}
+          {currentMsg && (
+            <div
+              className="mt-2 w-full min-w-0 text-[15px] text-foreground"
+              style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
+              data-testid="minimal-current-msg"
+            >
+              <MarkdownMessage text={currentMsg.text} />
+            </div>
+          )}
           {pinnedRows}
           {isActive && <div className="flex h-[27px] items-center overflow-hidden">{feedRows}</div>}
         </div>
@@ -1068,11 +1034,6 @@ function WorkingTimer({
  *  is usually the useful part (filename, line range, final args). Same
  *  convention as the collapsed-read-group labels. */
 const COMMAND_TAIL_CHARS = 20;
-
-/** Beat after the summary has fully streamed in, before the layout restores
- *  (the view glides to the bottom) — the completed summary gets a moment to
- *  land in the pinned working area first. */
-const SUMMARY_RESTORE_DELAY_MS = 200;
 
 /**
  * A tool call as a plain text line in the activity feed. Every feed row is

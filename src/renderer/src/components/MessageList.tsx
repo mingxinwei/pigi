@@ -253,11 +253,11 @@ export default React.memo(function MessageList({
   // in React state — it is part of the render tree, so minimap jumps, view
   // switches, session switches and streaming commits can never lose it the
   // way a DOM style side-effect could; it simply re-renders wherever the
-  // content does. All padding mutations (pin, summary-reveal replacement,
-  // collapse fill, release) go through setTopPaddingPx.
+  // content does. All padding mutations (pin, spacer release) go through
+  // setTopPaddingPx.
   const [topPaddingPx, setTopPaddingPx] = useState(0);
   // Mirror for callbacks that must read the latest value without re-running
-  // (handleMinimalTurnEnd / handleSummaryGrowth are stable useCallbacks).
+  // (handleMinimalTurnEnd / handleOutputGrowth are stable useCallbacks).
   const topPaddingPxRef = useRef(0);
   useEffect(() => {
     topPaddingPxRef.current = topPaddingPx;
@@ -442,20 +442,21 @@ export default React.memo(function MessageList({
     // the pinned turn still exists and is still working before gluing it to
     // the top; otherwise drop the pin and let the retry chain find the turn
     // that is actually running.
-    // A just-finished turn keeps its pin while its summary reveals in place
-    // (the revealer's height is replacing the pin's padding) — without this
-    // the moment the turn ends the observer would drop the pin and the
-    // layout would jump into document flow mid-stream.
+    // A just-finished turn keeps its pin while its final message (summary)
+    // renders in the current-message slot — without this the moment the
+    // turn ends the observer would drop the pin and the layout would jump
+    // into document flow mid-stream (MessageList's turn-end handler glides
+    // the view instead).
     // The viewport is free while the user scrolled during the pin or the
-    // reveal follows the summary end past the viewport: re-glueing the turn
+    // follow rides the output past the viewport: re-glueing the turn
     // to the top would fight the follow (and yank the user back).
     function pinVerifiedOrRepin(): void {
       if (userScrolledDuringPinRef.current || followEndRef.current) return;
       const turnEl = findPinnedTurn();
       const stillWorking =
         turnEl?.querySelector('[data-testid=minimal-working-timer][data-active="true"]') != null;
-      const revealingSummary = turnEl?.querySelector('[data-testid=minimal-summary]') != null;
-      if (!turnEl || (!stillWorking && !revealingSummary)) {
+      const hasMessage = turnEl?.querySelector('[data-testid=minimal-current-msg]') != null;
+      if (!turnEl || (!stillWorking && !hasMessage)) {
         pinTopTurnIdRef.current = null;
         clearTopPin();
         retryPinAttemptRef.current = 0;
@@ -773,8 +774,7 @@ export default React.memo(function MessageList({
   // scrollTop to the post-padding bottom position while the summary streams
   // in there (like a normal message produced at the bottom of the list), then
   // drop the spacer row — the target equals the new max scrollTop, so
-  // nothing jumps. The remaining reveal keeps the view at the bottom through
-  // the ResizeObserver; if the user scrolled during the pin, their position
+  // nothing jumps. If the user scrolled during the pin, their position
   // wins and the pin is dropped in place without gliding.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
     if (pinTopTurnIdRef.current !== turnId) {
@@ -810,8 +810,10 @@ export default React.memo(function MessageList({
       container.scrollTop = contentBottom;
       return;
     }
-    // The reveal has already replaced the spacer with text, so the padding
-    // is usually ~0 — the glide target is simply the post-padding bottom.
+    // The final message (summary) already sits in the current-message slot,
+    // so the spacer is still full — the glide target is the content bottom
+    // (spacer excluded; releasing the spacer later lands the viewport at the
+    // exact same position).
     autoScrollRef.current = false;
     const target = Math.max(
       0,
@@ -828,8 +830,8 @@ export default React.memo(function MessageList({
     void promise.then(() => {
       restoreAnimRef.current = null;
       setTopPaddingPx(0);
-      // Re-assert the true bottom (and keep following the reveal stream);
-      // skipped when the user took over scrolling mid-flight.
+      // Re-assert the true bottom (the spacer release made it the new
+      // maxScroll); skipped when the user took over scrolling mid-flight.
       if (!cancelled) {
         autoScrollRef.current = true;
         container.scrollTop = container.scrollHeight;
@@ -941,15 +943,6 @@ export default React.memo(function MessageList({
     }
   }, []);
 
-  // The revealer of a finished turn's summary grows while it streams: its
-  // height replaces the pin's viewport-height padding one for one, so the
-  // total content height stays constant and the pinned working area never
-  // moves (the text visibly takes the place of the open space below it).
-  // Once the padding is exhausted and the summary outgrows the viewport,
-  // the viewport follows the text end like normal output — the pin's
-  // re-glue is stood down while this follow is live (followEndRef), and it
-  // never fights a user scroll (userScrolledDuringPinRef).
-  const revealStartRef = useRef<{ padding: number; scrollTop: number } | null>(null);
   const followEndRef = useRef(false);
   // While a turn is active its content (the intro streaming in) grows below
   // the pinned working area. Once the section is taller than the viewport,
@@ -976,42 +969,6 @@ export default React.memo(function MessageList({
       (followEndRef.current || !userScrolledDuringPinRef.current || atContentBottom);
     if (followEndRef.current && container.scrollTop < contentBottom) {
       container.scrollTop = contentBottom;
-    }
-  }, []);
-
-  const handleSummaryGrowth = useCallback((summaryHeight: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const start = revealStartRef.current ?? {
-      padding: topPaddingPxRef.current || container.clientHeight,
-      scrollTop: container.scrollTop,
-    };
-    revealStartRef.current = start;
-    const nextPadding = Math.max(0, start.padding - summaryHeight);
-    const currentPadding = topPaddingPxRef.current;
-    if (Math.abs(nextPadding - currentPadding) > 0.5) {
-      setTopPaddingPx(nextPadding);
-    }
-    // Follow the text end like a normal message at the bottom of the list
-    // once the padding is exhausted: engaged while the viewport sits at the
-    // pinned start (the user never left) or at the bottom, and latched until
-    // a user scroll releases it (the wheel handler clears followEndRef; the
-    // follow re-engages when the viewport comes back to the bottom). The
-    // scroll position is compared against the reveal start — a user who
-    // scrolled away mid-reveal has their position respected (no pulling
-    // back), even if they return to the pinned top.
-    followEndRef.current =
-      nextPadding <= 0 &&
-      (followEndRef.current ||
-        (!userScrolledDuringPinRef.current && container.scrollTop === start.scrollTop) ||
-        isAtBottom(container));
-    if (followEndRef.current) {
-      // Same content-bottom target as handleOutputGrowth (the padding is
-      // already exhausted here, so this equals the document bottom).
-      const target = container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
-      if (container.scrollTop < target) {
-        container.scrollTop = target;
-      }
     }
   }, []);
 
@@ -1232,7 +1189,6 @@ export default React.memo(function MessageList({
                 onTurnEnd={handleMinimalTurnEnd}
                 onCollapseDetails={handleCollapseDetails}
                 onCollapseChange={handleCollapseChange}
-                onSummaryGrowth={handleSummaryGrowth}
                 onOutputGrowth={handleOutputGrowth}
                 onCollapseFill={handleCollapseFill}
                 topPaddingPx={topPaddingPx}

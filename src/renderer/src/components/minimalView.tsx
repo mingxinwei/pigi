@@ -69,13 +69,21 @@ interface MinimalViewProps {
    *  cleanup, fallback) re-arms the observers. */
   onCollapseChange?: (isCollapsing: boolean) => void;
   /** Reports the revealer's current height while a finished turn's summary
-   *  streams in — MessageList shrinks the pin's padding by that height, so
+   *  streams in — MessageList shrinks the pin's spacer by that height, so
    *  the text replaces the open space and nothing jumps. */
   onSummaryGrowth?: (height: number) => void;
-  /** The rows wrapper (MessageList's padding target): the active-turn
-   *  collapse grows the padding back to the viewport height while the
-   *  details fold, so the list bottom never rises into the viewport. */
-  rowsWrapperRef?: React.RefObject<HTMLDivElement | null>;
+  /** Reports each working turn's section height — once the content outgrows
+   *  the viewport, MessageList follows the output like a normal message
+   *  (the pin stays armed but the viewport rides the growing content). */
+  onOutputGrowth?: (height: number) => void;
+  /** The collapse animation grows the pin's spacer back by exactly the
+   *  folded-away height each frame (see the fold below) — state-driven, so
+   *  the spacer row re-renders with the fold and the list bottom never
+   *  rises into the viewport. */
+  onCollapseFill?: (paddingPx: number) => void;
+  /** The current height of the pin's spacer row (MessageList state) — the
+   *  collapse fold needs the starting value to compensate the fold. */
+  topPaddingPx: number;
   /** The message list scroll container: the details-collapse animation
    *  follows it so the sticky header stays glued to the top of the list
    *  while the details fold up beneath it. */
@@ -90,7 +98,9 @@ export default function MinimalView({
   onCollapseDetails,
   onCollapseChange,
   onSummaryGrowth,
-  rowsWrapperRef,
+  onOutputGrowth,
+  onCollapseFill,
+  topPaddingPx,
   scrollContainerRef,
 }: MinimalViewProps): React.JSX.Element {
   const turns = useMemo(() => buildTurns(nodes), [nodes]);
@@ -111,7 +121,9 @@ export default function MinimalView({
           onCollapseDetails={onCollapseDetails}
           onCollapseChange={onCollapseChange}
           onSummaryGrowth={onSummaryGrowth}
-          rowsWrapperRef={rowsWrapperRef}
+          onOutputGrowth={onOutputGrowth}
+          onCollapseFill={onCollapseFill}
+          topPaddingPx={topPaddingPx}
           scrollContainerRef={scrollContainerRef}
         />
       ))}
@@ -154,7 +166,9 @@ const TurnSection = React.memo(function TurnSection({
   onCollapseDetails,
   onCollapseChange,
   onSummaryGrowth,
-  rowsWrapperRef,
+  onOutputGrowth,
+  onCollapseFill,
+  topPaddingPx,
   scrollContainerRef,
 }: {
   turn: MinimalTurn;
@@ -164,7 +178,10 @@ const TurnSection = React.memo(function TurnSection({
   onCollapseDetails?: (isActive: boolean) => void;
   onCollapseChange?: (isCollapsing: boolean) => void;
   onSummaryGrowth?: (height: number) => void;
-  rowsWrapperRef?: React.RefObject<HTMLDivElement | null>;
+  /** See MinimalViewProps.onOutputGrowth. */
+  onOutputGrowth?: (height: number) => void;
+  onCollapseFill?: (paddingPx: number) => void;
+  topPaddingPx: number;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
   const [detailsPhase, setDetailsPhase] = useState<'expanded' | 'collapsing' | 'collapsed'>(
@@ -237,6 +254,22 @@ const TurnSection = React.memo(function TurnSection({
     return () => observer.disconnect();
   }, [revealingSummary, onSummaryGrowth]);
 
+  // While the turn is active, the section's height tracks the content
+  // streaming in below the pinned working area. Once it outgrows the
+  // viewport, MessageList follows the output like a normal message (the pin
+  // stays armed, so nothing jumps when the turn ends).
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!analysis.isActive) return;
+    const sectionEl = sectionRef.current;
+    if (!sectionEl) return;
+    const observer = new ResizeObserver(() => {
+      onOutputGrowth?.(sectionEl.getBoundingClientRect().height);
+    });
+    observer.observe(sectionEl);
+    return () => observer.disconnect();
+  }, [analysis.isActive, onOutputGrowth]);
+
   // Details collapse animation: the outer div animates its height (measured
   // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
   // in auto-height containers (Chrome does not interpolate fr tracks there),
@@ -259,10 +292,14 @@ const TurnSection = React.memo(function TurnSection({
   const activeRef = useRef(analysis.isActive);
   const onCollapseDetailsRef = useRef(onCollapseDetails);
   const onCollapseChangeRef = useRef(onCollapseChange);
+  const onCollapseFillRef = useRef(onCollapseFill);
+  const topPaddingPxRef = useRef(topPaddingPx);
   useEffect(() => {
     activeRef.current = analysis.isActive;
     onCollapseDetailsRef.current = onCollapseDetails;
     onCollapseChangeRef.current = onCollapseChange;
+    onCollapseFillRef.current = onCollapseFill;
+    topPaddingPxRef.current = topPaddingPx;
   });
   const handleToggleDetails = useCallback(() => {
     // Only an expand releases the pin (the collapse owns the viewport: it
@@ -362,11 +399,12 @@ const TurnSection = React.memo(function TurnSection({
         // the total content height stays constant by construction, so the
         // viewport never needs to move. Phase 2 then glides the viewport to
         // the pin position, where finish() re-pins with a zero delta.
-        const wrapper = rowsWrapperRef?.current;
         const section = inner.closest('section');
         const sectionTop = section ? section.getBoundingClientRect().top : containerTop;
         const pinScrollTop = startScrollTop + (sectionTop - containerTop);
-        const fillStart = parseFloat(wrapper?.style.paddingBottom ?? '') || 0;
+        // The spacer's current height (MessageList state, read through the
+        // ref so the effect does not re-run mid-animation).
+        const fillStart = topPaddingPxRef.current;
         // Exact compensation: total content = above + startHeight·(1−eased) +
         // padding, which stays constant only when padding grows by startHeight.
         const fillTarget = fillStart + startHeight;
@@ -395,9 +433,7 @@ const TurnSection = React.memo(function TurnSection({
           const progress = Math.min(1, elapsed / COLLAPSE_MS);
           const eased = terminalEase(progress);
           outer.style.height = `${Math.round(startHeight * (1 - eased))}px`;
-          if (wrapper) {
-            wrapper.style.paddingBottom = `${Math.round(fillStart + (fillTarget - fillStart) * eased)}px`;
-          }
+          onCollapseFillRef.current?.(Math.round(fillStart + (fillTarget - fillStart) * eased));
           if (progress < 1) {
             raf = requestAnimationFrame(foldTick);
           } else {
@@ -509,7 +545,7 @@ const TurnSection = React.memo(function TurnSection({
       clearTimeout(timer);
       onCollapseChangeRef.current?.(false);
     };
-  }, [detailsPhase, scrollContainerRef, rowsWrapperRef]);
+  }, [detailsPhase, scrollContainerRef]);
 
   const showTimer = shouldShowTimer(analysis);
   // The intro occupies the slot above the activity area. It disappears when
@@ -649,6 +685,7 @@ const TurnSection = React.memo(function TurnSection({
 
   return (
     <section
+      ref={sectionRef}
       className={cn('mt-8 first:mt-0', isPureSystemTurn && 'mt-2')}
       data-testid="minimal-turn"
       data-turn-id={turn.id}
@@ -832,11 +869,13 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
 }
 
 /** Reveals a complete text in a smooth fake stream: the content is
- *  already fully available, so this only paces the reveal. Words are the
- *  reveal unit (like a real API token stream — characters would flash
- *  half-rendered markdown, e.g. a lone "*"), at a steady clip scaled to
- *  the text length (clamped 300–1500ms). Children receive the revealed
- *  prefix and re-render as it grows. */
+ *  already fully available, so this only paces the reveal. Characters are
+ *  the reveal unit (like a real API token stream — characters would flash
+ *  half-rendered markdown, e.g. a lone "*"), at a steady clip of
+ *  CHARACTER_REVEAL_MS per character (a real streaming model produces
+ *  roughly one character every 16–33ms, so the pace reads as live typing).
+ *  Children receive the revealed prefix and re-render as it grows. */
+const CHARACTER_REVEAL_MS = 24;
 function RevealText({
   text,
   onComplete,
@@ -846,14 +885,16 @@ function RevealText({
   onComplete: () => void;
   children: (revealed: string) => React.ReactNode;
 }): React.JSX.Element {
-  const tokens = useMemo(() => text.split(/(?<=\s)/), [text]);
+  // Split by Unicode code point (emoji and surrogate pairs stay intact).
+  const tokens = useMemo(() => [...text], [text]);
   const [shown, setShown] = useState(0);
   useEffect(() => {
     if (text.length === 0) return;
-    // Split on word boundaries (done in the useMemo above), keeping the
-    // separators so the revealed slices join back into the exact original
-    // text. The pacing scales with the token count, clamped 300–1500ms.
-    const durationMs = Math.min(1500, Math.max(120, tokens.length * 24));
+    // The pacing scales with the character count — a long summary streams
+    // for as long as it would have taken the model to write it, a short
+    // one is done almost instantly (no artificial upper cap: clamping
+    // would collapse a long text into a one-frame flash).
+    const durationMs = Math.max(CHARACTER_REVEAL_MS, tokens.length * CHARACTER_REVEAL_MS);
     const startAt = performance.now();
     let raf = 0;
     const tick = (now: number): void => {

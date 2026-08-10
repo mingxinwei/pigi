@@ -247,15 +247,31 @@ export default React.memo(function MessageList({
   // scrollHeight includes those gaps — so its target is never the true bottom.
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
+  // Minimal-mode top pin: the working area of the running turn is glued to
+  // the viewport top with open space below it. That open space is rendered
+  // as a real spacer row (see the minimal branch below) whose height lives
+  // in React state — it is part of the render tree, so minimap jumps, view
+  // switches, session switches and streaming commits can never lose it the
+  // way a DOM style side-effect could; it simply re-renders wherever the
+  // content does. All padding mutations (pin, summary-reveal replacement,
+  // collapse fill, release) go through setTopPaddingPx.
+  const [topPaddingPx, setTopPaddingPx] = useState(0);
+  // Mirror for callbacks that must read the latest value without re-running
+  // (handleMinimalTurnEnd / handleSummaryGrowth are stable useCallbacks).
+  const topPaddingPxRef = useRef(0);
+  useEffect(() => {
+    topPaddingPxRef.current = topPaddingPx;
+  }, [topPaddingPx]);
+
   // Resume auto-scroll when a new user message appears. In minimal mode a
   // new turn instead pins its TOP edge to the top of the viewport: the work
   // area gets the whole window as its canvas and grows downward. While the
-  // pin is active the content wrapper gets a viewport-height padding at the
-  // bottom — without it the browser clamps scrollTop once the turn is
-  // shorter than the viewport, and the turn can never reach the top. The
-  // ResizeObserver below re-asserts the pin as content grows. Any user
-  // scroll, the scroll-to-bottom button, or a view/session switch cancels
-  // the pin and removes the padding.
+  // pin is active a viewport-height spacer row renders below the content —
+  // without it the browser clamps scrollTop once the turn is shorter than
+  // the viewport, and the turn can never reach the top. The ResizeObserver
+  // below re-asserts the pin as content grows. Any user scroll, the
+  // scroll-to-bottom button, or a view/session switch cancels the pin and
+  // removes the spacer.
   useLayoutEffect(() => {
     const lastNode = displayNodes[displayNodes.length - 1];
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
@@ -264,8 +280,8 @@ export default React.memo(function MessageList({
         userScrolledDuringPinRef.current = false;
         autoScrollRef.current = false;
         const container = containerRef.current;
-        if (container && rowsWrapperRef.current) {
-          rowsWrapperRef.current.style.paddingBottom = `${container.clientHeight}px`;
+        if (container) {
+          setTopPaddingPx(container.clientHeight);
         }
       } else {
         autoScrollRef.current = true;
@@ -362,9 +378,9 @@ export default React.memo(function MessageList({
         pinTopTurnIdRef.current = turnEl.dataset.turnId ?? null;
         userScrolledDuringPinRef.current = false;
         autoScrollRef.current = false;
-        const wrapper = rowsWrapperRef.current;
-        if (wrapper) {
-          wrapper.style.paddingBottom = `${container.clientHeight}px`;
+        const container = containerRef.current;
+        if (container) {
+          setTopPaddingPx(container.clientHeight);
           pinTopToViewport();
           // The transcript may still be replaying (heights settling), so the
           // turn's position measured now can be stale — re-glue it after the
@@ -484,6 +500,10 @@ export default React.memo(function MessageList({
       // the end-of-turn glide, never the pin itself.
       if (pinTopTurnIdRef.current !== null) {
         userScrolledDuringPinRef.current = true;
+        // A user scroll also releases the summary end-follow (the follow
+        // re-engages only when the viewport returns to the bottom, like a
+        // normal message's auto-scroll).
+        followEndRef.current = false;
       }
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
@@ -558,9 +578,8 @@ export default React.memo(function MessageList({
       userScrolledDuringPinRef.current = false;
       autoScrollRef.current = false;
       const container = containerRef.current;
-      const wrapper = rowsWrapperRef.current;
-      if (container && wrapper) {
-        wrapper.style.paddingBottom = `${container.clientHeight}px`;
+      if (container) {
+        setTopPaddingPx(container.clientHeight);
         pinTopToViewport();
       }
       // A running turn takes over the viewport: skip the saved-position
@@ -744,41 +763,60 @@ export default React.memo(function MessageList({
   }, [isMinimal]);
 
   // Cancel the minimal-mode top pin: stop gluing the turn to the viewport
-  // top and drop the viewport-height padding that let it scroll up there.
+  // top and drop the viewport-height spacer row that let it scroll up there.
   function clearTopPin(): void {
     pinTopTurnIdRef.current = null;
-    if (rowsWrapperRef.current) {
-      rowsWrapperRef.current.style.paddingBottom = '';
-    }
+    setTopPaddingPx(0);
   }
 
   // When the pinned turn finishes, the layout restores immediately — glide
   // scrollTop to the post-padding bottom position while the summary streams
   // in there (like a normal message produced at the bottom of the list), then
-  // drop the padding — the target equals the new max scrollTop, so nothing
-  // jumps. The remaining reveal keeps the view at the bottom through the
-  // ResizeObserver; if the user scrolled during the pin, their position wins
-  // and the pin is dropped in place without gliding.
+  // drop the spacer row — the target equals the new max scrollTop, so
+  // nothing jumps. The remaining reveal keeps the view at the bottom through
+  // the ResizeObserver; if the user scrolled during the pin, their position
+  // wins and the pin is dropped in place without gliding.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
-    if (pinTopTurnIdRef.current !== turnId) return;
-    followEndRef.current = false;
+    if (pinTopTurnIdRef.current !== turnId) {
+      // The pin was already released (details expanded, or the turn ended
+      // mid-collapse): there is nothing to glide — but a spacer that was
+      // re-fit/filled for the expanded view must not linger under the
+      // collapsed turn as dead space.
+      setTopPaddingPx(0);
+      return;
+    }
     if (userScrolledDuringPinRef.current) {
       // The user scrolled while the pin was held: their position wins —
-      // drop the pin and padding without gliding anywhere.
+      // drop the pin and spacer without gliding anywhere.
+      followEndRef.current = false;
       pinTopTurnIdRef.current = null;
-      const wrapper = rowsWrapperRef.current;
-      if (wrapper) wrapper.style.paddingBottom = '';
+      setTopPaddingPx(0);
       return;
     }
     pinTopTurnIdRef.current = null;
     const container = containerRef.current;
-    const wrapper = rowsWrapperRef.current;
-    if (!container || !wrapper) return;
-    const paddingPx = parseFloat(wrapper.style.paddingBottom) || 0;
-    // The reveal has already replaced the padding with text, so paddingPx is
-    // usually ~0 — the glide target is simply the post-padding bottom.
+    if (!container) return;
+    // The viewport was already riding the turn's output (the section
+    // outgrew the viewport while the agent was still working): the user is
+    // reading at the content bottom. Release the spacer and stand exactly
+    // there — the spacer lives below the content, so removing it leaves the
+    // viewport position untouched (no glide, no jump).
+    if (followEndRef.current) {
+      followEndRef.current = false;
+      autoScrollRef.current = true;
+      const contentBottom =
+        container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
+      setTopPaddingPx(0);
+      container.scrollTop = contentBottom;
+      return;
+    }
+    // The reveal has already replaced the spacer with text, so the padding
+    // is usually ~0 — the glide target is simply the post-padding bottom.
     autoScrollRef.current = false;
-    const target = Math.max(0, container.scrollHeight - paddingPx - container.clientHeight);
+    const target = Math.max(
+      0,
+      container.scrollHeight - topPaddingPxRef.current - container.clientHeight,
+    );
     let cancelled = false;
     const { promise, cancel } = animateScrollTop(container, target, RESTORE_LAYOUT_MS);
     restoreAnimRef.current = {
@@ -789,7 +827,7 @@ export default React.memo(function MessageList({
     };
     void promise.then(() => {
       restoreAnimRef.current = null;
-      wrapper.style.paddingBottom = '';
+      setTopPaddingPx(0);
       // Re-assert the true bottom (and keep following the reveal stream);
       // skipped when the user took over scrolling mid-flight.
       if (!cancelled) {
@@ -889,17 +927,16 @@ export default React.memo(function MessageList({
           c.scrollTop += detailsRect.bottom - containerRect.bottom;
         }
         const fill = Math.max(0, containerRect.height - (detailsRect.bottom - containerRect.top));
-        wrapper.style.paddingBottom = `${fill}px`;
+        setTopPaddingPx(fill);
       });
     } else {
       // A finished turn expands without moving the viewport: drop the pin
-      // padding after the commit — it still held the scroll range open, so
+      // spacer after the commit — it still held the scroll range open, so
       // nothing clamps mid-transition.
       expandSettlingRef.current = true;
       requestAnimationFrame(() => {
         expandSettlingRef.current = false;
-        const wrapper = rowsWrapperRef.current;
-        if (wrapper) wrapper.style.paddingBottom = '';
+        setTopPaddingPx(0);
       });
     }
   }, []);
@@ -914,27 +951,76 @@ export default React.memo(function MessageList({
   // never fights a user scroll (userScrolledDuringPinRef).
   const revealStartRef = useRef<{ padding: number; scrollTop: number } | null>(null);
   const followEndRef = useRef(false);
+  // While a turn is active its content (the intro streaming in) grows below
+  // the pinned working area. Once the section is taller than the viewport,
+  // follow the output like a normal message at the bottom of the list: the
+  // pin stays armed (spacer intact, so nothing jumps when the turn ends) but
+  // the viewport rides the growing content. A user scroll releases the
+  // follow; scrolling back to the bottom re-engages it.
+  const handleOutputGrowth = useCallback((sectionHeight: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const exceedsViewport = sectionHeight > container.clientHeight;
+    // The follow target is the CONTENT bottom, not the document bottom: the
+    // pin's spacer (a viewport-height blank row) sits below the content, so
+    // the document bottom is a full viewport of white space — gluing the
+    // viewport there would show a blank page. Aligning the viewport bottom
+    // with the content bottom shows the growing output exactly like a
+    // normal message list; and when the spacer is released at turn end that
+    // position happens to equal the new maxScroll, so nothing jumps.
+    const contentBottom = container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
+    const atContentBottom =
+      Math.abs(container.scrollTop - contentBottom) < AUTO_SCROLL_BOTTOM_THRESHOLD;
+    followEndRef.current =
+      exceedsViewport &&
+      (followEndRef.current || !userScrolledDuringPinRef.current || atContentBottom);
+    if (followEndRef.current && container.scrollTop < contentBottom) {
+      container.scrollTop = contentBottom;
+    }
+  }, []);
+
   const handleSummaryGrowth = useCallback((summaryHeight: number) => {
     const container = containerRef.current;
-    const wrapper = rowsWrapperRef.current;
-    if (!container || !wrapper) return;
+    if (!container) return;
     const start = revealStartRef.current ?? {
-      padding: parseFloat(wrapper.style.paddingBottom) || container.clientHeight,
+      padding: topPaddingPxRef.current || container.clientHeight,
       scrollTop: container.scrollTop,
     };
     revealStartRef.current = start;
     const nextPadding = Math.max(0, start.padding - summaryHeight);
-    const currentPadding = parseFloat(wrapper.style.paddingBottom) || 0;
+    const currentPadding = topPaddingPxRef.current;
     if (Math.abs(nextPadding - currentPadding) > 0.5) {
-      wrapper.style.paddingBottom = `${nextPadding}px`;
+      setTopPaddingPx(nextPadding);
     }
-    followEndRef.current = nextPadding <= 0 && !userScrolledDuringPinRef.current;
+    // Follow the text end like a normal message at the bottom of the list
+    // once the padding is exhausted: engaged while the viewport sits at the
+    // pinned start (the user never left) or at the bottom, and latched until
+    // a user scroll releases it (the wheel handler clears followEndRef; the
+    // follow re-engages when the viewport comes back to the bottom). The
+    // scroll position is compared against the reveal start — a user who
+    // scrolled away mid-reveal has their position respected (no pulling
+    // back), even if they return to the pinned top.
+    followEndRef.current =
+      nextPadding <= 0 &&
+      (followEndRef.current ||
+        (!userScrolledDuringPinRef.current && container.scrollTop === start.scrollTop) ||
+        isAtBottom(container));
     if (followEndRef.current) {
-      const maxScroll = container.scrollHeight - container.clientHeight;
-      if (container.scrollTop < maxScroll) {
-        container.scrollTop = maxScroll;
+      // Same content-bottom target as handleOutputGrowth (the padding is
+      // already exhausted here, so this equals the document bottom).
+      const target = container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
+      if (container.scrollTop < target) {
+        container.scrollTop = target;
       }
     }
+  }, []);
+
+  // The collapse animation's fold grows the spacer back (the details fold
+  // away by exactly the same height, so the list bottom never rises into the
+  // viewport). The fold drives the height frame by frame through this
+  // callback — state, so the spacer row re-renders with the fold.
+  const handleCollapseFill = useCallback((paddingPx: number) => {
+    setTopPaddingPx(paddingPx);
   }, []);
 
   const handleCollapseChange = useCallback((isCollapsing: boolean) => {
@@ -966,9 +1052,8 @@ export default React.memo(function MessageList({
       userScrolledDuringPinRef.current = false;
       autoScrollRef.current = false;
       const container = containerRef.current;
-      const wrapper = rowsWrapperRef.current;
-      if (container && wrapper) {
-        wrapper.style.paddingBottom = `${container.clientHeight}px`;
+      if (container) {
+        setTopPaddingPx(container.clientHeight);
         pinTopToViewport();
       }
     },
@@ -1135,7 +1220,10 @@ export default React.memo(function MessageList({
 
           {isMinimal ? (
             /* Minimal mode: unvirtualized turn content. rowsWrapperRef gives
-               the ResizeObserver pin a box that tracks content growth. */
+               the ResizeObserver pin a box that tracks content growth. The
+               pinned turn's open space below it is a real spacer row (state
+               driven, part of the render tree — minimap jumps, view/session
+               switches and streaming commits can never lose it). */
             <div ref={rowsWrapperRef}>
               <MinimalView
                 nodes={displayNodes}
@@ -1145,9 +1233,18 @@ export default React.memo(function MessageList({
                 onCollapseDetails={handleCollapseDetails}
                 onCollapseChange={handleCollapseChange}
                 onSummaryGrowth={handleSummaryGrowth}
-                rowsWrapperRef={rowsWrapperRef}
+                onOutputGrowth={handleOutputGrowth}
+                onCollapseFill={handleCollapseFill}
+                topPaddingPx={topPaddingPx}
                 scrollContainerRef={containerRef}
               />
+              {topPaddingPx > 0 && (
+                <div
+                  style={{ height: `${topPaddingPx}px` }}
+                  aria-hidden="true"
+                  data-testid="minimal-top-padding"
+                />
+              )}
             </div>
           ) : (
             /*

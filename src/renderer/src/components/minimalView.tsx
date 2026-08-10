@@ -21,7 +21,6 @@ import ToolBlock from './ToolBlock';
 import ThinkingBlock from './thinkingBlock';
 import { SystemBubble, UserBubble } from './messageBubbles';
 import { getToolCommandParts } from '../lib/toolDisplay';
-import { terminalEase } from '../lib/easing';
 import ShimmerOverlay, {
   SHIMMER_BAND_WIDTH_PX,
   SHIMMER_SPEED_PX_PER_SECOND,
@@ -115,7 +114,6 @@ export default function MinimalView({
           key={turn.id}
           turn={turn}
           analysis={analyses[index]}
-          isLastTurn={index === turns.length - 1}
           onExpandDetails={onExpandDetails}
           onTurnEnd={onTurnEnd}
           onCollapseDetails={onCollapseDetails}
@@ -135,19 +133,8 @@ export default function MinimalView({
 const MIN_ACTIVITY_VISIBLE_MS = 1000;
 /** The feed holds at most this many rows. */
 const MAX_ACTIVITY_ROWS = 1;
-/** Details collapse animation: exactly the terminal panel's close rhythm
- *  (240ms on the shared cubic-bezier(0.32,0.72,0,1) accelerate curve). The
- *  curve is front-loaded — half the time covers 96% of the motion — so at
- *  240ms the tail is imperceptible and the fold reads as crisp, not as a
- *  slow creep into the stop. */
-const COLLAPSE_MS = 240;
-/** Pause after the fold completes, before the viewport rolls to its rest
- *  position — a deliberate beat so the two motions read as separate
- *  steps, never one blur. */
-const COLLAPSE_HOLD_MS = 300;
-/** The collapsed layout drops open with the terminal-open feel, slower. */
-const COLLAPSE_EXPAND_MS = 520;
-/** Shared empty feed for ended turns (stable reference, no re-renders). */
+
+// =============================================================================
 const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
 
 // =============================================================================
@@ -160,7 +147,6 @@ const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
 const TurnSection = React.memo(function TurnSection({
   turn,
   analysis,
-  isLastTurn,
   onExpandDetails,
   onTurnEnd,
   onCollapseDetails,
@@ -172,9 +158,6 @@ const TurnSection = React.memo(function TurnSection({
 }: {
   turn: MinimalTurn;
   analysis: MinimalTurnAnalysis;
-  /** Whether this is the last turn in the list — its collapse rolls the
-   *  viewport to the very top (nothing follows below). */
-  isLastTurn: boolean;
   onExpandDetails: (isActive: boolean) => void;
   onTurnEnd?: (turnId: string) => void;
   onCollapseDetails?: (isActive: boolean) => void;
@@ -188,10 +171,6 @@ const TurnSection = React.memo(function TurnSection({
   const [detailsPhase, setDetailsPhase] = useState<'expanded' | 'collapsing' | 'collapsed'>(
     'collapsed',
   );
-  // Set true when a collapse animation completes, so the collapsed layout
-  // that renders next plays its own expand-in; historic turns render
-  // directly without it.
-  const [collapsedAnimateIn, setCollapsedAnimateIn] = useState(false);
   const [wasActive, setWasActive] = useState(() => analysis.isActive);
   const [justEnded, setJustEnded] = useState(false);
   // Set during render (adjust-state pattern): the ended turn's very first
@@ -227,11 +206,9 @@ const TurnSection = React.memo(function TurnSection({
     return () => observer.disconnect();
   }, [analysis.isActive, onOutputGrowth]);
 
-  // Details collapse animation: the outer div animates its height (measured
-  // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
-  // in auto-height containers (Chrome does not interpolate fr tracks there),
-  // so we drive height explicitly. null = auto (natural height).
-  const [detailsHeight, setDetailsHeight] = useState<number | null>(null);
+  // Details collapse is a single instant swap (no animation): the layout
+  // changes in one commit and the viewport jumps to its rest position —
+  // see the collapsing effect below.
   // The details inner div: measured at collapse start, and its last entry is
   // the scroll target when expanding a working turn.
   const detailsRef = useRef<HTMLDivElement>(null);
@@ -251,6 +228,11 @@ const TurnSection = React.memo(function TurnSection({
   const onCollapseChangeRef = useRef(onCollapseChange);
   const onCollapseFillRef = useRef(onCollapseFill);
   const topPaddingPxRef = useRef(topPaddingPx);
+  // The collapsed layout's height, measured while it is still on screen
+  // (i.e. at expand time). The finished-turn collapse swaps the details
+  // (startHeight) for this layout; the difference is compensated with the
+  // spacer so the total height — and the viewport — never moves.
+  const collapsedHeightRef = useRef(0);
   useEffect(() => {
     activeRef.current = analysis.isActive;
     onCollapseDetailsRef.current = onCollapseDetails;
@@ -267,55 +249,39 @@ const TurnSection = React.memo(function TurnSection({
     const expanding = detailsPhase === 'collapsed' || detailsPhase === 'collapsing';
     if (expanding) onExpandDetails(activeRef.current);
     if (detailsPhase === 'collapsing') {
-      // Clicking mid-collapse cancels it: animate the height back from the
-      // current fold to the natural height, then release it to auto (so
-      // streaming content is never clipped). The release must wait for the
-      // height transition to finish — auto cannot transition, so releasing
-      // mid-flight would snap the details open instantly.
-      const inner = detailsRef.current;
-      if (inner) {
-        const naturalHeight = inner.getBoundingClientRect().height;
-        setDetailsHeight(naturalHeight);
-        setTimeout(() => setDetailsHeight(null), COLLAPSE_MS);
-      }
+      // Clicking mid-collapse cancels it: the expand request wins — the
+      // pending swap commit is cleared by the collapse effect's cleanup,
+      // and the details stay fully visible.
       setDetailsPhase('expanded');
       return;
     }
     if (expanding) {
-      // Expanding releases any fixed height left over from a previous
-      // collapse, or the details would mount clipped at zero.
-      setDetailsHeight(null);
-    }
-    if (!expanding && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // Reduced motion: collapse instantly, no fold, no roll — but the pin
-      // must still be restored (the turn is running, and the pin was only
-      // dropped so the details could be read). Without this, the collapsed
-      // mount would resize the wrapper, the ResizeObserver would see a
-      // missing pin and scroll the viewport to the list bottom.
-      onCollapseDetailsRef.current?.(activeRef.current);
-      setDetailsPhase('collapsed');
-      setCollapsedAnimateIn(true);
-      return;
+      // Cache the collapsed layout's height before it leaves the DOM — the
+      // next collapse compensates the details→collapsed swap with exactly
+      // this difference (see the collapse effect).
+      const collapsedEl = sectionRef.current?.querySelector('[data-testid=minimal-collapsed]');
+      if (collapsedEl) {
+        collapsedHeightRef.current = collapsedEl.getBoundingClientRect().height;
+      }
     }
     setDetailsPhase(expanding ? 'expanded' : 'collapsing');
   }, [detailsPhase, onExpandDetails]);
 
-  // Collapse staging runs in two sequential phases — the details shrink
-  // away first (COLLAPSE_MS, terminal-close rhythm), then, once it is fully
-  // folded, the viewport glides to its rest position. The shrink is
-  // rAF-driven: every frame sets the details height from the same progress
-  // curve that counter-scrolls the sticky header, so the fold never pushes
-  // the header away from where it was clicked. The roll only happens after
-  // the fold completes, so the two motions never fight each other.
+  // The collapse is a single instant swap — no animation. The layout
+  // changes in one commit: the collapsed content (the summary) renders
+  // complete immediately, and the spacer compensates the height difference
+  // so the total height — and the viewport — never move. Then the viewport
+  // jumps straight to its rest position. Render first, scroll once: no
+  // fold, no expand-in, no mid-motion clamp drift.
   //
-  // The roll target depends on where the header was:
+  // The rest target depends on where the header was:
   //  - pinned at the top: the list rests where the header sits exactly at
   //    the top edge (its document-flow position), or at the list bottom if
   //    there is not enough content below to pin it there — the header
   //    settles at its natural place instead of being yanked.
-  //  - not pinned: no roll at all — the turn folds in place, unless the
+  //  - not pinned: no scroll at all — the turn folds in place, unless the
   //    current scroll would clamp when the details content leaves
-  //    scrollHeight, in which case it eases to the post-removal bottom.
+  //    scrollHeight, in which case it lands on the post-removal bottom.
   useEffect(() => {
     if (detailsPhase !== 'collapsing') return;
     // Stand the auto-scroll ResizeObserver down for the whole animation: its
@@ -332,203 +298,105 @@ const TurnSection = React.memo(function TurnSection({
       const startHeight = inner.getBoundingClientRect().height;
       const startScrollTop = container.scrollTop;
       const containerTop = container.getBoundingClientRect().top;
-      const startAt = performance.now();
-      let raf = 0;
       let holdTimer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (): void => {
-        setDetailsPhase('collapsed');
-        setCollapsedAnimateIn(true);
-        // The last message's collapsed layout expands in over
-        // COLLAPSE_EXPAND_MS, growing scrollHeight — the roll target was
-        // measured before it mounted (mounting at zero height momentarily
-        // shrinks the scroll range and clamps the viewport off the bottom).
-        // Glue the viewport to the live bottom until the expand-in lands,
-        // so it rests exactly on the true bottom ("can't scroll any
-        // further"). A working turn never does this: its collapse restores
-        // the pin, which owns the viewport position.
-        if (isLastTurn && !activeRef.current) {
-          const chaseStartAt = performance.now();
-          // Intentionally not tracked in the effect's rAF id: finish() sets
-          // detailsPhase to 'collapsed', which re-runs this effect and its
-          // cleanup cancels the shared `raf` — killing the chase after its
-          // first frame would leave the viewport ~30px short of the true
-          // bottom. The loop is bounded (COLLAPSE_EXPAND_MS) and harmless
-          // past unmount (the container stays mounted).
-          const chaseTick = (): void => {
-            container.scrollTop = container.scrollHeight - container.clientHeight;
-            if (performance.now() - chaseStartAt < COLLAPSE_EXPAND_MS) {
-              requestAnimationFrame(chaseTick);
-            }
-          };
-          requestAnimationFrame(chaseTick);
-        }
-        // Collapsing while the turn is still running: the working area goes
-        // back to being pinned (padding included) — the pin was only dropped
-        // so the expanded details could be read. By now the viewport is
-        // already at the pinned position, so the re-pin is a zero delta.
-        onCollapseDetailsRef.current?.(activeRef.current);
-        // Let the ResizeObserver resume next frame (after the collapsed
-        // layout has committed, so its mount cannot fight the animation).
-        onCollapseChangeRef.current?.(false);
-      };
       if (isActive) {
         // Working turn: the collapse restores the pin, so the viewport's
         // final position is the pinned one — the turn's top edge glued to
-        // the container top. Phase 1 folds the details while the padding
-        // grows by exactly the folded-away height (the fold would otherwise
-        // pull the list bottom up into the viewport and clamp the scroll):
-        // the total content height stays constant by construction, so the
-        // viewport never needs to move. Phase 2 then glides the viewport to
-        // the pin position, where finish() re-pins with a zero delta.
+        // the container top. The padding grows by exactly the details
+        // height (the swap would otherwise pull the list bottom up into
+        // the viewport and clamp the scroll): the total content height
+        // stays constant by construction, so the viewport never moves.
         const section = inner.closest('section');
         const sectionTop = section ? section.getBoundingClientRect().top : containerTop;
         const pinScrollTop = startScrollTop + (sectionTop - containerTop);
         // The spacer's current height (MessageList state, read through the
         // ref so the effect does not re-run mid-animation).
-        const fillStart = topPaddingPxRef.current;
-        // Exact compensation: total content = above + startHeight·(1−eased) +
-        // padding, which stays constant only when padding grows by startHeight.
-        const fillTarget = fillStart + startHeight;
-        const startRoll = (): void => {
-          const from = container.scrollTop;
-          const distance = Math.abs(pinScrollTop - from);
-          if (distance < 1) {
-            finish();
-            return;
-          }
-          const rollStartAt = performance.now();
-          const rollTick = (): void => {
-            const elapsed = performance.now() - rollStartAt;
-            const progress = Math.min(1, elapsed / COLLAPSE_MS);
-            container.scrollTop = from + (pinScrollTop - from) * terminalEase(progress);
-            if (progress < 1) {
-              raf = requestAnimationFrame(rollTick);
-            } else {
-              finish();
-            }
-          };
-          raf = requestAnimationFrame(rollTick);
-        };
-        const foldTick = (): void => {
-          const elapsed = performance.now() - startAt;
-          const progress = Math.min(1, elapsed / COLLAPSE_MS);
-          const eased = terminalEase(progress);
-          outer.style.height = `${Math.round(startHeight * (1 - eased))}px`;
-          onCollapseFillRef.current?.(Math.round(fillStart + (fillTarget - fillStart) * eased));
-          if (progress < 1) {
-            raf = requestAnimationFrame(foldTick);
-          } else {
-            startRoll();
-          }
-        };
-        raf = requestAnimationFrame(foldTick);
+        const fillTarget = topPaddingPxRef.current + startHeight;
+        // The swap commit runs outside this effect (a synchronous setState
+        // here trips the cascading-render lint). Tracked so a mid-collapse
+        // expand (which re-runs this effect) cancels it instead of
+        // collapsing again. The fill lands before the re-pin call: when
+        // the re-pin has nothing to restore (no pinned turn recorded), the
+        // fill is the only compensation keeping the scroll range open.
+        holdTimer = setTimeout(() => {
+          setDetailsPhase('collapsed');
+          onCollapseFillRef.current?.(Math.round(fillTarget));
+          // Collapsing while the turn is still running: the working area
+          // goes back to being pinned (padding included) — the pin was
+          // only dropped so the expanded details could be read. By now the
+          // viewport is already at the pinned position, so the re-pin is a
+          // zero delta.
+          onCollapseDetailsRef.current?.(activeRef.current);
+          // Let the ResizeObserver resume next frame (after the collapsed
+          // layout has committed, so its mount cannot fight the swap).
+          onCollapseChangeRef.current?.(false);
+          // Untracked rAF: the effect cleanup (this commit re-runs the
+          // effect) must not cancel the viewport jump.
+          requestAnimationFrame(() => {
+            container.scrollTop = pinScrollTop;
+          });
+        }, 0);
         return () => {
-          cancelAnimationFrame(raf);
           if (holdTimer !== undefined) clearTimeout(holdTimer);
           onCollapseChangeRef.current?.(false);
         };
       }
-      // A finished turn expands without moving the viewport, so its fold
-      // keeps the current view: the header either rests where it was
-      // clicked (document-flow position) or, when there is not enough
-      // content below, at the post-removal bottom — whichever is closer.
-      const timerRow = inner.closest('section')?.querySelector('[data-testid="minimal-timer-row"]');
-      const timerTop = timerRow?.getBoundingClientRect().top;
-      const isPinned = timerTop !== undefined && Math.abs(timerTop - containerTop) < 64;
-      // The header's document-flow position (relative to the container's
-      // content top): temporarily drop the sticky so the measured top is the
-      // natural one. Synchronous measure + restore — no paint in between.
-      let docFlowTop = 0;
-      const wrap = timerRow?.parentElement;
-      if (timerRow !== undefined && timerRow !== null && wrap) {
-        const savedPosition = (wrap as HTMLElement).style.position;
-        (wrap as HTMLElement).style.position = 'static';
-        docFlowTop = timerRow.getBoundingClientRect().top - containerTop + container.scrollTop;
-        (wrap as HTMLElement).style.position = savedPosition;
-      }
-      // Where the list rests once the details content leaves scrollHeight
-      // (it stays measurable until the collapsed layout unmounts it).
-      const restTarget = Math.max(0, container.scrollHeight - startHeight - container.clientHeight);
-      // The last message's collapse lands the viewport at the very bottom
-      // (the post-collapse maxScroll — nothing left to scroll down to):
-      // after the fold the turn is the last content in the list, so the
-      // natural rest is its bottom, wherever the user had scrolled inside
-      // the details.
-      const rollTarget = isLastTurn
-        ? restTarget
-        : isPinned
-          ? Math.min(docFlowTop, restTarget)
-          : Math.min(startScrollTop, restTarget);
-      // Phase 2: after a long beat (COLLAPSE_HOLD_MS — the fold and the
-      // roll are two deliberate steps), glide to the rest position on the
-      // same crisp 240ms terminal rhythm as the fold, then mount the
-      // collapsed layout. The beat exists only for a pinned header (where
-      // the roll follows the fold); an unpinned fold has no second motion,
-      // so it proceeds straight to the collapsed layout — a pause there
-      // would just read as a stutter.
-      const startRoll = (): void => {
-        const proceed = (): void => {
-          const from = container.scrollTop;
-          const distance = Math.abs(rollTarget - from);
-          if (distance < 1) {
-            finish();
-            return;
-          }
-          const rollStartAt = performance.now();
-          const rollTick = (): void => {
-            const elapsed = performance.now() - rollStartAt;
-            const progress = Math.min(1, elapsed / COLLAPSE_MS);
-            container.scrollTop = from + (rollTarget - from) * terminalEase(progress);
-            if (progress < 1) {
-              raf = requestAnimationFrame(rollTick);
-            } else {
-              finish();
-            }
-          };
-          raf = requestAnimationFrame(rollTick);
-        };
-        if (isPinned) {
-          holdTimer = setTimeout(proceed, COLLAPSE_HOLD_MS);
-        } else {
-          proceed();
-        }
-      };
-      // Phase 1: fold the details. While pinned, the viewport rolls toward
-      // the header's document-flow position on the same eased curve that
-      // shrinks the details — at that scrollTop the header sits exactly at
-      // the top edge, so it stays glued at its click position the whole
-      // fold (the document-flow position is fixed, so this is feedforward,
-      // not a feedback loop that could oscillate). Unpinned, the fold
-      // happens in place and the viewport does not move.
-      const collapseTick = (): void => {
-        const elapsed = performance.now() - startAt;
-        const progress = Math.min(1, elapsed / COLLAPSE_MS);
-        const eased = terminalEase(progress);
-        outer.style.height = `${Math.round(startHeight * (1 - eased))}px`;
-        if (isPinned) {
-          container.scrollTop = startScrollTop + (docFlowTop - startScrollTop) * eased;
-        }
-        if (progress < 1) {
-          raf = requestAnimationFrame(collapseTick);
-        } else {
-          // Phase 1 ends at (or near) the roll target already; startRoll
-          // skips straight to the hold when there is nothing left to roll.
-          startRoll();
-        }
-      };
-      raf = requestAnimationFrame(collapseTick);
+      // A finished turn's details collapse INSTANTLY: the layout swaps in
+      // one commit — the collapsed content (summary) renders complete
+      // immediately, the spacer compensating the details→collapsed height
+      // difference keeps the total height (and viewport) still — and then
+      // the viewport jumps straight to its rest position. Render first,
+      // scroll once: no CLS, no mid-fold clamp drift.
+      // The swap compensation: the details (startHeight) leave the layout
+      // and the collapsed layout (measured at expand time) takes their
+      // place — the spacer makes up the difference so the total height,
+      // and the viewport, never move during the swap.
+      const compensation = Math.max(0, startHeight - collapsedHeightRef.current);
+      holdTimer = setTimeout(() => {
+        setDetailsPhase('collapsed');
+        onCollapseFillRef.current?.(Math.round(compensation));
+        // Untracked rAF: the effect cleanup (this commit re-runs the
+        // effect) must not cancel the viewport jump. By now the new layout
+        // is fully committed — the summary rendered, the spacer in place.
+        requestAnimationFrame(() => {
+          // The rest target is the bottom AFTER the spacer is dropped (the
+          // true list bottom): the viewport lands there while the spacer
+          // still holds the scroll range open, so dropping it later cannot
+          // clamp anything.
+          const finalBottom = Math.max(
+            0,
+            container.scrollHeight - compensation - container.clientHeight,
+          );
+          // The viewport rests where it was before the collapse — the
+          // header stays glued to the top edge when the user had scrolled
+          // it there, the bottom of the list when the viewport was at the
+          // details bottom (its position now exceeds the shorter list and
+          // clamps to the new bottom — nothing left to scroll down to).
+          // Whatever the case, dropping the compensation spacer later
+          // cannot clamp anything: restTarget is at most the post-drop
+          // maxScroll.
+          const restTarget = Math.min(startScrollTop, finalBottom);
+          container.scrollTop = restTarget;
+          // Drop the swap compensation: the viewport already rests at the
+          // post-compensation bottom, so removing the spacer shrinks
+          // scrollHeight to exactly the viewport position — zero jump.
+          onCollapseFillRef.current?.(0);
+          onCollapseDetailsRef.current?.(activeRef.current);
+          // Let the ResizeObserver resume next frame (after the collapsed
+          // layout has committed, so its mount cannot fight the swap).
+          onCollapseChangeRef.current?.(false);
+        });
+      }, 0);
       return () => {
-        cancelAnimationFrame(raf);
         if (holdTimer !== undefined) clearTimeout(holdTimer);
         onCollapseChangeRef.current?.(false);
       };
     }
     const timer = setTimeout(() => {
       setDetailsPhase('collapsed');
-      setCollapsedAnimateIn(true);
       onCollapseDetailsRef.current?.(activeRef.current);
       onCollapseChangeRef.current?.(false);
-    }, COLLAPSE_MS + COLLAPSE_HOLD_MS);
+    }, 0);
     return () => {
       clearTimeout(timer);
       onCollapseChangeRef.current?.(false);
@@ -767,29 +635,11 @@ const TurnSection = React.memo(function TurnSection({
       {detailsPhase !== 'collapsed' ? (
         /* Expanded (or collapsing away): the turn's full activity — every
            tool call as a card, thinking blocks, narration text and the
-           final summary. The outer div animates its height to zero
-           (measured at collapse start — grid-template-rows 0fr<->1fr does
-           not interpolate in auto-height containers) while the content
-           fades, so the details visibly fold back into the header instead
-           of vanishing. */
-        <div
-          className={cn(
-            'mt-3 transition-[height,opacity] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-            detailsPhase === 'collapsing' && 'opacity-0',
-          )}
-          style={{
-            height: detailsHeight === null ? undefined : `${detailsHeight}px`,
-            transitionDuration: `${COLLAPSE_MS}ms`,
-            // During the fold the rAF below drives height frame-by-frame;
-            // the CSS height transition would fight it (every per-frame
-            // inline change restarts the transition, so the rendered height
-            // only closes ~18% of the gap per frame — the fold lags and the
-            // leftover height pops away when the details unmounts). Leave
-            // only opacity on the transition; height is fully rAF-owned.
-            transitionProperty: detailsPhase === 'collapsing' ? 'opacity' : undefined,
-          }}
-        >
-          {' '}
+           final summary. Collapsing is an instant swap: the details
+           unmount and the collapsed layout takes its place in the same
+           commit (the spacer compensates the height difference), so no
+           transition styling is needed here. */
+        <div className="mt-3" data-testid="minimal-details-wrapper">
           <div ref={detailsRef} className="overflow-hidden" data-testid="minimal-details">
             <div className="flex flex-col gap-2 pb-1">
               {turn.entries.map((node) => (
@@ -804,10 +654,9 @@ const TurnSection = React.memo(function TurnSection({
            previous one — the turn's final summary lands here too), then
            pinned rows (errors, system markers), then the feed in its
            fixed-height slot — the current thinking or tool shows what the
-           agent is doing. Mounted with an expand-in animation only when it
-           follows a collapse. */
+           agent is doing. Mounts fully rendered: the collapse is an
+           instant swap, so the summary is complete from the first commit. */
         <CollapsedContent
-          animateIn={collapsedAnimateIn}
           showIntro={showIntro}
           intro={analysis.intro}
           currentMsg={currentMsg}
@@ -867,13 +716,11 @@ function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Elemen
   }
 }
 
-/** The collapsed turn layout (intro, pinned rows, activity feed) in its
- *  fixed feed slot. When it mounts right after a collapse it starts at zero
- *  height and drops open slowly (terminal-open feel), so the eye follows
- *  the content down from the header instead of it popping in place.
- *  Historic/initial renders (animateIn=false) show directly, no animation. */
+/** The collapsed turn layout (intro, current message, pinned rows,
+ *  activity feed) in its fixed feed slot. Mounts fully rendered — the
+ *  collapse is an instant swap, so the summary is complete from the first
+ *  commit (no expand-in animation). */
 function CollapsedContent({
-  animateIn,
   showIntro,
   intro,
   currentMsg,
@@ -881,7 +728,6 @@ function CollapsedContent({
   feedRows,
   isActive,
 }: {
-  animateIn: boolean;
   showIntro: boolean;
   intro: AssistantNode | null;
   currentMsg: AssistantNode | null;
@@ -889,43 +735,9 @@ function CollapsedContent({
   feedRows: React.ReactNode[];
   isActive: boolean;
 }): React.JSX.Element {
-  // null = auto (natural height). Start at 0 when animating in; the height
-  // is released back to auto after the transition so later content changes
-  // (feed updates) are never clipped.
-  const [height, setHeight] = useState<number | null>(() => (animateIn ? 0 : null));
-  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
-    };
-  }, []);
-  const innerRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!animateIn) return;
-    const inner = innerRef.current;
-    if (!inner) return;
-    const target = inner.getBoundingClientRect().height;
-    // Next frame: animate 0 -> natural height, then release to auto once the
-    // transition has landed. (requestAnimationFrame defers the setState out
-    // of the effect body so no cascading-render warning.)
-    const raf = requestAnimationFrame(() => {
-      setHeight(target);
-      releaseTimerRef.current = setTimeout(() => setHeight(null), COLLAPSE_EXPAND_MS);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [animateIn]);
   return (
-    <div
-      className={cn(
-        'mt-2 transition-[height,opacity] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-        height === 0 && 'opacity-0',
-      )}
-      style={{
-        height: height === null ? undefined : `${height}px`,
-        transitionDuration: `${COLLAPSE_EXPAND_MS}ms`,
-      }}
-    >
-      <div ref={innerRef} className="overflow-hidden">
+    <div className="mt-2" data-testid="minimal-collapsed">
+      <div className="overflow-hidden">
         <div className="flex flex-col gap-1">
           {showIntro && <AssistantText node={intro!} testId="minimal-intro" />}
           {currentMsg && (

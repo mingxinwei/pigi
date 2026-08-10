@@ -1,11 +1,7 @@
 // Motion-curve tokens shared by the JS-driven rAF animations, so they match
 // the CSS transitions (which reference the same curves as arbitrary Tailwind
-// values). Two curves cover the two motion styles the app uses:
+// values). One curve covers the app's remaining motion style:
 //
-// - terminalEase: cubic-bezier(0.32, 0.72, 0, 1) — the terminal panel's
-//   open/close drawer curve. Fast start, long soft tail; right for short
-//   entrances/exits (collapses, panel toggles), wrong for slow long
-//   movements where the tail reads as creeping.
 // - terminalInOutEase: cubic-bezier(0.77, 0, 0.175, 1) — a strong
 //   ease-in-out for on-screen movement (scrolling a viewport a long
 //   distance): accelerates quickly, cruises, then settles with a short
@@ -30,12 +26,6 @@ function sampleCubicBezier(
   }
   const t = (lower + upper) / 2;
   return 3 * p1y * t * (1 - t) ** 2 + 3 * p2y * t ** 2 * (1 - t) + t ** 3;
-}
-
-/** The app-wide drawer curve: cubic-bezier(0.32, 0.72, 0, 1) — fast start,
- *  long soft tail (the terminal panel's open/close rhythm). */
-export function terminalEase(progress: number): number {
-  return sampleCubicBezier(0.32, 0.72, 0, 1, progress);
 }
 
 /** The on-screen movement curve: cubic-bezier(0.77, 0, 0.175, 1) — strong

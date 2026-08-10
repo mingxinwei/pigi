@@ -426,12 +426,20 @@ export default React.memo(function MessageList({
     // the pinned turn still exists and is still working before gluing it to
     // the top; otherwise drop the pin and let the retry chain find the turn
     // that is actually running.
+    // A just-finished turn keeps its pin while its summary reveals in place
+    // (the revealer's height is replacing the pin's padding) — without this
+    // the moment the turn ends the observer would drop the pin and the
+    // layout would jump into document flow mid-stream.
+    // The viewport is free while the user scrolled during the pin or the
+    // reveal follows the summary end past the viewport: re-glueing the turn
+    // to the top would fight the follow (and yank the user back).
     function pinVerifiedOrRepin(): void {
+      if (userScrolledDuringPinRef.current || followEndRef.current) return;
       const turnEl = findPinnedTurn();
-      if (
-        !turnEl ||
-        !turnEl.querySelector('[data-testid=minimal-working-timer][data-active="true"]')
-      ) {
+      const stillWorking =
+        turnEl?.querySelector('[data-testid=minimal-working-timer][data-active="true"]') != null;
+      const revealingSummary = turnEl?.querySelector('[data-testid=minimal-summary]') != null;
+      if (!turnEl || (!stillWorking && !revealingSummary)) {
         pinTopTurnIdRef.current = null;
         clearTopPin();
         retryPinAttemptRef.current = 0;
@@ -753,6 +761,7 @@ export default React.memo(function MessageList({
   // and the pin is dropped in place without gliding.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
     if (pinTopTurnIdRef.current !== turnId) return;
+    followEndRef.current = false;
     if (userScrolledDuringPinRef.current) {
       // The user scrolled while the pin was held: their position wins —
       // drop the pin and padding without gliding anywhere.
@@ -766,7 +775,8 @@ export default React.memo(function MessageList({
     const wrapper = rowsWrapperRef.current;
     if (!container || !wrapper) return;
     const paddingPx = parseFloat(wrapper.style.paddingBottom) || 0;
-    if (paddingPx <= 0) return;
+    // The reveal has already replaced the padding with text, so paddingPx is
+    // usually ~0 — the glide target is simply the post-padding bottom.
     autoScrollRef.current = false;
     const target = Math.max(0, container.scrollHeight - paddingPx - container.clientHeight);
     let cancelled = false;
@@ -891,6 +901,39 @@ export default React.memo(function MessageList({
         const wrapper = rowsWrapperRef.current;
         if (wrapper) wrapper.style.paddingBottom = '';
       });
+    }
+  }, []);
+
+  // The revealer of a finished turn's summary grows while it streams: its
+  // height replaces the pin's viewport-height padding one for one, so the
+  // total content height stays constant and the pinned working area never
+  // moves (the text visibly takes the place of the open space below it).
+  // Once the padding is exhausted and the summary outgrows the viewport,
+  // the viewport follows the text end like normal output — the pin's
+  // re-glue is stood down while this follow is live (followEndRef), and it
+  // never fights a user scroll (userScrolledDuringPinRef).
+  const revealStartRef = useRef<{ padding: number; scrollTop: number } | null>(null);
+  const followEndRef = useRef(false);
+  const handleSummaryGrowth = useCallback((summaryHeight: number) => {
+    const container = containerRef.current;
+    const wrapper = rowsWrapperRef.current;
+    if (!container || !wrapper) return;
+    const start = revealStartRef.current ?? {
+      padding: parseFloat(wrapper.style.paddingBottom) || container.clientHeight,
+      scrollTop: container.scrollTop,
+    };
+    revealStartRef.current = start;
+    const nextPadding = Math.max(0, start.padding - summaryHeight);
+    const currentPadding = parseFloat(wrapper.style.paddingBottom) || 0;
+    if (Math.abs(nextPadding - currentPadding) > 0.5) {
+      wrapper.style.paddingBottom = `${nextPadding}px`;
+    }
+    followEndRef.current = nextPadding <= 0 && !userScrolledDuringPinRef.current;
+    if (followEndRef.current) {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      if (container.scrollTop < maxScroll) {
+        container.scrollTop = maxScroll;
+      }
     }
   }, []);
 
@@ -1101,6 +1144,7 @@ export default React.memo(function MessageList({
                 onTurnEnd={handleMinimalTurnEnd}
                 onCollapseDetails={handleCollapseDetails}
                 onCollapseChange={handleCollapseChange}
+                onSummaryGrowth={handleSummaryGrowth}
                 rowsWrapperRef={rowsWrapperRef}
                 scrollContainerRef={containerRef}
               />

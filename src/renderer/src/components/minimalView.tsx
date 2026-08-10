@@ -68,6 +68,10 @@ interface MinimalViewProps {
    *  callback structurally pairs start and end, so every exit path (finish,
    *  cleanup, fallback) re-arms the observers. */
   onCollapseChange?: (isCollapsing: boolean) => void;
+  /** Reports the revealer's current height while a finished turn's summary
+   *  streams in — MessageList shrinks the pin's padding by that height, so
+   *  the text replaces the open space and nothing jumps. */
+  onSummaryGrowth?: (height: number) => void;
   /** The rows wrapper (MessageList's padding target): the active-turn
    *  collapse grows the padding back to the viewport height while the
    *  details fold, so the list bottom never rises into the viewport. */
@@ -85,6 +89,7 @@ export default function MinimalView({
   onTurnEnd,
   onCollapseDetails,
   onCollapseChange,
+  onSummaryGrowth,
   rowsWrapperRef,
   scrollContainerRef,
 }: MinimalViewProps): React.JSX.Element {
@@ -105,6 +110,7 @@ export default function MinimalView({
           onTurnEnd={onTurnEnd}
           onCollapseDetails={onCollapseDetails}
           onCollapseChange={onCollapseChange}
+          onSummaryGrowth={onSummaryGrowth}
           rowsWrapperRef={rowsWrapperRef}
           scrollContainerRef={scrollContainerRef}
         />
@@ -147,6 +153,7 @@ const TurnSection = React.memo(function TurnSection({
   onTurnEnd,
   onCollapseDetails,
   onCollapseChange,
+  onSummaryGrowth,
   rowsWrapperRef,
   scrollContainerRef,
 }: {
@@ -156,6 +163,7 @@ const TurnSection = React.memo(function TurnSection({
   onTurnEnd?: (turnId: string) => void;
   onCollapseDetails?: (isActive: boolean) => void;
   onCollapseChange?: (isCollapsing: boolean) => void;
+  onSummaryGrowth?: (height: number) => void;
   rowsWrapperRef?: React.RefObject<HTMLDivElement | null>;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
@@ -182,15 +190,52 @@ const TurnSection = React.memo(function TurnSection({
       setRevealingSummary(true);
     }
   }
-  // The turn's ending restores the normal layout right away (MessageList
-  // drops the pin and padding and glides the view to the bottom) while the
-  // summary streams in there — the turn reads like a normal message being
-  // produced at the bottom of the list, instead of revealing pinned at the
-  // top and then sliding down.
+  // The turn's ending reveals the summary in place (pinned working area),
+  // while the pin's padding shrinks by the summary height — the text
+  // replaces the open space, so the layout never jumps. Once the summary has
+  // fully streamed in (plus a short beat), the normal layout is restored
+  // (MessageList glides the view to the bottom). A turn without a distinct
+  // summary (or whose summary arrived outside the reveal window) restores
+  // right away.
+  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!justEnded) return;
-    onTurnEnd?.(turn.id);
-  }, [justEnded, onTurnEnd, turn.id]);
+    if (!analysis.summary || analysis.summary === analysis.intro || !revealingSummary) {
+      onTurnEnd?.(turn.id);
+    }
+  }, [analysis.intro, analysis.summary, revealingSummary, justEnded, onTurnEnd, turn.id]);
+
+  // Fired once by RevealText when the summary has fully streamed in: a
+  // short beat lets the completed summary land, then the layout restores.
+  const handleRevealComplete = useCallback(() => {
+    if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+    restoreTimerRef.current = setTimeout(() => {
+      restoreTimerRef.current = null;
+      onTurnEnd?.(turn.id);
+    }, SUMMARY_RESTORE_DELAY_MS);
+  }, [onTurnEnd, turn.id]);
+  useEffect(() => {
+    return () => {
+      if (restoreTimerRef.current) clearTimeout(restoreTimerRef.current);
+    };
+  }, []);
+
+  // While the summary reveals, its height replaces the pin's viewport-height
+  // padding one for one (total height stays constant, so the pinned working
+  // area never moves). MessageList owns the padding — it is reported through
+  // onSummaryGrowth every time the revealer grows (ResizeObserver, so the
+  // hand-over tracks every frame of the stream).
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!revealingSummary) return;
+    const summaryEl = summaryRef.current;
+    if (!summaryEl) return;
+    const observer = new ResizeObserver(() => {
+      onSummaryGrowth?.(summaryEl.getBoundingClientRect().height);
+    });
+    observer.observe(summaryEl);
+    return () => observer.disconnect();
+  }, [revealingSummary, onSummaryGrowth]);
 
   // Details collapse animation: the outer div animates its height (measured
   // at collapse start) to zero — grid-template-rows 0fr<->1fr is unreliable
@@ -709,13 +754,16 @@ const TurnSection = React.memo(function TurnSection({
         (revealingSummary ? (
           /* Reveal the completed summary in a smooth fake stream (the
              content is already fully available) so the turn's ending reads
-             like the streaming it just came from. */
+             like the streaming it just came from. The revealer's height
+             replaces the pin's padding as it grows (see the layout effect
+             above); onComplete restores the layout. */
           <div
+            ref={summaryRef}
             className="mt-4 w-full min-w-0 text-[15px] text-foreground"
             style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
             data-testid="minimal-summary"
           >
-            <RevealText text={analysis.summary.text}>
+            <RevealText text={analysis.summary.text} onComplete={handleRevealComplete}>
               {(revealed) => <MarkdownMessage text={revealed} />}
             </RevealText>
           </div>
@@ -791,9 +839,11 @@ function NarrationLine({ node }: { node: AssistantNode }): React.JSX.Element {
  *  prefix and re-render as it grows. */
 function RevealText({
   text,
+  onComplete,
   children,
 }: {
   text: string;
+  onComplete: () => void;
   children: (revealed: string) => React.ReactNode;
 }): React.JSX.Element {
   const tokens = useMemo(() => text.split(/(?<=\s)/), [text]);
@@ -814,6 +864,9 @@ function RevealText({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [tokens, text]);
+  useEffect(() => {
+    if (shown >= tokens.length) onComplete();
+  }, [onComplete, shown, tokens.length]);
   const revealed = tokens.slice(0, shown).join('');
   return <>{children(revealed)}</>;
 }
@@ -974,6 +1027,11 @@ function WorkingTimer({
  *  is usually the useful part (filename, line range, final args). Same
  *  convention as the collapsed-read-group labels. */
 const COMMAND_TAIL_CHARS = 20;
+
+/** Beat after the summary has fully streamed in, before the layout restores
+ *  (the view glides to the bottom) — the completed summary gets a moment to
+ *  land in the pinned working area first. */
+const SUMMARY_RESTORE_DELAY_MS = 200;
 
 /**
  * A tool call as a plain text line in the activity feed. Every feed row is

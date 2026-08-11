@@ -160,15 +160,11 @@ export function analyzeTurn(
       ? lastTextEntry.node
       : null;
 
-  // Second pass: pinned rows only — error messages (the turn's outcome, not
-  // transient activity) and system markers. Tools, thinking and narration
-  // flow through the activity feed (see minimalView), not this list.
+  // Second pass: pinned rows — system markers only. Error messages are
+  // handled by the currentMsg slot (latest replaces previous, same as
+  // normal assistant text).
   for (const node of turn.entries) {
-    if (node.role === 'assistant') {
-      if (node.errorMessage) {
-        items.push({ kind: 'text', node });
-      }
-    } else if (node.role === 'system') {
+    if (node.role === 'system') {
       items.push({ kind: 'system', node });
     }
   }

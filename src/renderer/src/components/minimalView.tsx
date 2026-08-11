@@ -245,7 +245,11 @@ const TurnSection = React.memo(function TurnSection({
   const currentMsg = useMemo(() => {
     let last: AssistantNode | null = null;
     for (const node of turn.entries) {
-      if (node.role === 'assistant' && node.text.length > 0 && node !== analysis.intro) {
+      if (
+        node.role === 'assistant' &&
+        (node.text.length > 0 || node.errorMessage !== undefined) &&
+        node !== analysis.intro
+      ) {
         last = node;
       }
     }

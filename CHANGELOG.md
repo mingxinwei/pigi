@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Expanding a running Minimal-view turn now fills the available space before following new tool cards downward, instead of scrolling partly past the newest card.
+- Expanding and collapsing a finished Minimal-view turn now keeps the same spacing below its “Worked for” header, eliminating the small vertical jump.
 - A running Minimal-view turn can no longer be scrolled below its pinned header; scrolling upward still releases the pin so earlier history remains accessible.
 - Expanded Minimal-view working headers now stay above sticky “Show more” controls instead of being partially covered.
 - Collapsing a finished turn while its header is sticky at the top now scrolls back to the turn's natural position, so you can see the collapsed state instead of being stranded below it.
@@ -16,6 +18,7 @@
 
 ### Changed
 
+- Minimal view now keeps the previous thinking or tool activity visible until the next activity replaces it; as soon as an assistant message starts, the activity row disappears so summaries never have a stale feed underneath.
 - Collapsing an expanded turn in the Minimal view is now instant: the turn's summary appears in its slot immediately and the view settles to its rest position in one step — no fold, fade-in, or roll animation in between, so there is nothing left to flicker.
 - Minimal view scroll pin refactored to an explicit state machine (`idle` / `pinned` / `following` / `scrolled` / `ending`), replacing three scattered boolean refs. Net reduction of ~200 lines; same behavior, no invalid state combinations.
 

@@ -248,7 +248,7 @@ export default React.memo(function MessageList({
   // Viewport-height spacer below the active turn so it can reach the top.
   const [topPaddingPx, setTopPaddingPx] = useState(0);
   const topPaddingPxRef = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     topPaddingPxRef.current = topPaddingPx;
   }, [topPaddingPx]);
 
@@ -760,41 +760,27 @@ export default React.memo(function MessageList({
   );
 
   const releaseAutoScrollPin = useCallback((isActive: boolean) => {
-    autoScrollRef.current = false;
     const pin = pinRef.current;
     if (pin.phase !== 'idle') {
       lastPinnedTurnIdRef.current = pin.turnId;
     }
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
-    pinRef.current = { phase: 'idle' };
 
     if (isActive) {
-      // Expanding an active turn: scroll to details bottom, re-fit spacer.
-      autoScrollRef.current = true;
-      expandSettlingRef.current = true;
-      requestAnimationFrame(() => {
-        const c = containerRef.current;
-        expandSettlingRef.current = false;
-        if (!c) return;
-        const details = c.querySelector('[data-testid=minimal-details]');
-        if (!details) return;
-        const containerRect = c.getBoundingClientRect();
-        const detailsRect = details.getBoundingClientRect();
-        if (detailsRect.bottom > containerRect.bottom) {
-          c.scrollTop += detailsRect.bottom - containerRect.bottom;
-        }
-        const fill = Math.max(0, containerRect.height - (detailsRect.bottom - containerRect.top));
-        setTopPaddingPx(fill);
-      });
-    } else {
-      // Finished turn: drop spacer after commit.
-      expandSettlingRef.current = true;
-      requestAnimationFrame(() => {
-        expandSettlingRef.current = false;
-        setTopPaddingPx(0);
-      });
+      // Preserve pinned/following/scrolled so expanded details use the same
+      // fill-then-follow behavior as normal streaming output.
+      return;
     }
+
+    // Finished turn: release the pin and drop the spacer after commit.
+    autoScrollRef.current = false;
+    pinRef.current = { phase: 'idle' };
+    expandSettlingRef.current = true;
+    requestAnimationFrame(() => {
+      expandSettlingRef.current = false;
+      setTopPaddingPx(0);
+    });
   }, []);
 
   // Content growth handler: transitions pinned → following when the turn's

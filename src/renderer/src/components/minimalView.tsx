@@ -43,8 +43,8 @@ import { cn } from '../lib/utils';
 interface MinimalViewProps {
   nodes: TranscriptNode[];
   sessionStatus: AgentStatus;
-  /** Called when the user expands a turn's details — MessageList releases
-   *  the auto-scroll pin so the viewport stays put. */
+  /** Called when the user expands a turn's details — MessageList preserves
+   *  active output-follow state or releases a finished turn's pin. */
   onExpandDetails: (isActive: boolean) => void;
   /** Called when a turn finishes — MessageList releases the top pin. */
   onTurnEnd?: (turnId: string) => void;
@@ -173,7 +173,7 @@ const TurnSection = React.memo(function TurnSection({
 
   const handleToggleDetails = useCallback(() => {
     if (!detailsOpen) {
-      // Expanding: release the auto-scroll pin so the viewport stays put.
+      // Expanding: preserve active output-follow or release a finished pin.
       onExpandDetails(analysis.isActive);
       setDetailsOpen(true);
       return;
@@ -257,7 +257,8 @@ const TurnSection = React.memo(function TurnSection({
   }, [turn.entries, analysis.intro]);
 
   // Activity feed: at most one row, paced so each stays visible at least
-  // MIN_ACTIVITY_VISIBLE_MS. Only live activities (running tools, thinking).
+  // MIN_ACTIVITY_VISIBLE_MS. The last activity remains until its replacement
+  // arrives, avoiding a blank row between a finished tool and the next event.
   const activeKeys = useMemo(
     () =>
       new Set(
@@ -281,21 +282,6 @@ const TurnSection = React.memo(function TurnSection({
 
   useEffect(() => {
     if (!analysis.isActive) return;
-    // Remove stale rows (activity ended) after their minimum screen time.
-    const staleRows = feed.filter((row) => !activeKeys.has(row.key));
-    if (staleRows.length > 0) {
-      const now = Date.now();
-      const waitMs =
-        Math.min(...staleRows.map((row) => row.shownAt)) + MIN_ACTIVITY_VISIBLE_MS - now;
-      const removeStale = (): void =>
-        setFeed((current) => current.filter((row) => activeKeys.has(row.key)));
-      if (waitMs <= 0) {
-        const frame = requestAnimationFrame(removeStale);
-        return () => cancelAnimationFrame(frame);
-      }
-      const timer = setTimeout(removeStale, waitMs);
-      return () => clearTimeout(timer);
-    }
     // New activities: show immediately if the slot is free, otherwise defer.
     const newKeys = [...activeKeys].filter((key) => !seenKeysRef.current.has(key));
     if (newKeys.length === 0) return;
@@ -352,7 +338,8 @@ const TurnSection = React.memo(function TurnSection({
     <TurnItemRenderer key={item.node.id} item={item} />
   ));
   const feedRows: React.ReactNode[] = [];
-  const visibleFeed = analysis.isActive ? feed : NO_FEED_ROWS;
+  const showFeed = analysis.isActive && currentMsg === null;
+  const visibleFeed = showFeed ? feed : NO_FEED_ROWS;
   for (const { key } of visibleFeed) {
     const node = nodeById.get(key);
     if (!node) continue;
@@ -411,7 +398,7 @@ const TurnSection = React.memo(function TurnSection({
       )}
 
       {detailsOpen ? (
-        <div className="mt-3" data-testid="minimal-details-wrapper">
+        <div className="mt-2" data-testid="minimal-details-wrapper">
           <div className="overflow-hidden" data-testid="minimal-details">
             <div className="flex flex-col gap-2 pb-1">
               {turn.entries.map((node) => (
@@ -427,7 +414,7 @@ const TurnSection = React.memo(function TurnSection({
           currentMsg={currentMsg}
           pinnedRows={pinnedRows}
           feedRows={feedRows}
-          isActive={analysis.isActive}
+          showFeed={showFeed}
         />
       )}
     </section>
@@ -486,14 +473,14 @@ function CollapsedContent({
   currentMsg,
   pinnedRows,
   feedRows,
-  isActive,
+  showFeed,
 }: {
   showIntro: boolean;
   intro: AssistantNode | null;
   currentMsg: AssistantNode | null;
   pinnedRows: React.ReactNode[];
   feedRows: React.ReactNode[];
-  isActive: boolean;
+  showFeed: boolean;
 }): React.JSX.Element {
   return (
     <div className="mt-2" data-testid="minimal-collapsed">
@@ -506,13 +493,17 @@ function CollapsedContent({
             </div>
           )}
           {currentMsg && (
-            <div className="group mt-2" data-testid="minimal-current-msg">
+            <div className={cn('group', showIntro && 'mt-2')} data-testid="minimal-current-msg">
               <AssistantText node={currentMsg} />
               <MessageToolbar text={currentMsg.text || currentMsg.errorMessage || ''} />
             </div>
           )}
           {pinnedRows}
-          {isActive && <div className="flex h-[27px] items-center overflow-hidden">{feedRows}</div>}
+          {showFeed && feedRows.length > 0 && (
+            <div className="flex h-[27px] items-center overflow-hidden" data-testid="minimal-feed">
+              {feedRows}
+            </div>
+          )}
         </div>
       </div>
     </div>

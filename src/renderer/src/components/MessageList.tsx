@@ -972,14 +972,6 @@ export default React.memo(function MessageList({
     }
   }, []);
 
-  // The collapse animation's fold grows the spacer back (the details fold
-  // away by exactly the same height, so the list bottom never rises into the
-  // viewport). The fold drives the height frame by frame through this
-  // callback — state, so the spacer row re-renders with the fold.
-  const handleCollapseFill = useCallback((paddingPx: number) => {
-    setTopPaddingPx(paddingPx);
-  }, []);
-
   const handleCollapseChange = useCallback((isCollapsing: boolean) => {
     // The collapse animation owns the viewport for its whole duration:
     // stand the auto-scroll ResizeObserver down and drop the auto-scroll
@@ -1190,8 +1182,6 @@ export default React.memo(function MessageList({
                 onCollapseDetails={handleCollapseDetails}
                 onCollapseChange={handleCollapseChange}
                 onOutputGrowth={handleOutputGrowth}
-                onCollapseFill={handleCollapseFill}
-                topPaddingPx={topPaddingPx}
                 scrollContainerRef={containerRef}
               />
               {topPaddingPx > 0 && (

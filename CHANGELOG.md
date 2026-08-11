@@ -5,6 +5,8 @@
 ### Fixed
 
 - Collapsing a finished turn while its header is sticky at the top now scrolls back to the turn's natural position, so you can see the collapsed state instead of being stranded below it.
+- The one-frame blank flash when a turn ends (the viewport briefly jumped to the spacer area before it was removed) is gone.
+- Error messages (e.g. 401 responses) now show correctly in the collapsed turn view instead of rendering as empty space.
 
 ### Changed
 

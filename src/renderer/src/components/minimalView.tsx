@@ -496,12 +496,8 @@ function CollapsedContent({
         <div className="flex flex-col gap-1">
           {showIntro && <AssistantText node={intro!} testId="minimal-intro" />}
           {currentMsg && (
-            <div
-              className="mt-2 w-full min-w-0 text-[15px] text-foreground"
-              style={{ maxWidth: `${MESSAGE_CONTENT_MAX_WIDTH}px` }}
-              data-testid="minimal-current-msg"
-            >
-              <MarkdownMessage text={currentMsg.text} />
+            <div className="mt-2" data-testid="minimal-current-msg">
+              <AssistantText node={currentMsg} />
             </div>
           )}
           {pinnedRows}

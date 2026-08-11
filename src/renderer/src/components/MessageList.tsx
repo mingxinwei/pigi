@@ -424,7 +424,11 @@ export default React.memo(function MessageList({
 
     function scrollToBottom(): void {
       if (!autoScrollRef.current) return;
-      container!.scrollTop = container!.scrollHeight;
+      // Subtract the spacer height: during the turn-end transition the pin
+      // is already released but the spacer hasn't been removed yet (queued
+      // setState). Without this, the viewport flashes to the absolute bottom
+      // (including blank spacer area) for one frame before the spacer drops.
+      container!.scrollTop = container!.scrollHeight - topPaddingPxRef.current;
     }
 
     function pinTopToViewport(): void {
@@ -830,11 +834,12 @@ export default React.memo(function MessageList({
     void promise.then(() => {
       restoreAnimRef.current = null;
       setTopPaddingPx(0);
-      // Re-assert the true bottom (the spacer release made it the new
-      // maxScroll); skipped when the user took over scrolling mid-flight.
+      // The animation already landed at contentBottom (scrollHeight -
+      // padding - clientHeight). After the spacer drops, scrollHeight
+      // shrinks by exactly the padding amount, making the current
+      // scrollTop equal the new maxScroll — no re-assert needed.
       if (!cancelled) {
         autoScrollRef.current = true;
-        container.scrollTop = container.scrollHeight;
       }
     });
   }, []);

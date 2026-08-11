@@ -39,6 +39,14 @@ function isRenderableNode(node: TranscriptNode): boolean {
   return Boolean(node.text || node.thinking || node.errorMessage);
 }
 
+/** Minimal-mode pin state machine. */
+type PinPhase =
+  | { phase: 'idle' }
+  | { phase: 'pinned'; turnId: string }
+  | { phase: 'following'; turnId: string }
+  | { phase: 'scrolled'; turnId: string }
+  | { phase: 'ending'; turnId: string };
+
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
 /** Restore animation for the minimal view's top-pin release: a slow,
@@ -147,22 +155,14 @@ export default React.memo(function MessageList({
   const containerRef = useRef<HTMLDivElement>(null);
   const rowsWrapperRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
-  // Minimal mode: the turn whose top edge is pinned to the top of the
-  // viewport (set when a new user message arrives, cleared the moment the
-  // user scrolls or the view/session changes).
-  const pinTopTurnIdRef = useRef<string | null>(null);
-  // The turn that was pinned before details expanded (or the pin was
-  // released for another reason) — collapsing details while the turn is
-  // still running re-pins this turn.
-  const lastPinnedTurnIdRef = useRef<string | null>(null);
   // In-flight layout-restore animation (cancelled the moment the user
   // scrolls, so their position is never yanked back).
   const restoreAnimRef = useRef<{ cancel: () => void } | null>(null);
-  // Set when the user wheels while a minimal turn is pinned: at turn end the
-  // restore glide is skipped (the user's scroll intent wins — they have
-  // moved to read something else, so the view must not glide away). Reset
-  // each time a new turn gets pinned.
-  const userScrolledDuringPinRef = useRef(false);
+
+  // Minimal-mode pin state machine. A single ref encodes the phase of the
+  const pinRef = useRef<PinPhase>({ phase: 'idle' });
+  // The turn id that was pinned before details expanded — re-pin on collapse.
+  const lastPinnedTurnIdRef = useRef<string | null>(null);
   const lastNodeIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -247,37 +247,19 @@ export default React.memo(function MessageList({
   // scrollHeight includes those gaps — so its target is never the true bottom.
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
-  // Minimal-mode top pin: the working area of the running turn is glued to
-  // the viewport top with open space below it. That open space is rendered
-  // as a real spacer row (see the minimal branch below) whose height lives
-  // in React state — it is part of the render tree, so minimap jumps, view
-  // switches, session switches and streaming commits can never lose it the
-  // way a DOM style side-effect could; it simply re-renders wherever the
-  // content does. All padding mutations (pin, spacer release) go through
-  // setTopPaddingPx.
+  // Viewport-height spacer below the active turn so it can reach the top.
   const [topPaddingPx, setTopPaddingPx] = useState(0);
-  // Mirror for callbacks that must read the latest value without re-running
-  // (handleMinimalTurnEnd / handleOutputGrowth are stable useCallbacks).
   const topPaddingPxRef = useRef(0);
   useEffect(() => {
     topPaddingPxRef.current = topPaddingPx;
   }, [topPaddingPx]);
 
-  // Resume auto-scroll when a new user message appears. In minimal mode a
-  // new turn instead pins its TOP edge to the top of the viewport: the work
-  // area gets the whole window as its canvas and grows downward. While the
-  // pin is active a viewport-height spacer row renders below the content —
-  // without it the browser clamps scrollTop once the turn is shorter than
-  // the viewport, and the turn can never reach the top. The ResizeObserver
-  // below re-asserts the pin as content grows. Any user scroll, the
-  // scroll-to-bottom button, or a view/session switch cancels the pin and
-  // removes the spacer.
+  // New user message: pin the turn in minimal mode, or enable auto-scroll.
   useLayoutEffect(() => {
     const lastNode = displayNodes[displayNodes.length - 1];
     if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
       if (isMinimal) {
-        pinTopTurnIdRef.current = lastNode.id;
-        userScrolledDuringPinRef.current = false;
+        pinRef.current = { phase: 'pinned', turnId: lastNode.id };
         autoScrollRef.current = false;
         const container = containerRef.current;
         if (container) {
@@ -325,190 +307,70 @@ export default React.memo(function MessageList({
   // row-DOM resize, which rowsWrapperRo cannot see).
   // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
   // different element, so the observers must re-bind.
-  // Pinned turn lookup: the turn whose top edge stays glued to the
-  // viewport top while it grows (see pinTopTurnIdRef).
-  const findPinnedTurn = useCallback((): HTMLElement | null => {
-    const targetId = pinTopTurnIdRef.current;
-    if (targetId === null) return null;
-    const current = containerRef.current;
-    if (!current) return null;
-    for (const element of current.querySelectorAll('[data-turn-id]')) {
-      if (element.getAttribute('data-turn-id') === targetId) {
-        return element as HTMLElement;
-      }
-    }
-    return null;
-  }, []);
-
-  // Re-glues the pinned turn's top edge to the viewport top (call after
-  // content grew or a pin was (re-)established).
+  // Re-glues the pinned turn's top edge to the viewport top.
   const pinTopToViewport = useCallback(() => {
-    const turnEl = findPinnedTurn();
+    const pin = pinRef.current;
+    if (pin.phase === 'idle' || pin.phase === 'ending') return;
     const container = containerRef.current;
-    if (!turnEl || !container) return;
+    if (!container) return;
+    const turnEl = container.querySelector(`[data-turn-id="${pin.turnId}"]`);
+    if (!turnEl) return;
     container.scrollTop =
       turnEl.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
       container.scrollTop;
-  }, [findPinnedTurn]);
-
-  // DOM fallback for the re-pin: the transcript (and session status) can
-  // still be mid-load right after a session switch, so the node-based
-  // running-turn check may miss a turn that is about to resume. Poll for the
-  // working timer instead. Deliberately NOT tied to the restore effect's
-  // cleanup — that effect re-runs on every streaming commit (its cleanup
-  // would kill the pending retry), so the retry chain manages itself and
-  // stops when it finds the timer (or exhausts its attempts).
-  const retryPinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryPinAttemptRef = useRef(0);
-  const scheduleRetryPin = useCallback(() => {
-    if (retryPinTimerRef.current) return;
-    retryPinTimerRef.current = setTimeout(() => {
-      retryPinTimerRef.current = null;
-      const container = containerRef.current;
-      if (!container) return;
-      const workingTimers = container.querySelectorAll(
-        '[data-testid=minimal-working-timer][data-active="true"]',
-      );
-      // The last active timer is the turn that is actually running now — a
-      // replay can light up several, but only the newest is the live one.
-      const workingTimer = workingTimers[workingTimers.length - 1];
-      const turnEl = workingTimer?.closest<HTMLElement>('[data-turn-id]');
-      if (workingTimer && turnEl) {
-        pinTopTurnIdRef.current = turnEl.dataset.turnId ?? null;
-        userScrolledDuringPinRef.current = false;
-        autoScrollRef.current = false;
-        const container = containerRef.current;
-        if (container) {
-          setTopPaddingPx(container.clientHeight);
-          pinTopToViewport();
-          // The transcript may still be replaying (heights settling), so the
-          // turn's position measured now can be stale — re-glue it after the
-          // layout has had a frame to settle.
-          requestAnimationFrame(() => {
-            if (pinTopTurnIdRef.current !== null) pinTopToViewport();
-          });
-        }
-        retryPinAttemptRef.current = 0;
-        return;
-      }
-      retryPinAttemptRef.current += 1;
-      // The transcript replay can take a couple of seconds; keep polling
-      // well past it (the chain stops on its own once a working turn is
-      // found, and never runs when no turn is running at all).
-      if (retryPinAttemptRef.current <= 20) {
-        scheduleRetryPin();
-      }
-    }, 250);
-  }, [pinTopToViewport]);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
     const rowsWrapper = rowsWrapperRef.current;
     if (!container || !rowsWrapper) return;
 
-    // Pinned turn lookup: the turn whose top edge stays glued to the
-    // viewport top while it grows (see pinTopTurnIdRef).
-    function findPinnedTurn(): HTMLElement | null {
-      const targetId = pinTopTurnIdRef.current;
-      if (targetId === null) return null;
-      const current = containerRef.current;
-      if (!current) return null;
-      for (const element of current.querySelectorAll('[data-turn-id]')) {
-        if (element.getAttribute('data-turn-id') === targetId) {
-          return element as HTMLElement;
-        }
-      }
-      return null;
-    }
-
-    function scrollToBottom(): void {
-      if (!autoScrollRef.current) return;
-      // Subtract the spacer height: during the turn-end transition the pin
-      // is already released but the spacer hasn't been removed yet (queued
-      // setState). Without this, the viewport flashes to the absolute bottom
-      // (including blank spacer area) for one frame before the spacer drops.
-      container!.scrollTop = container!.scrollHeight - topPaddingPxRef.current;
-    }
-
-    function pinTopToViewport(): void {
-      const turnEl = findPinnedTurn();
-      if (!turnEl) return;
-      container!.scrollTop =
-        turnEl.getBoundingClientRect().top -
-        container!.getBoundingClientRect().top +
-        container!.scrollTop;
-    }
-
-    // The transcript replay after a session switch can momentarily light up
-    // working timers on turns that have already finished (or that vanish
-    // once the replay settles), so a retry may pin the wrong turn. Verify
-    // the pinned turn still exists and is still working before gluing it to
-    // the top; otherwise drop the pin and let the retry chain find the turn
-    // that is actually running.
-    // A just-finished turn keeps its pin while its final message (summary)
-    // renders in the current-message slot — without this the moment the
-    // turn ends the observer would drop the pin and the layout would jump
-    // into document flow mid-stream (MessageList's turn-end handler glides
-    // the view instead).
-    // The viewport is free while the user scrolled during the pin or the
-    // follow rides the output past the viewport: re-glueing the turn
-    // to the top would fight the follow (and yank the user back).
-    function pinVerifiedOrRepin(): void {
-      if (userScrolledDuringPinRef.current || followEndRef.current) return;
-      const turnEl = findPinnedTurn();
-      const stillWorking =
-        turnEl?.querySelector('[data-testid=minimal-working-timer][data-active="true"]') != null;
-      const hasMessage = turnEl?.querySelector('[data-testid=minimal-current-msg]') != null;
-      if (!turnEl || (!stillWorking && !hasMessage)) {
-        pinTopTurnIdRef.current = null;
-        clearTopPin();
-        retryPinAttemptRef.current = 0;
-        scheduleRetryPin();
-        return;
-      }
-      pinTopToViewport();
-    }
-
-    const rowsWrapperRo = new ResizeObserver(() => {
+    function handleResize(): void {
       if (expandSettlingRef.current) return;
-      if (pinTopTurnIdRef.current !== null) {
-        pinVerifiedOrRepin();
-      } else {
-        scrollToBottom();
+      const pin = pinRef.current;
+      switch (pin.phase) {
+        case 'pinned': {
+          const turnEl = container!.querySelector(`[data-turn-id="${pin.turnId}"]`);
+          if (turnEl) {
+            container!.scrollTop =
+              turnEl.getBoundingClientRect().top -
+              container!.getBoundingClientRect().top +
+              container!.scrollTop;
+          }
+          break;
+        }
+        case 'following': {
+          // Ride the content bottom (spacer excluded).
+          if (!autoScrollRef.current) break;
+          container!.scrollTop =
+            container!.scrollHeight - topPaddingPxRef.current - container!.clientHeight;
+          break;
+        }
+        case 'idle':
+          if (!autoScrollRef.current) break;
+          container!.scrollTop = container!.scrollHeight;
+          break;
+        // 'scrolled' / 'ending': don't touch scrollTop
       }
-    });
+    }
+
+    const rowsWrapperRo = new ResizeObserver(handleResize);
     rowsWrapperRo.observe(rowsWrapper);
 
     const containerRo = new ResizeObserver(() => {
-      if (expandSettlingRef.current) return;
-      if (pinTopTurnIdRef.current !== null) {
-        pinVerifiedOrRepin();
-      } else {
-        scrollToBottom();
-      }
+      handleResize();
       setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
     setContainerWidth(container.clientWidth);
 
     function handleWheel(event: WheelEvent): void {
-      // A mid-flight restore animation must not fight the user's scroll.
       restoreAnimRef.current?.cancel();
       restoreAnimRef.current = null;
-      // NOTE: no clearTopPin() here — while a minimal turn is pinned (i.e.
-      // until its summary has fully appeared) the working area must keep its
-      // padding and stay reachable at the top; a user scroll glides away but
-      // the next content change re-pins the turn. The pin only ends when the
-      // turn finishes, the details are expanded, the scroll-to-bottom button
-      // is used, or the view/session changes. The flag below only cancels
-      // the end-of-turn glide, never the pin itself.
-      if (pinTopTurnIdRef.current !== null) {
-        userScrolledDuringPinRef.current = true;
-        // A user scroll also releases the summary end-follow (the follow
-        // re-engages only when the viewport returns to the bottom, like a
-        // normal message's auto-scroll).
-        followEndRef.current = false;
+      const pin = pinRef.current;
+      if (pin.phase === 'pinned' || pin.phase === 'following') {
+        pinRef.current = { phase: 'scrolled', turnId: pin.turnId };
       }
       if (event.deltaY < 0) {
         autoScrollRef.current = false;
@@ -528,7 +390,7 @@ export default React.memo(function MessageList({
     container.addEventListener('wheel', handleWheel, { capture: true, passive: true });
     container.addEventListener('scroll', handleScroll, { passive: true });
 
-    scrollToBottom();
+    handleResize();
 
     return () => {
       rowsWrapperRo.disconnect();
@@ -536,7 +398,7 @@ export default React.memo(function MessageList({
       container.removeEventListener('wheel', handleWheel, { capture: true });
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [isMinimal, scheduleRetryPin]);
+  }, [isMinimal]);
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
@@ -579,8 +441,7 @@ export default React.memo(function MessageList({
     const hasRunningTurn =
       lastNode?.role === 'user' || (lastNode?.role === 'assistant' && sessionStatus !== 'idle');
     if (isMinimal && hasRunningTurn) {
-      pinTopTurnIdRef.current = lastNode.id;
-      userScrolledDuringPinRef.current = false;
+      pinRef.current = { phase: 'pinned', turnId: lastNode.id };
       autoScrollRef.current = false;
       const container = containerRef.current;
       if (container) {
@@ -596,11 +457,6 @@ export default React.memo(function MessageList({
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
     clearTopPin();
-    // The node check above may have missed a turn that is about to resume
-    // (transcript still loading, agent not resumed yet): keep polling the
-    // DOM for its working timer.
-    retryPinAttemptRef.current = 0;
-    scheduleRetryPin();
 
     const savedPosition = sessionPath
       ? useAppStore.getState().scrollPositions.get(sessionPath)
@@ -628,7 +484,7 @@ export default React.memo(function MessageList({
     return () => {
       cancelled = true;
     };
-  }, [displayNodes, isMinimal, pinTopToViewport, scheduleRetryPin, sessionPath, sessionStatus]);
+  }, [displayNodes, isMinimal, pinTopToViewport, sessionPath, sessionStatus]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
@@ -767,81 +623,68 @@ export default React.memo(function MessageList({
     setActiveOccurrenceInfo(null);
   }, [isMinimal]);
 
-  // Cancel the minimal-mode top pin: stop gluing the turn to the viewport
-  // top and drop the viewport-height spacer row that let it scroll up there.
   function clearTopPin(): void {
-    pinTopTurnIdRef.current = null;
+    pinRef.current = { phase: 'idle' };
     setTopPaddingPx(0);
   }
 
-  // When the pinned turn finishes, the layout restores immediately — glide
-  // scrollTop to the post-padding bottom position while the summary streams
-  // in there (like a normal message produced at the bottom of the list), then
-  // drop the spacer row — the target equals the new max scrollTop, so
-  // nothing jumps. If the user scrolled during the pin, their position
-  // wins and the pin is dropped in place without gliding.
   const handleMinimalTurnEnd = useCallback((turnId: string) => {
-    if (pinTopTurnIdRef.current !== turnId) {
-      // The pin was already released (details expanded, or the turn ended
-      // mid-collapse): there is nothing to glide — but a spacer that was
-      // re-fit/filled for the expanded view must not linger under the
-      // collapsed turn as dead space.
+    const pin = pinRef.current;
+    // Pin already released (details expanded, turn ended mid-collapse).
+    if (pin.phase === 'idle' || pin.turnId !== turnId) {
       setTopPaddingPx(0);
       return;
     }
-    if (userScrolledDuringPinRef.current) {
-      // The user scrolled while the pin was held: their position wins —
-      // drop the pin and spacer without gliding anywhere.
-      followEndRef.current = false;
-      pinTopTurnIdRef.current = null;
-      setTopPaddingPx(0);
-      return;
-    }
-    pinTopTurnIdRef.current = null;
     const container = containerRef.current;
-    if (!container) return;
-    // The viewport was already riding the turn's output (the section
-    // outgrew the viewport while the agent was still working): the user is
-    // reading at the content bottom. Release the spacer and stand exactly
-    // there — the spacer lives below the content, so removing it leaves the
-    // viewport position untouched (no glide, no jump).
-    if (followEndRef.current) {
-      followEndRef.current = false;
-      autoScrollRef.current = true;
-      const contentBottom =
-        container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
-      setTopPaddingPx(0);
-      container.scrollTop = contentBottom;
+    if (!container) {
+      clearTopPin();
       return;
     }
-    // The final message (summary) already sits in the current-message slot,
-    // so the spacer is still full — the glide target is the content bottom
-    // (spacer excluded; releasing the spacer later lands the viewport at the
-    // exact same position).
-    autoScrollRef.current = false;
-    const target = Math.max(
-      0,
-      container.scrollHeight - topPaddingPxRef.current - container.clientHeight,
-    );
-    let cancelled = false;
-    const { promise, cancel } = animateScrollTop(container, target, RESTORE_LAYOUT_MS);
-    restoreAnimRef.current = {
-      cancel: () => {
-        cancelled = true;
-        cancel();
-      },
-    };
-    void promise.then(() => {
-      restoreAnimRef.current = null;
-      setTopPaddingPx(0);
-      // The animation already landed at contentBottom (scrollHeight -
-      // padding - clientHeight). After the spacer drops, scrollHeight
-      // shrinks by exactly the padding amount, making the current
-      // scrollTop equal the new maxScroll — no re-assert needed.
-      if (!cancelled) {
+
+    switch (pin.phase) {
+      case 'scrolled':
+        // User scrolled: their position wins, just drop everything.
+        clearTopPin();
+        return;
+
+      case 'following': {
+        // Viewport was riding content bottom. Drop spacer, stand there.
+        const contentBottom =
+          container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
+        pinRef.current = { phase: 'idle' };
+        setTopPaddingPx(0);
+        container.scrollTop = contentBottom;
         autoScrollRef.current = true;
+        return;
       }
-    });
+
+      case 'pinned': {
+        // Content still fits viewport. Glide to content bottom.
+        pinRef.current = { phase: 'ending', turnId };
+        autoScrollRef.current = false;
+        const target = Math.max(
+          0,
+          container.scrollHeight - topPaddingPxRef.current - container.clientHeight,
+        );
+        let cancelled = false;
+        const { promise, cancel } = animateScrollTop(container, target, RESTORE_LAYOUT_MS);
+        restoreAnimRef.current = {
+          cancel: () => {
+            cancelled = true;
+            cancel();
+          },
+        };
+        void promise.then(() => {
+          restoreAnimRef.current = null;
+          pinRef.current = { phase: 'idle' };
+          setTopPaddingPx(0);
+          if (!cancelled) {
+            autoScrollRef.current = true;
+          }
+        });
+        return;
+      }
+    }
   }, []);
 
   function handleScrollToBottom(): void {
@@ -883,53 +726,26 @@ export default React.memo(function MessageList({
 
   const releaseAutoScrollPin = useCallback((isActive: boolean) => {
     autoScrollRef.current = false;
-    // Remember which turn was pinned so collapsing details can re-pin it
-    // while the turn keeps running — but only when there IS a pinned turn:
-    // a collapse click also reaches here (handleToggleDetails calls this
-    // unconditionally) with the pin already released, and overwriting with
-    // null would lose the target we need to restore.
-    if (pinTopTurnIdRef.current !== null) {
-      lastPinnedTurnIdRef.current = pinTopTurnIdRef.current;
+    const pin = pinRef.current;
+    if (pin.phase !== 'idle') {
+      lastPinnedTurnIdRef.current = pin.turnId;
     }
-    // Expanding details must also drop the minimal-mode top pin (or the
-    // ResizeObserver would glue the turn back to the viewport top and
-    // defeat the expand-time scroll). The viewport-height padding stays in
-    // place for now: dropping it before React's commit would shrink the
-    // scroll range while the details are still closed, and the browser
-    // would clamp scrollTop — yanking the working header down even for a
-    // short expansion. It is re-fit (or dropped) after the commit below.
     restoreAnimRef.current?.cancel();
     restoreAnimRef.current = null;
-    pinTopTurnIdRef.current = null;
-    // Expanding while the turn is still running: the newest activity is what
-    // the user is about to read, so the viewport lands on the bottom of the
-    // expanded details — not the bottom of the whole list (the header would
-    // be yanked to wherever it sits in the document flow, even for a short
-    // expansion). Runs after React's commit (details mounted, padding still
-    // holding the scroll range open): the padding is then re-fit to fill
-    // only what the details do not cover — a short expansion keeps the
-    // working header glued exactly where it was, a long one leaves no
-    // padding and just rolls to the details bottom.
+    pinRef.current = { phase: 'idle' };
+
     if (isActive) {
+      // Expanding an active turn: scroll to details bottom, re-fit spacer.
       autoScrollRef.current = true;
       expandSettlingRef.current = true;
       requestAnimationFrame(() => {
         const c = containerRef.current;
-        const wrapper = rowsWrapperRef.current;
         expandSettlingRef.current = false;
-        if (!c || !wrapper) return;
+        if (!c) return;
         const details = c.querySelector('[data-testid=minimal-details]');
         if (!details) return;
-        // Mounting the details would trigger the auto-scroll ResizeObserver
-        // before this frame (padding still in place, so it would scroll to
-        // the old bottom) — the settling flag above kept it standing down.
         const containerRect = c.getBoundingClientRect();
         const detailsRect = details.getBoundingClientRect();
-        // Scroll before re-fitting the padding: shrinking the padding clamps
-        // an over-long scrollTop back to the new bottom, which would cancel
-        // the roll below. Rolling first lands the details bottom exactly on
-        // the viewport edge, then the padding re-fit cannot clamp it (the
-        // new bottom equals that scroll position).
         if (detailsRect.bottom > containerRect.bottom) {
           c.scrollTop += detailsRect.bottom - containerRect.bottom;
         }
@@ -937,9 +753,7 @@ export default React.memo(function MessageList({
         setTopPaddingPx(fill);
       });
     } else {
-      // A finished turn expands without moving the viewport: drop the pin
-      // spacer after the commit — it still held the scroll range open, so
-      // nothing clamps mid-transition.
+      // Finished turn: drop spacer after commit.
       expandSettlingRef.current = true;
       requestAnimationFrame(() => {
         expandSettlingRef.current = false;
@@ -948,31 +762,23 @@ export default React.memo(function MessageList({
     }
   }, []);
 
-  const followEndRef = useRef(false);
-  // While a turn is active its content (the intro streaming in) grows below
-  // the pinned working area. Once the section is taller than the viewport,
-  // follow the output like a normal message at the bottom of the list: the
-  // pin stays armed (spacer intact, so nothing jumps when the turn ends) but
-  // the viewport rides the growing content. A user scroll releases the
-  // follow; scrolling back to the bottom re-engages it.
+  // Content growth handler: transitions pinned → following when the turn's
+  // content exceeds the viewport, then rides the content bottom.
   const handleOutputGrowth = useCallback((sectionHeight: number) => {
     const container = containerRef.current;
     if (!container) return;
+    const pin = pinRef.current;
+    if (pin.phase !== 'pinned' && pin.phase !== 'following') return;
     const exceedsViewport = sectionHeight > container.clientHeight;
-    // The follow target is the CONTENT bottom, not the document bottom: the
-    // pin's spacer (a viewport-height blank row) sits below the content, so
-    // the document bottom is a full viewport of white space — gluing the
-    // viewport there would show a blank page. Aligning the viewport bottom
-    // with the content bottom shows the growing output exactly like a
-    // normal message list; and when the spacer is released at turn end that
-    // position happens to equal the new maxScroll, so nothing jumps.
     const contentBottom = container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
-    const atContentBottom =
-      Math.abs(container.scrollTop - contentBottom) < AUTO_SCROLL_BOTTOM_THRESHOLD;
-    followEndRef.current =
-      exceedsViewport &&
-      (followEndRef.current || !userScrolledDuringPinRef.current || atContentBottom);
-    if (followEndRef.current && container.scrollTop < contentBottom) {
+    if (exceedsViewport) {
+      // Transition pinned → following: content just outgrew the viewport.
+      if (pin.phase === 'pinned') {
+        pinRef.current = { phase: 'following', turnId: pin.turnId };
+        autoScrollRef.current = true;
+      }
+      // Always assert content bottom — the RO's pinned case may have
+      // overshot scrollTop before this callback ran.
       container.scrollTop = contentBottom;
     }
   }, []);
@@ -994,16 +800,13 @@ export default React.memo(function MessageList({
     }
   }, []);
 
-  // Details collapsed while the turn is still running: the working area must
-  // go back to being pinned to the viewport top (viewport-height padding and
-  // all) — the pin was only dropped so the expanded details could be read.
+  // Re-pin on collapse of active turn's details.
   const handleCollapseDetails = useCallback(
     (isActive: boolean) => {
       if (!isActive) return;
       const turnId = lastPinnedTurnIdRef.current;
       if (!turnId) return;
-      pinTopTurnIdRef.current = turnId;
-      userScrolledDuringPinRef.current = false;
+      pinRef.current = { phase: 'pinned', turnId };
       autoScrollRef.current = false;
       const container = containerRef.current;
       if (container) {

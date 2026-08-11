@@ -11,6 +11,7 @@
 ### Changed
 
 - Collapsing an expanded turn in the Minimal view is now instant: the turn's summary appears in its slot immediately and the view settles to its rest position in one step — no fold, fade-in, or roll animation in between, so there is nothing left to flicker.
+- Minimal view scroll pin refactored to an explicit state machine (`idle` / `pinned` / `following` / `scrolled` / `ending`), replacing three scattered boolean refs. Net reduction of ~200 lines; same behavior, no invalid state combinations.
 
 ## [0.4.3] - 2026-08-09
 

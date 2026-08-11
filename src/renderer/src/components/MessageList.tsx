@@ -20,7 +20,6 @@ import CollapsedReadGroup from './CollapsedReadGroup';
 import MarkdownMessage from './markdownMessage';
 import UserMessageMiniMap from './UserMessageMiniMap';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
-import { terminalInOutEase } from '../lib/easing';
 import MessageSearch, { type MessageSearchTarget, type OccurrenceResult } from './MessageSearch';
 import { useHighlightTextNodes, findOccurrenceRanges } from '../lib/highlightMatches';
 import { buildRenderItems, type RenderItem } from '../lib/readGrouping';
@@ -53,7 +52,6 @@ const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
  *  deliberate settle on the on-screen movement curve (ease-in-out) — quick
  *  acceleration, cruise, short deceleration — so a long scroll ends crisply
  *  instead of creeping through the last quarter of its distance. */
-const RESTORE_LAYOUT_MS = 500;
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
@@ -666,22 +664,26 @@ export default React.memo(function MessageList({
           0,
           container.scrollHeight - topPaddingPxRef.current - container.clientHeight,
         );
+        // Use native smooth scroll (compositor-driven, jank-free).
+        container.scrollTo({ top: target, behavior: 'smooth' });
+        // Clean up when the smooth scroll finishes.
         let cancelled = false;
-        const { promise, cancel } = animateScrollTop(container, target, RESTORE_LAYOUT_MS);
+        const onEnd = (): void => {
+          container.removeEventListener('scrollend', onEnd);
+          restoreAnimRef.current = null;
+          if (!cancelled) {
+            pinRef.current = { phase: 'idle' };
+            setTopPaddingPx(0);
+            autoScrollRef.current = true;
+          }
+        };
+        container.addEventListener('scrollend', onEnd, { once: true });
         restoreAnimRef.current = {
           cancel: () => {
             cancelled = true;
-            cancel();
+            container.removeEventListener('scrollend', onEnd);
           },
         };
-        void promise.then(() => {
-          restoreAnimRef.current = null;
-          pinRef.current = { phase: 'idle' };
-          setTopPaddingPx(0);
-          if (!cancelled) {
-            autoScrollRef.current = true;
-          }
-        });
         return;
       }
     }
@@ -1126,49 +1128,6 @@ function estimateNodeHeight(node: TranscriptNode | undefined): number {
 
 /** Animates scrollTop toward target on the app-wide motion curve, returning
  *  a cancel handle (the user's own scroll must always win). */
-function animateScrollTop(
-  container: HTMLElement,
-  target: number,
-  durationMs: number,
-): { promise: Promise<void>; cancel: () => void } {
-  const start = container.scrollTop;
-  const delta = target - start;
-  let raf = 0;
-  let cancelled = false;
-  let resolvePromise: () => void = () => {};
-  const promise = new Promise<void>((resolve) => {
-    resolvePromise = resolve;
-  });
-  if (Math.abs(delta) < 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    container.scrollTop = target;
-    resolvePromise();
-    return { promise, cancel: () => {} };
-  }
-  const startAt = performance.now();
-  const tick = (now: number): void => {
-    if (cancelled) {
-      resolvePromise();
-      return;
-    }
-    const progress = Math.min(1, (now - startAt) / durationMs);
-    const eased = terminalInOutEase(progress);
-    container.scrollTop = start + delta * eased;
-    if (progress < 1) {
-      raf = requestAnimationFrame(tick);
-    } else {
-      resolvePromise();
-    }
-  };
-  raf = requestAnimationFrame(tick);
-  return {
-    promise,
-    cancel: () => {
-      cancelled = true;
-      cancelAnimationFrame(raf);
-      resolvePromise();
-    },
-  };
-}
 
 function isAtBottom(container: HTMLDivElement): boolean {
   return (

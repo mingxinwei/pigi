@@ -27,6 +27,7 @@ import ThinkingBlock from './thinkingBlock';
 import { MessageToolbar, SystemBubble, UserBubble } from './messageBubbles';
 import { parseSkillBlock } from '../lib/skillBlock';
 import MinimalView from './minimalView';
+import { analyzeTurn, buildTurns } from '../lib/minimalTurns';
 
 interface MessageListProps {
   nodes: TranscriptNode[];
@@ -464,15 +465,16 @@ export default React.memo(function MessageList({
     let cancelled = false;
 
     // Re-pin a still-running minimal turn: switching away and back while a
-    // turn executes must keep the working area pinned (padding and all). A
-    // running turn ends with an assistant node still streaming, so accept
-    // either the bare user node (nothing streamed yet) or a live assistant
-    // node.
-    const lastNode = displayNodes[displayNodes.length - 1];
+    // turn executes must keep the working area pinned (padding and all).
+    // Resolve the turn itself rather than using the last transcript node:
+    // while tools or assistant output stream, that node is not the user node
+    // used by data-turn-id.
+    const turns = buildTurns(displayNodes);
+    const lastTurn = turns[turns.length - 1];
     const hasRunningTurn =
-      lastNode?.role === 'user' || (lastNode?.role === 'assistant' && sessionStatus !== 'idle');
+      lastTurn !== undefined && analyzeTurn(lastTurn, sessionStatus, true).isActive;
     if (isMinimal && hasRunningTurn) {
-      pinRef.current = { phase: 'pinned', turnId: lastNode.id };
+      pinRef.current = { phase: 'pinned', turnId: lastTurn.id };
       autoScrollRef.current = false;
       const container = containerRef.current;
       if (container) {

@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Switching away from a session and back while a Minimal-view turn is running now restores its pin even when a tool or assistant response is the latest transcript entry.
 - Expanding a running Minimal-view turn now fills the available space before following new tool cards downward, instead of scrolling partly past the newest card.
 - Expanding and collapsing a finished Minimal-view turn now keeps the same spacing below its “Worked for” header, eliminating the small vertical jump.
 - A running Minimal-view turn can no longer be scrolled below its pinned header; scrolling upward still releases the pin so earlier history remains accessible.

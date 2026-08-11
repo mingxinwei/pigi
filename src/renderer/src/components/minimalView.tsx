@@ -352,6 +352,15 @@ const TurnSection = React.memo(function TurnSection({
       // place — the spacer makes up the difference so the total height,
       // and the viewport, never move during the swap.
       const compensation = Math.max(0, startHeight - collapsedHeightRef.current);
+      // Detect whether the header was pinned (sticky at the viewport top):
+      // when the section's top is above the container top, the user has
+      // scrolled past the section and the header is stuck. After collapse
+      // the sticky CSS is removed, so the header returns to its natural
+      // flow position — the viewport must follow it there.
+      const section = inner.closest('section');
+      const sectionTop = section ? section.getBoundingClientRect().top : containerTop;
+      const headerWasPinned = sectionTop < containerTop;
+      const pinScrollTop = startScrollTop + (sectionTop - containerTop);
       holdTimer = setTimeout(() => {
         setDetailsPhase('collapsed');
         onCollapseFillRef.current?.(Math.round(compensation));
@@ -367,15 +376,14 @@ const TurnSection = React.memo(function TurnSection({
             0,
             container.scrollHeight - compensation - container.clientHeight,
           );
-          // The viewport rests where it was before the collapse — the
-          // header stays glued to the top edge when the user had scrolled
-          // it there, the bottom of the list when the viewport was at the
-          // details bottom (its position now exceeds the shorter list and
-          // clamps to the new bottom — nothing left to scroll down to).
-          // Whatever the case, dropping the compensation spacer later
-          // cannot clamp anything: restTarget is at most the post-drop
-          // maxScroll.
-          const restTarget = Math.min(startScrollTop, finalBottom);
+          // When the header was pinned, the viewport jumps to the section's
+          // natural top (the header lands exactly at the container's top
+          // edge — just like an active turn). When the header was not
+          // pinned, the viewport stays where it was (or clamps to the new
+          // bottom if the shorter list no longer fills the viewport).
+          const restTarget = headerWasPinned
+            ? Math.min(pinScrollTop, finalBottom)
+            : Math.min(startScrollTop, finalBottom);
           container.scrollTop = restTarget;
           // Drop the swap compensation: the viewport already rests at the
           // post-compensation bottom, so removing the spacer shrinks

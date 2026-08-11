@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Collapsing a finished turn while its header is sticky at the top now scrolls back to the turn's natural position, so you can see the collapsed state instead of being stranded below it.
+
 ### Changed
 
 - Collapsing an expanded turn in the Minimal view is now instant: the turn's summary appears in its slot immediately and the view settles to its rest position in one step — no fold, fade-in, or roll animation in between, so there is nothing left to flicker.

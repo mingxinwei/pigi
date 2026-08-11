@@ -19,7 +19,7 @@ import {
 import MarkdownMessage from './markdownMessage';
 import ToolBlock from './ToolBlock';
 import ThinkingBlock from './thinkingBlock';
-import { SystemBubble, UserBubble } from './messageBubbles';
+import { MessageToolbar, SystemBubble, UserBubble } from './messageBubbles';
 import { getToolCommandParts } from '../lib/toolDisplay';
 import ShimmerOverlay, {
   SHIMMER_BAND_WIDTH_PX,
@@ -386,7 +386,7 @@ const TurnSection = React.memo(function TurnSection({
       )}
 
       {showTimer && (
-        <div className={cn('flex flex-col', detailsOpen && 'sticky top-0 z-10 bg-background')}>
+        <div className={cn('flex flex-col', detailsOpen && 'sticky top-0 z-20 bg-background')}>
           <button
             type="button"
             onClick={handleToggleDetails}
@@ -462,7 +462,12 @@ function AssistantText({
 function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Element {
   switch (item.kind) {
     case 'text':
-      return <AssistantText node={item.node} />;
+      return (
+        <div className="group">
+          <AssistantText node={item.node} />
+          <MessageToolbar text={item.node.text || item.node.errorMessage || ''} />
+        </div>
+      );
     case 'system':
       return (
         <SystemBubble
@@ -494,10 +499,16 @@ function CollapsedContent({
     <div className="mt-2" data-testid="minimal-collapsed">
       <div className="overflow-hidden">
         <div className="flex flex-col gap-1">
-          {showIntro && <AssistantText node={intro!} testId="minimal-intro" />}
+          {showIntro && (
+            <div className="group" data-testid="minimal-intro">
+              <AssistantText node={intro!} />
+              <MessageToolbar text={intro!.text || intro!.errorMessage || ''} />
+            </div>
+          )}
           {currentMsg && (
-            <div className="mt-2" data-testid="minimal-current-msg">
+            <div className="group mt-2" data-testid="minimal-current-msg">
               <AssistantText node={currentMsg} />
+              <MessageToolbar text={currentMsg.text || currentMsg.errorMessage || ''} />
             </div>
           )}
           {pinnedRows}
@@ -510,11 +521,16 @@ function CollapsedContent({
 
 function DetailItem({ node }: { node: TranscriptNode }): React.JSX.Element | null {
   if (node.role === 'tool') {
-    return <ToolBlock node={node} />;
+    return (
+      <div className="group">
+        <ToolBlock node={node} />
+        <MessageToolbar text={node.output} />
+      </div>
+    );
   }
   if (node.role === 'assistant') {
     return (
-      <>
+      <div className="group">
         {node.thinking.length > 0 && (
           <ThinkingBlock
             text={node.thinking}
@@ -524,7 +540,8 @@ function DetailItem({ node }: { node: TranscriptNode }): React.JSX.Element | nul
           />
         )}
         {(node.text.length > 0 || node.errorMessage) && <AssistantText node={node} />}
-      </>
+        <MessageToolbar text={node.text || node.thinking} />
+      </div>
     );
   }
   if (node.role === 'system') {

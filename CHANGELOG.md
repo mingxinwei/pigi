@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Assistant messages and tool details in Minimal view now reveal a copy button on hover, including opening text, intermediate messages, and final summaries.
+
 ### Fixed
 
+- A running Minimal-view turn can no longer be scrolled below its pinned header; scrolling upward still releases the pin so earlier history remains accessible.
+- Expanded Minimal-view working headers now stay above sticky “Show more” controls instead of being partially covered.
 - Collapsing a finished turn while its header is sticky at the top now scrolls back to the turn's natural position, so you can see the collapsed state instead of being stranded below it.
 - The one-frame blank flash when a turn ends (the viewport briefly jumped to the spacer area before it was removed) is gone.
 - Error messages (e.g. 401 responses) now show correctly in the collapsed turn view instead of rendering as empty space.

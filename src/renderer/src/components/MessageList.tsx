@@ -259,6 +259,9 @@ export default React.memo(function MessageList({
       if (isMinimal) {
         pinRef.current = { phase: 'pinned', turnId: lastNode.id };
         autoScrollRef.current = false;
+        // Set an initial spacer — the RO's pinned case will refine it to
+        // the exact value on the next layout, but we need SOME space now so
+        // the browser doesn't clamp scrollTop before the RO fires.
         const container = containerRef.current;
         if (container) {
           setTopPaddingPx(container.clientHeight);
@@ -330,11 +333,21 @@ export default React.memo(function MessageList({
       switch (pin.phase) {
         case 'pinned': {
           const turnEl = container!.querySelector(`[data-turn-id="${pin.turnId}"]`);
-          if (turnEl) {
-            container!.scrollTop =
-              turnEl.getBoundingClientRect().top -
-              container!.getBoundingClientRect().top +
-              container!.scrollTop;
+          if (!turnEl) break;
+          // Pin turn to viewport top.
+          const pinPosition =
+            turnEl.getBoundingClientRect().top -
+            container!.getBoundingClientRect().top +
+            container!.scrollTop;
+          container!.scrollTop = pinPosition;
+          // Refine spacer so maxScroll = pinPosition (user can't scroll past).
+          // Read actual spacer height from DOM (state may lag behind).
+          const spacerEl = container!.querySelector('[data-testid="minimal-top-padding"]');
+          const actualSpacer = spacerEl ? spacerEl.getBoundingClientRect().height : 0;
+          const contentHeight = container!.scrollHeight - actualSpacer;
+          const ideal = Math.max(0, pinPosition + container!.clientHeight - contentHeight);
+          if (Math.abs(actualSpacer - ideal) > 1) {
+            setTopPaddingPx(ideal);
           }
           break;
         }
@@ -367,7 +380,11 @@ export default React.memo(function MessageList({
       restoreAnimRef.current?.cancel();
       restoreAnimRef.current = null;
       const pin = pinRef.current;
-      if (pin.phase === 'pinned' || pin.phase === 'following') {
+      if (pin.phase === 'pinned' && event.deltaY < 0) {
+        // Only scrolling UP releases the pin (user wants to see history).
+        // Scrolling down is blocked by the scroll clamp.
+        pinRef.current = { phase: 'scrolled', turnId: pin.turnId };
+      } else if (pin.phase === 'following') {
         pinRef.current = { phase: 'scrolled', turnId: pin.turnId };
       }
       if (event.deltaY < 0) {
@@ -378,6 +395,22 @@ export default React.memo(function MessageList({
     }
 
     function handleScroll(): void {
+      // While pinned, clamp scrollTop so the user cannot scroll past the
+      // turn header — the spacer adjustment is async (React state), so this
+      // synchronous clamp covers the gap.
+      const pin = pinRef.current;
+      if (pin.phase === 'pinned') {
+        const turnEl = container!.querySelector(`[data-turn-id="${pin.turnId}"]`);
+        if (turnEl) {
+          const pinPosition =
+            turnEl.getBoundingClientRect().top -
+            container!.getBoundingClientRect().top +
+            container!.scrollTop;
+          if (container!.scrollTop > pinPosition) {
+            container!.scrollTop = pinPosition;
+          }
+        }
+      }
       const distanceFromBottom =
         container!.scrollHeight - container!.scrollTop - container!.clientHeight;
       setShowScrollButton(
@@ -772,16 +805,34 @@ export default React.memo(function MessageList({
     const pin = pinRef.current;
     if (pin.phase !== 'pinned' && pin.phase !== 'following') return;
     const exceedsViewport = sectionHeight > container.clientHeight;
-    const contentBottom = container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
     if (exceedsViewport) {
-      // Transition pinned → following: content just outgrew the viewport.
+      // Transition pinned → following: content outgrew the viewport.
+      // Drop the spacer (no longer needed) and ride content bottom.
       if (pin.phase === 'pinned') {
         pinRef.current = { phase: 'following', turnId: pin.turnId };
         autoScrollRef.current = true;
+        setTopPaddingPx(0);
       }
-      // Always assert content bottom — the RO's pinned case may have
-      // overshot scrollTop before this callback ran.
+      const contentBottom =
+        container.scrollHeight - topPaddingPxRef.current - container.clientHeight;
       container.scrollTop = contentBottom;
+    } else if (pin.phase === 'pinned') {
+      // Content still fits viewport: size the spacer so maxScroll exactly
+      // equals the pinned position (user cannot scroll past the turn).
+      const turnEl = container.querySelector(`[data-turn-id="${pin.turnId}"]`);
+      if (turnEl) {
+        const pinPosition =
+          turnEl.getBoundingClientRect().top -
+          container.getBoundingClientRect().top +
+          container.scrollTop;
+        const spacerEl = container.querySelector('[data-testid="minimal-top-padding"]');
+        const actualSpacer = spacerEl ? spacerEl.getBoundingClientRect().height : 0;
+        const contentHeight = container.scrollHeight - actualSpacer;
+        const ideal = Math.max(0, pinPosition + container.clientHeight - contentHeight);
+        if (Math.abs(actualSpacer - ideal) > 1) {
+          setTopPaddingPx(ideal);
+        }
+      }
     }
   }, []);
 

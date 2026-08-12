@@ -334,11 +334,22 @@ const TurnSection = React.memo(function TurnSection({
     () => new Map(turn.entries.map((node) => [node.id, node])),
     [turn.entries],
   );
+  const nodeIndexById = useMemo(
+    () => new Map(turn.entries.map((node, index) => [node.id, index])),
+    [turn.entries],
+  );
   const pinnedRows: React.ReactNode[] = analysis.items.map((item) => (
     <TurnItemRenderer key={item.node.id} item={item} />
   ));
   const feedRows: React.ReactNode[] = [];
-  const showFeed = analysis.isActive && currentMsg === null;
+  const feedNodeIndex = feed[0] ? nodeIndexById.get(feed[0].key) : undefined;
+  const currentMessageIndex = currentMsg ? nodeIndexById.get(currentMsg.id) : undefined;
+  // Assistant output hides an older activity row (especially when the summary
+  // starts), but a later tool/thinking event may replace it and show again.
+  const showFeed =
+    analysis.isActive &&
+    feedNodeIndex !== undefined &&
+    (currentMessageIndex === undefined || feedNodeIndex > currentMessageIndex);
   const visibleFeed = showFeed ? feed : NO_FEED_ROWS;
   for (const { key } of visibleFeed) {
     const node = nodeById.get(key);

@@ -19,7 +19,7 @@
 
 ### Changed
 
-- Minimal view now keeps the previous thinking or tool activity visible until the next activity replaces it; as soon as an assistant message starts, the activity row disappears so summaries never have a stale feed underneath.
+- Minimal view now keeps the previous thinking or tool activity visible until the next activity replaces it; assistant output hides only older activity, so a later tool or thinking event can appear normally while summaries never retain a stale feed underneath.
 - Collapsing an expanded turn in the Minimal view is now instant: the turn's summary appears in its slot immediately and the view settles to its rest position in one step — no fold, fade-in, or roll animation in between, so there is nothing left to flicker.
 - Minimal view scroll pin refactored to an explicit state machine (`idle` / `pinned` / `following` / `scrolled` / `ending`), replacing three scattered boolean refs. Net reduction of ~200 lines; same behavior, no invalid state combinations.
 

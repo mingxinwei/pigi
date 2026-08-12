@@ -4,10 +4,11 @@
 
 ### Added
 
-- Assistant messages and tool details in Minimal view now reveal a copy button on hover, including opening text, intermediate messages, and final summaries.
+- Expanded Minimal-view details now reveal copy controls for assistant messages and tools; collapsed turns expose the control only for their final summary.
 
 ### Fixed
 
+- Long Minimal-view intro or summary output now keeps following downward after it exceeds the viewport, even when the user message and first agent events arrive in the same render batch.
 - Switching away from a session and back while a Minimal-view turn is running now restores its pin even when a tool or assistant response is the latest transcript entry.
 - Expanding a running Minimal-view turn now fills the available space before following new tool cards downward, instead of scrolling partly past the newest card.
 - Expanding and collapsing a finished Minimal-view turn now keeps the same spacing below its “Worked for” header, eliminating the small vertical jump.

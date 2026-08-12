@@ -162,7 +162,7 @@ export default React.memo(function MessageList({
   const pinRef = useRef<PinPhase>({ phase: 'idle' });
   // The turn id that was pinned before details expanded — re-pin on collapse.
   const lastPinnedTurnIdRef = useRef<string | null>(null);
-  const lastNodeIdRef = useRef<string | null>(null);
+  const lastTurnIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -253,12 +253,21 @@ export default React.memo(function MessageList({
     topPaddingPxRef.current = topPaddingPx;
   }, [topPaddingPx]);
 
-  // New user message: pin the turn in minimal mode, or enable auto-scroll.
+  // New active turn: pin it in minimal mode, or enable auto-scroll. Resolve
+  // the turn rather than checking only the latest transcript node: React may
+  // batch the user message with agent_start or the first assistant delta, so
+  // the user node is often no longer last by the time this layout effect runs.
   useLayoutEffect(() => {
-    const lastNode = displayNodes[displayNodes.length - 1];
-    if (lastNode?.id !== lastNodeIdRef.current && lastNode?.role === 'user') {
+    const turns = buildTurns(displayNodes);
+    const lastTurn = turns[turns.length - 1];
+    const lastTurnId = lastTurn?.id ?? null;
+    const isNewActiveTurn =
+      lastTurn !== undefined &&
+      lastTurnId !== lastTurnIdRef.current &&
+      analyzeTurn(lastTurn, sessionStatus, true).isActive;
+    if (isNewActiveTurn) {
       if (isMinimal) {
-        pinRef.current = { phase: 'pinned', turnId: lastNode.id };
+        pinRef.current = { phase: 'pinned', turnId: lastTurn.id };
         autoScrollRef.current = false;
         // Set an initial spacer — the RO's pinned case will refine it to
         // the exact value on the next layout, but we need SOME space now so
@@ -271,8 +280,8 @@ export default React.memo(function MessageList({
         autoScrollRef.current = true;
       }
     }
-    lastNodeIdRef.current = lastNode?.id ?? null;
-  }, [displayNodes, isMinimal]);
+    lastTurnIdRef.current = lastTurnId;
+  }, [displayNodes, isMinimal, sessionStatus]);
 
   // While a just-expanded details area settles (one frame: the details mount,
   // the pin padding is re-fit, the viewport rolls to the details bottom), the

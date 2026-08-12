@@ -423,6 +423,7 @@ const TurnSection = React.memo(function TurnSection({
           showIntro={showIntro}
           intro={analysis.intro}
           currentMsg={currentMsg}
+          summary={analysis.summary}
           pinnedRows={pinnedRows}
           feedRows={feedRows}
           showFeed={showFeed}
@@ -482,6 +483,7 @@ function CollapsedContent({
   showIntro,
   intro,
   currentMsg,
+  summary,
   pinnedRows,
   feedRows,
   showFeed,
@@ -489,6 +491,7 @@ function CollapsedContent({
   showIntro: boolean;
   intro: AssistantNode | null;
   currentMsg: AssistantNode | null;
+  summary: AssistantNode | null;
   pinnedRows: React.ReactNode[];
   feedRows: React.ReactNode[];
   showFeed: boolean;
@@ -500,13 +503,17 @@ function CollapsedContent({
           {showIntro && (
             <div className="group" data-testid="minimal-intro">
               <AssistantText node={intro!} />
-              <MessageToolbar text={intro!.text || intro!.errorMessage || ''} />
+              {intro === summary && (
+                <MessageToolbar text={intro!.text || intro!.errorMessage || ''} />
+              )}
             </div>
           )}
           {currentMsg && (
             <div className={cn('group', showIntro && 'mt-2')} data-testid="minimal-current-msg">
               <AssistantText node={currentMsg} />
-              <MessageToolbar text={currentMsg.text || currentMsg.errorMessage || ''} />
+              {currentMsg === summary && (
+                <MessageToolbar text={currentMsg.text || currentMsg.errorMessage || ''} />
+              )}
             </div>
           )}
           {pinnedRows}

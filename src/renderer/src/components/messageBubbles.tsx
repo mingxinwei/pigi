@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconCopy, IconSparkles } from '@tabler/icons-react';
 import { type UserNode } from '../state/transcriptController';
-import { cn } from '../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import MarkdownMessage from './markdownMessage';
 import OverflowClamp from './overflowClamp';
@@ -14,7 +13,7 @@ import { parseSkillBlock, type ParsedSkillBlock } from '../lib/skillBlock';
  * MessageList and the minimal (codex-style) MinimalView.
  */
 
-const USER_MESSAGE_MAX_HEIGHT_VH = 0.4;
+const USER_MESSAGE_MAX_HEIGHT_VH = 0.2;
 
 export function MessageToolbar({ text }: { text: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
@@ -158,7 +157,7 @@ export function UserBubble({
   return (
     <div className="flex justify-end pb-2 pt-6" data-testid="user-message">
       <div className="group flex max-w-[85%] flex-col items-end">
-        <div className={cn('max-w-full w-fit rounded-2xl bg-muted overflow-clip p-3.5')}>
+        <div className="max-w-full w-fit overflow-clip rounded-2xl bg-muted px-3.5 py-2">
           <OverflowClamp
             maxHeight={maxHeight}
             tailAnchor={false}

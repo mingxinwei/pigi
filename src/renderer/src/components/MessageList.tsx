@@ -59,8 +59,8 @@ const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
 const USER_MESSAGE_LEADING_PADDING = 24;
 const USER_MESSAGE_TRAILING_PADDING = 8;
 const USER_MESSAGE_WRAP_ESTIMATE_WIDTH = 72;
-/** Max estimated height for user bubbles capped by max-h-[40vh] CSS */
-const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 400;
+/** Conservative estimate cap for the user bubble's reduced viewport clamp. */
+const USER_MESSAGE_MAX_ESTIMATE_HEIGHT = 200;
 
 /** Extract a search-friendly command string for a tool node, matching the text rendered in the tool label. */
 function getToolSearchMeta(node: ToolNode): string {
@@ -1193,7 +1193,7 @@ function estimateUserHeight(text: string): number {
   const estimatedLineCount = Math.max(visibleLineCount, characterLineCount);
   const rawHeight =
     estimatedLineCount * 24 +
-    32 +
+    20 +
     USER_MESSAGE_TOOLBAR_HEIGHT +
     USER_MESSAGE_LEADING_PADDING +
     USER_MESSAGE_TRAILING_PADDING;

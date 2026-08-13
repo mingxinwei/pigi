@@ -4,64 +4,17 @@
 
 ### Added
 
-- Expanded Minimal-view details now reveal copy controls for assistant messages and tools; collapsed turns expose the control only for their final summary.
-
-### Fixed
-
-- Minimal-view summaries no longer retain a stale “Thinking...” activity row after text output begins.
-- Prompt and session startup failures now return the chat input to its send state instead of leaving the session permanently showing Abort.
-- Minimal-view turn-end scrolling now removes its spacer and terminal pin state when interrupted by the mouse wheel.
-- Returning to a session after `MessageList` remounts now restores its saved scroll position.
-- Switching to Minimal view during an active run now establishes the active turn's top pin.
-- Context compaction markers no longer split an active Minimal-view turn or capture its subsequent assistant and tool output.
-- Long Minimal-view intro or summary output now keeps following downward after it exceeds the viewport, even when the user message and first agent events arrive in the same render batch.
-- Switching away from a session and back while a Minimal-view turn is running now restores its pin even when a tool or assistant response is the latest transcript entry.
-- Expanding a running Minimal-view turn now fills the available space before following new tool cards downward, instead of scrolling partly past the newest card.
-- Expanding and collapsing a finished Minimal-view turn now keeps the same spacing below its “Worked for” header, eliminating the small vertical jump.
-- A running Minimal-view turn can no longer be scrolled below its pinned header; scrolling upward still releases the pin so earlier history remains accessible.
-- Expanded Minimal-view working headers now stay above sticky “Show more” controls instead of being partially covered.
-- Collapsing a finished turn while its header is sticky at the top now scrolls back to the turn's natural position, so you can see the collapsed state instead of being stranded below it.
-- The one-frame blank flash when a turn ends (the viewport briefly jumped to the spacer area before it was removed) is gone.
-- Error messages (e.g. 401 responses) now show correctly in the collapsed turn view instead of rendering as empty space.
+- New Minimal view provides a focused, compact way to follow agent work and final responses.
 
 ### Changed
 
-- User message bubbles now use tighter vertical padding and clamp long messages to half their previous maximum height.
-- Minimal view now keeps the previous thinking or tool activity visible until the next activity replaces it; assistant output hides only older activity, so a later tool or thinking event can appear normally while summaries never retain a stale feed underneath.
-- Collapsing an expanded turn in the Minimal view is now instant: the turn's summary appears in its slot immediately and the view settles to its rest position in one step — no fold, fade-in, or roll animation in between, so there is nothing left to flicker.
-- Minimal view scroll pin refactored to an explicit state machine (`idle` / `pinned` / `following` / `scrolled` / `ending`), replacing three scattered boolean refs. Net reduction of ~200 lines; same behavior, no invalid state combinations.
-
-## [0.4.3] - 2026-08-09
-
-### Added
-
-- New "Minimal" view mode in the message toolbar's view dropdown: each of your messages opens a turn with a live "Working for Xm Ys" timer (click it to expand the full tool cards and thinking), a shimmer line shows what the agent is doing right now, a finished command stays until the next activity replaces it, and the turn closes with the agent's final summary. Scrolling behaves exactly like the other views — auto-follow on new messages, saved positions, and the user-message minimap all work.
-- In the Minimal view's activity area, each activity (thinking, command, narration) stays on screen at least a second: when commands fly by faster than that, the intermediate ones are skipped and the latest one takes the line as soon as it is readable — the area never queues up and never lags behind what the agent is actually doing. The activity line keeps a fixed height, so nothing jumps as it switches between thinking, commands, and narration.
-- In the Minimal view, sending a new message pins the turn's working area to the top of the message list with open space below it — the work has the whole window to grow into instead of being squeezed at the bottom of a long history. When the turn finishes, the list settles back to a normal layout automatically.
-- When a turn in the Minimal view finishes, its final summary now streams in word by word right below the working area, while the open space under it shrinks by the same amount — the text visibly takes the place of the blank padding, so nothing jumps and the working header stays exactly where it was. When the stream completes, the view glides back to the bottom of the list to show the full summary; a summary longer than the window keeps following its own end as it grows (like normal output), and scrolling away during the stream locks your position — no re-pin, no glide, no pulling back.
-
-### Changed
-
-- While a turn in the Minimal view is running, its working area now stays pinned at the top for the whole run — scrolling with the mouse no longer releases it, so the live activity keeps its place and the open space below until the summary appears.
-- In the Minimal view's activity line, the shimmer sweep now covers the whole row (starting from the command prefix) instead of only the text after it, always starts from the left edge when a command appears, and keeps sweeping until the row is actually replaced by the next activity — a finished command no longer goes quiet before it is swapped out.
-- In the Minimal view's activity line, an over-long command now ellipsizes in the middle and keeps its ending visible (the useful part — filenames, flags, final arguments) instead of cutting the end off.
-- Collapsing an expanded turn in the Minimal view now feels like the terminal panel: the fold and the settle are two separate motions (a short beat between them when the header is pinned), unpinned turns fold in place instead of rolling back to the bottom, and canceling a fold mid-way springs the details smoothly back open instead of jumping.
-- The settle-back animations in the Minimal view (when a turn finishes, when details collapse) now follow the same motion curve as the rest of the app instead of their own — nothing feels linear next to the terminal's open/close anymore.
+- User messages are more compact and long prompts take up less screen space.
+- Subagents now launch through the standalone pi CLI instead of opening another app window.
 
 ### Fixed
 
-- In the Minimal view, switching away from a session and back while a turn is still running no longer drops the working area's pin: the turn is re-pinned (viewport-height padding and all) once the session resumes, even when the transcript is still replaying.
-- In the Minimal view, expanding a running turn's details keeps the working header exactly where it was — the details open in place, and the viewport rolls only as far as the details bottom (the newest activity); a short expansion does not move the viewport at all. Collapsing the details while the turn is still running restores the top pin and its padding instead of leaving the layout unpinned.
-- In the Minimal view, collapsing a running turn's expanded details no longer fights itself: the fold grows the padding by exactly the folded-away height (so the list bottom never rises into the viewport and clamps the scroll, whatever the details height), then the viewport glides once to the pinned position — the working header stays glued in place through the fold and the re-pin is a zero delta.
-- In the Minimal view, collapsing details with reduced motion (and collapsing while switching views mid-animation) no longer leaves the running turn unpinned: the pin is restored instantly instead of the viewport jumping to the list bottom, and the auto-scroll observers are re-armed on every exit path.
-- In the Minimal view, collapsing expanded details no longer lags behind its own animation: the fold's per-frame height now overrides the CSS height transition (only opacity stays on the transition), so the details shrink at the intended pace and the leftover sliver at the end no longer pops away.
-- Closing the terminal panel no longer leaves the chat suspended above it: the chat now slides down in sync with the panel again (the transform is dropped only after the close animation settles, so sticky headers still keep working).
-- In the Minimal view, scrolling with the mouse while a turn is pinned no longer results in the view being pulled to the bottom when the turn ends — the pin and padding are dropped in place instead of gliding.
-- Switching sessions or view modes mid-restore-animation no longer lets the animation's tail end override the restored scroll position.
-- In the Minimal view, the opening text of a turn no longer appears twice (once in its fixed spot, once as a scrolling activity line) while it is still streaming.
-- Subagents no longer start a second copy of the app to run in; they use the standalone pi CLI from your shell environment instead, which is lighter and does not crash on startup.
-- In the Minimal view, the sticky working header no longer loses its pin after the terminal panel is opened and closed — previously the panel's animation left a lingering transform that silently disabled every sticky header behind it.
-- Collapsing an unpinned turn in the Minimal view no longer waits half a second after the fold finishes before showing the collapsed content.
+- Chat input now recovers correctly after prompt or session startup errors.
+- Closing the terminal no longer disrupts the chat layout or sticky headers.
 
 ## [0.4.2] - 2026-08-07
 

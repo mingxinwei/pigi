@@ -296,7 +296,11 @@ function subscribeToSession(rt: AgentSessionRuntime, port: Port, batch: StreamBa
       case 'auto_retry_start':
         setSessionBusy(true);
         break;
-      case 'agent_end':
+      case 'agent_settled':
+        // agent_end can be followed by post-run compaction and continuation;
+        // agent_settled is the SDK's authoritative process-idle boundary.
+        setSessionBusy(false);
+        break;
       case 'compaction_end':
       case 'auto_retry_end':
         setSessionBusy(session.isStreaming);
@@ -384,6 +388,9 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
         return { success: false, error: 'prompt must be a non-empty string' };
       }
       runtime.session.prompt(command.message).catch((err) => {
+        // A rejection can happen before agent_end (auth/model/network
+        // preflight), so explicitly release the process-pool busy lease.
+        setSessionBusy(runtime?.session.isStreaming ?? false);
         if (dataPort) {
           const errorMessage: PiPush = {
             type: 'error',

@@ -140,6 +140,7 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
         // Session creation/resume failed — surface it in the transcript like
         // any other error (the store's error field alone has no UI consumer).
         controller.setError(pushMessage.error);
+        controller.setStatus('idle');
         useAppStore.getState().updateSession(sessionPath, {
           error: pushMessage.error,
           status: controller.state.status,
@@ -163,6 +164,10 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
         // invisible. Add an error node so it shows up in the message list.
         console.error(`[session ${sessionPath}] error:`, pushMessage.error);
         controller.setError(pushMessage.error);
+        // A rejected prompt Promise is terminal even when the SDK failed
+        // before emitting agent_end. Keep the error node, but release the busy
+        // state so the next submission uses prompt rather than steer.
+        controller.setStatus('idle');
         useAppStore.getState().updateSession(sessionPath, { status: controller.state.status });
         break;
 

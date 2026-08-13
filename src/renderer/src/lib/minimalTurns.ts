@@ -24,9 +24,10 @@ export interface MinimalTurn {
   entries: TranscriptNode[];
 }
 
-export type MinimalTurnItem =
-  | { kind: 'text'; node: AssistantNode }
-  | { kind: 'system'; node: SystemNode };
+export interface MinimalSystemItem {
+  node: SystemNode;
+  index: number;
+}
 
 export interface MinimalTurnAnalysis {
   intro: AssistantNode | null;
@@ -34,7 +35,7 @@ export interface MinimalTurnAnalysis {
   /** Pinned rows rendered outside the activity feed: error messages (the
    *  turn's outcome) and system markers. Tools and narration are NOT here —
    *  they flow through the turn's activity feed. */
-  items: MinimalTurnItem[];
+  items: MinimalSystemItem[];
   /** When the agent started working on this turn (first agent node timestamp). */
   startAt: number | undefined;
   /** When the turn finished (last agent node end timestamp). */
@@ -43,22 +44,37 @@ export interface MinimalTurnAnalysis {
   isActive: boolean;
 }
 
-/** Split a flat node list into per-user-message turns. System markers
- *  (context compaction, compaction progress) get their own user-less turn so
- *  they render as standalone rows between turns instead of being folded into
- *  a turn's activity area. */
+/** Split a flat node list into logical per-user-message turns. A system
+ *  marker joins the current user turn only when its event explicitly says it
+ *  occurred during that run; manual/idle compaction remains standalone. */
 export function buildTurns(nodes: TranscriptNode[]): MinimalTurn[] {
   const turns: MinimalTurn[] = [];
+  let currentUserTurn: MinimalTurn | null = null;
+  let currentPreambleTurn: MinimalTurn | null = null;
   for (let index = 0; index < nodes.length; index++) {
     const node = nodes[index];
     if (node.role === 'user') {
-      turns.push({ id: node.id, userNode: node, userIndex: index, entries: [] });
+      currentUserTurn = { id: node.id, userNode: node, userIndex: index, entries: [] };
+      currentPreambleTurn = null;
+      turns.push(currentUserTurn);
+    } else if (node.role !== 'system' && currentUserTurn) {
+      currentUserTurn.entries.push(node);
+    } else if (node.role === 'system' && currentUserTurn && node.continuesUserTurn) {
+      currentUserTurn.entries.push(node);
     } else if (node.role === 'system') {
+      currentUserTurn = null;
+      currentPreambleTurn = null;
       turns.push({ id: `pre-${node.id}`, userNode: null, userIndex: -1, entries: [node] });
-    } else if (turns.length === 0) {
-      turns.push({ id: `pre-${node.id}`, userNode: null, userIndex: -1, entries: [node] });
+    } else if (currentPreambleTurn) {
+      currentPreambleTurn.entries.push(node);
     } else {
-      turns[turns.length - 1].entries.push(node);
+      currentPreambleTurn = {
+        id: `pre-${node.id}`,
+        userNode: null,
+        userIndex: -1,
+        entries: [node],
+      };
+      turns.push(currentPreambleTurn);
     }
   }
   return turns;
@@ -91,7 +107,7 @@ export function analyzeTurn(
   isLastTurn: boolean,
 ): MinimalTurnAnalysis {
   const textEntries: Array<{ node: AssistantNode; index: number }> = [];
-  const items: MinimalTurnItem[] = [];
+  const items: MinimalSystemItem[] = [];
   let startAt: number | undefined;
   let endAt: number | undefined;
   let hasTools = false;
@@ -163,9 +179,10 @@ export function analyzeTurn(
   // Second pass: pinned rows — system markers only. Error messages are
   // handled by the currentMsg slot (latest replaces previous, same as
   // normal assistant text).
-  for (const node of turn.entries) {
+  for (let index = 0; index < turn.entries.length; index++) {
+    const node = turn.entries[index];
     if (node.role === 'system') {
-      items.push({ kind: 'system', node });
+      items.push({ node, index });
     }
   }
 

@@ -49,10 +49,6 @@ type PinPhase =
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
-/** Restore animation for the minimal view's top-pin release: a slow,
- *  deliberate settle on the on-screen movement curve (ease-in-out) — quick
- *  acceleration, cruise, short deceleration — so a long scroll ends crisply
- *  instead of creeping through the last quarter of its distance. */
 const TOOL_BLOCK_ESTIMATE_BUFFER = 24;
 const TOOL_STATUS_LINE_ESTIMATE_HEIGHT = 24;
 const USER_MESSAGE_TOOLBAR_HEIGHT = 24;
@@ -188,6 +184,15 @@ export default React.memo(function MessageList({
   );
 
   const displayNodes = useMemo(() => nodes.filter(isRenderableNode), [nodes]);
+  const { lastMinimalTurn, isLastMinimalTurnActive } = useMemo(() => {
+    const turns = buildTurns(displayNodes);
+    const lastTurn = turns[turns.length - 1] ?? null;
+    return {
+      lastMinimalTurn: lastTurn,
+      isLastMinimalTurnActive:
+        lastTurn !== null && analyzeTurn(lastTurn, sessionStatus, true).isActive,
+    };
+  }, [displayNodes, sessionStatus]);
 
   // O(1) lookup: node reference → displayNodes index
   const nodeToDisplayIndex = useMemo(() => {
@@ -258,16 +263,12 @@ export default React.memo(function MessageList({
   // batch the user message with agent_start or the first assistant delta, so
   // the user node is often no longer last by the time this layout effect runs.
   useLayoutEffect(() => {
-    const turns = buildTurns(displayNodes);
-    const lastTurn = turns[turns.length - 1];
-    const lastTurnId = lastTurn?.id ?? null;
+    const lastTurnId = lastMinimalTurn?.id ?? null;
     const isNewActiveTurn =
-      lastTurn !== undefined &&
-      lastTurnId !== lastTurnIdRef.current &&
-      analyzeTurn(lastTurn, sessionStatus, true).isActive;
+      lastMinimalTurn !== null && lastTurnId !== lastTurnIdRef.current && isLastMinimalTurnActive;
     if (isNewActiveTurn) {
       if (isMinimal) {
-        pinRef.current = { phase: 'pinned', turnId: lastTurn.id };
+        pinRef.current = { phase: 'pinned', turnId: lastMinimalTurn.id };
         autoScrollRef.current = false;
         // Set an initial spacer — the RO's pinned case will refine it to
         // the exact value on the next layout, but we need SOME space now so
@@ -281,7 +282,7 @@ export default React.memo(function MessageList({
       }
     }
     lastTurnIdRef.current = lastTurnId;
-  }, [displayNodes, isMinimal, sessionStatus]);
+  }, [isLastMinimalTurnActive, isMinimal, lastMinimalTurn]);
 
   // While a just-expanded details area settles (one frame: the details mount,
   // the pin padding is re-fit, the viewport rolls to the details bottom), the
@@ -443,11 +444,15 @@ export default React.memo(function MessageList({
 
   // Save scroll position to store on every scroll event.
   // If user is at the bottom, save sentinel -1 so restore knows to auto-scroll.
+  // Mount-time observers can scroll before restoration runs, so saving remains
+  // disabled until the current session's initial position has been applied.
+  const restoredScrollSessionRef = useRef<string | null>(null);
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !sessionPath) return;
 
     function savePosition(): void {
+      if (restoredScrollSessionRef.current !== sessionPath) return;
       const atBottom = isAtBottom(container!);
       const next = atBottom ? -1 : container!.scrollTop;
       // Skip redundant writes (e.g. staying pinned at the bottom during the
@@ -467,23 +472,23 @@ export default React.memo(function MessageList({
   // Guarded to run only on an actual session change: the restore logic reads
   // displayNodes/sessionStatus, which change on every streaming commit —
   // re-running it there would re-pin and yank the viewport mid-stream.
-  const prevSessionPathRef = useRef(sessionPath);
+  const prevSessionPathRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevSessionPathRef.current === sessionPath) return;
     prevSessionPathRef.current = sessionPath;
-    let cancelled = false;
+    restoredScrollSessionRef.current = null;
+    // Cancel the previous session's turn-end animation before establishing a
+    // new pin. Its cleanup is ownership-checked and cannot clear the new turn.
+    restoreAnimRef.current?.cancel();
+    restoreAnimRef.current = null;
 
     // Re-pin a still-running minimal turn: switching away and back while a
     // turn executes must keep the working area pinned (padding and all).
     // Resolve the turn itself rather than using the last transcript node:
     // while tools or assistant output stream, that node is not the user node
     // used by data-turn-id.
-    const turns = buildTurns(displayNodes);
-    const lastTurn = turns[turns.length - 1];
-    const hasRunningTurn =
-      lastTurn !== undefined && analyzeTurn(lastTurn, sessionStatus, true).isActive;
-    if (isMinimal && hasRunningTurn) {
-      pinRef.current = { phase: 'pinned', turnId: lastTurn.id };
+    if (isMinimal && lastMinimalTurn && isLastMinimalTurnActive) {
+      pinRef.current = { phase: 'pinned', turnId: lastMinimalTurn.id };
       autoScrollRef.current = false;
       const container = containerRef.current;
       if (container) {
@@ -492,12 +497,13 @@ export default React.memo(function MessageList({
       }
       // A running turn takes over the viewport: skip the saved-position
       // restore entirely (it would override the re-pin).
-      return () => {
-        cancelled = true;
-      };
+      requestAnimationFrame(() => {
+        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
+          restoredScrollSessionRef.current = sessionPath;
+        }
+      });
+      return;
     }
-    restoreAnimRef.current?.cancel();
-    restoreAnimRef.current = null;
     clearTopPin();
 
     const savedPosition = sessionPath
@@ -508,25 +514,28 @@ export default React.memo(function MessageList({
       // Was at bottom: let ResizeObserver handle it
       autoScrollRef.current = true;
       requestAnimationFrame(() => {
-        if (!cancelled && containerRef.current) {
+        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
           containerRef.current.scrollTop = containerRef.current.scrollHeight;
+          restoredScrollSessionRef.current = sessionPath;
         }
       });
     } else if (savedPosition !== undefined) {
       autoScrollRef.current = false;
       requestAnimationFrame(() => {
-        if (!cancelled && containerRef.current) {
+        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
           containerRef.current.scrollTop = savedPosition;
+          restoredScrollSessionRef.current = sessionPath;
         }
       });
     } else {
       autoScrollRef.current = true;
+      requestAnimationFrame(() => {
+        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
+          restoredScrollSessionRef.current = sessionPath;
+        }
+      });
     }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [displayNodes, isMinimal, pinTopToViewport, sessionPath, sessionStatus]);
+  }, [isLastMinimalTurnActive, isMinimal, lastMinimalTurn, pinTopToViewport, sessionPath]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
@@ -644,7 +653,7 @@ export default React.memo(function MessageList({
   // while the observer effect's mount-time scrollToBottom still has the
   // container at the bottom → isAtBottom wrongly reads true).
   const prevIsMinimalRef = useRef(isMinimal);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevIsMinimalRef.current === isMinimal) return;
     prevIsMinimalRef.current = isMinimal;
     // A mode switch must not be clobbered by an in-flight restore glide.
@@ -653,8 +662,19 @@ export default React.memo(function MessageList({
     clearTopPin();
     const container = containerRef.current;
     if (!container) return;
+
+    if (isMinimal) {
+      if (lastMinimalTurn && isLastMinimalTurnActive) {
+        pinRef.current = { phase: 'pinned', turnId: lastMinimalTurn.id };
+        autoScrollRef.current = false;
+        setTopPaddingPx(container.clientHeight);
+        pinTopToViewport();
+        return;
+      }
+    }
+
     autoScrollRef.current = isAtBottom(container);
-  }, [isMinimal]);
+  }, [isLastMinimalTurnActive, isMinimal, lastMinimalTurn, pinTopToViewport]);
 
   // Search is unavailable in minimal mode; drop any stale search state so it
   // doesn't resurface with outdated targets when switching back.
@@ -702,32 +722,38 @@ export default React.memo(function MessageList({
 
       case 'pinned': {
         // Content still fits viewport. Glide to content bottom.
+        const scrollContainer = container;
         pinRef.current = { phase: 'ending', turnId };
         autoScrollRef.current = false;
         const target = Math.max(
           0,
-          container.scrollHeight - topPaddingPxRef.current - container.clientHeight,
+          scrollContainer.scrollHeight - topPaddingPxRef.current - scrollContainer.clientHeight,
         );
         // Use native smooth scroll (compositor-driven, jank-free).
-        container.scrollTo({ top: target, behavior: 'smooth' });
-        // Clean up when the smooth scroll finishes.
-        let cancelled = false;
-        const onEnd = (): void => {
-          container.removeEventListener('scrollend', onEnd);
-          restoreAnimRef.current = null;
-          if (!cancelled) {
-            pinRef.current = { phase: 'idle' };
-            setTopPaddingPx(0);
-            autoScrollRef.current = true;
+        scrollContainer.scrollTo({ top: target, behavior: 'smooth' });
+        // Clean up when the smooth scroll finishes or when user input
+        // interrupts it. Cancellation preserves the user's current position
+        // and disables auto-follow, but must still release ending + spacer.
+        function finish(shouldAutoScroll: boolean): void {
+          scrollContainer.removeEventListener('scrollend', onEnd);
+          if (restoreAnimRef.current?.cancel === cancel) {
+            restoreAnimRef.current = null;
           }
-        };
-        container.addEventListener('scrollend', onEnd, { once: true });
-        restoreAnimRef.current = {
-          cancel: () => {
-            cancelled = true;
-            container.removeEventListener('scrollend', onEnd);
-          },
-        };
+          if (pinRef.current.phase !== 'ending' || pinRef.current.turnId !== turnId) {
+            return;
+          }
+          pinRef.current = { phase: 'idle' };
+          setTopPaddingPx(0);
+          autoScrollRef.current = shouldAutoScroll;
+        }
+        function onEnd(): void {
+          finish(true);
+        }
+        function cancel(): void {
+          finish(false);
+        }
+        scrollContainer.addEventListener('scrollend', onEnd, { once: true });
+        restoreAnimRef.current = { cancel };
         return;
       }
     }

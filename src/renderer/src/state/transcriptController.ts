@@ -66,6 +66,9 @@ export interface SystemNode {
   role: 'system';
   text: string;
   isLoading?: boolean;
+  /** This visual marker occurred inside an active user turn and must not
+   *  become a logical turn boundary (for example, automatic compaction). */
+  continuesUserTurn?: boolean;
 }
 
 export type TranscriptNode = UserNode | AssistantNode | ToolNode | SystemNode;
@@ -374,6 +377,7 @@ export class TranscriptController {
             role: 'system',
             text: 'Context compacted',
             isLoading: false,
+            continuesUserTurn: parsed.role !== 'user',
           });
           compactionInserted = true;
         }
@@ -609,6 +613,17 @@ export class TranscriptController {
         break;
 
       case 'agent_end':
+        // agent_end closes one core agent pass, but the SDK may immediately
+        // compact and continue within the same prompt. Keep the logical turn
+        // active until agent_settled marks the true post-processing boundary.
+        this.finalizeCurrent();
+        this.setState({
+          activeAssistantId: null,
+          activeToolCallId: null,
+        });
+        break;
+
+      case 'agent_settled':
         this.finalizeCurrent();
         this.setState({
           status: 'idle',
@@ -665,7 +680,19 @@ export class TranscriptController {
         this.handleToolEnd(raw as SdkToolExecEnd);
         break;
 
-      case 'compaction_start':
+      case 'compaction_start': {
+        const compactionEvent = event as { reason?: string };
+        const latestNode = this._state.nodes[this._state.nodes.length - 1];
+        // Utility marks every compaction busy before forwarding this event, so
+        // status alone cannot distinguish idle `/compact` from automatic
+        // post-agent compaction. The SDK reason is authoritative for manual.
+        const continuesUserTurn =
+          compactionEvent.reason !== 'manual' &&
+          (latestNode?.role === 'user' ||
+            this._state.status === 'streaming' ||
+            this._state.status === 'tool_running' ||
+            this._state.activeAssistantId !== null ||
+            this._state.activeToolCallId !== null);
         this.setState({
           status: 'streaming',
           isCompacting: true,
@@ -673,8 +700,9 @@ export class TranscriptController {
           queuedSteering: [],
           queuedFollowUp: [],
         });
-        this.addCompactionNode();
+        this.addCompactionNode(continuesUserTurn);
         break;
+      }
 
       case 'compaction_end': {
         const compactionEvent = event as { aborted?: boolean; errorMessage?: string };
@@ -1083,9 +1111,15 @@ export class TranscriptController {
     });
   }
 
-  private addCompactionNode(): void {
+  private addCompactionNode(continuesUserTurn: boolean): void {
     const id = `compaction-${Date.now()}`;
-    const node: SystemNode = { id, role: 'system', text: 'Compacting context...', isLoading: true };
+    const node: SystemNode = {
+      id,
+      role: 'system',
+      text: 'Compacting context...',
+      isLoading: true,
+      continuesUserTurn,
+    };
     this.setState({ nodes: [...this._state.nodes, node] });
   }
 

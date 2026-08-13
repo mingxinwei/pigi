@@ -13,8 +13,8 @@ import {
   formatWorkingDuration,
   shouldShowTimer,
   type MinimalTurn,
+  type MinimalSystemItem,
   type MinimalTurnAnalysis,
-  type MinimalTurnItem,
 } from '../lib/minimalTurns';
 import MarkdownMessage from './markdownMessage';
 import ToolBlock from './ToolBlock';
@@ -105,8 +105,6 @@ function scrollTo(element: HTMLElement, position: number): void {
   element.scrollTop = position;
 }
 
-const NO_FEED_ROWS: Array<{ key: string; shownAt: number }> = [];
-
 // =============================================================================
 // Turn
 // =============================================================================
@@ -140,20 +138,15 @@ const TurnSection = React.memo(function TurnSection({
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [wasActive, setWasActive] = useState(() => analysis.isActive);
-  const [justEnded, setJustEnded] = useState(false);
-
-  // Adjust-state pattern: the ended turn's first render already shows the
-  // finished state (no reveal window needed).
-  if (wasActive && !analysis.isActive) {
-    setWasActive(false);
-    setJustEnded(true);
-  }
+  const previousIsActiveRef = useRef(analysis.isActive);
 
   useEffect(() => {
-    if (!justEnded) return;
-    onTurnEnd?.(turn.id);
-  }, [justEnded, onTurnEnd, turn.id]);
+    const wasActive = previousIsActiveRef.current;
+    previousIsActiveRef.current = analysis.isActive;
+    if (wasActive && !analysis.isActive) {
+      onTurnEnd?.(turn.id);
+    }
+  }, [analysis.isActive, onTurnEnd, turn.id]);
 
   // Track section height for output-follow while the turn is active.
   const sectionRef = useRef<HTMLElement>(null);
@@ -275,7 +268,7 @@ const TurnSection = React.memo(function TurnSection({
     [turn.entries],
   );
 
-  const [feed, setFeed] = useState<Array<{ key: string; shownAt: number }>>([]);
+  const [feed, setFeed] = useState<{ key: string; shownAt: number } | null>(null);
   const seenKeysRef = useRef<Set<string>>(new Set());
   const pendingKeyRef = useRef<string | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,16 +281,15 @@ const TurnSection = React.memo(function TurnSection({
     for (const key of newKeys) seenKeysRef.current.add(key);
 
     const now = Date.now();
-    if (feed.length === 0) {
-      setFeed(newKeys.slice(-1).map((key) => ({ key, shownAt: now })));
+    if (feed === null) {
+      setFeed({ key: newKeys[newKeys.length - 1], shownAt: now });
       return;
     }
 
-    const currentRow = feed[0];
-    const waitMs = MIN_ACTIVITY_VISIBLE_MS - (now - currentRow.shownAt);
+    const waitMs = MIN_ACTIVITY_VISIBLE_MS - (now - feed.shownAt);
     const latestKey = newKeys[newKeys.length - 1];
     if (waitMs <= 0) {
-      setFeed([{ key: latestKey, shownAt: now }]);
+      setFeed({ key: latestKey, shownAt: now });
     } else {
       // Current row is still young: park the latest arrival and flush later.
       pendingKeyRef.current = latestKey;
@@ -307,7 +299,7 @@ const TurnSection = React.memo(function TurnSection({
         const pending = pendingKeyRef.current;
         pendingKeyRef.current = null;
         if (pending !== null) {
-          setFeed([{ key: pending, shownAt: Date.now() }]);
+          setFeed({ key: pending, shownAt: Date.now() });
         }
       }, waitMs);
     }
@@ -338,36 +330,43 @@ const TurnSection = React.memo(function TurnSection({
     () => new Map(turn.entries.map((node, index) => [node.id, index])),
     [turn.entries],
   );
-  const pinnedRows: React.ReactNode[] = analysis.items.map((item) => (
-    <TurnItemRenderer key={item.node.id} item={item} />
-  ));
-  const feedRows: React.ReactNode[] = [];
-  const feedNodeIndex = feed[0] ? nodeIndexById.get(feed[0].key) : undefined;
+  const introIndex = analysis.intro ? nodeIndexById.get(analysis.intro.id) : undefined;
   const currentMessageIndex = currentMsg ? nodeIndexById.get(currentMsg.id) : undefined;
+  const pinnedRowsBeforeIntro: React.ReactNode[] = [];
+  const pinnedRowsBeforeCurrent: React.ReactNode[] = [];
+  const pinnedRowsAfterCurrent: React.ReactNode[] = [];
+  for (const item of analysis.items) {
+    const row = <TurnItemRenderer key={item.node.id} item={item} />;
+    if (introIndex !== undefined && item.index < introIndex) {
+      pinnedRowsBeforeIntro.push(row);
+    } else if (currentMessageIndex !== undefined && item.index < currentMessageIndex) {
+      pinnedRowsBeforeCurrent.push(row);
+    } else {
+      pinnedRowsAfterCurrent.push(row);
+    }
+  }
+  const feedNodeIndex = feed ? nodeIndexById.get(feed.key) : undefined;
   // Assistant output hides an older activity row (especially when the summary
   // starts), but a later tool/thinking event may replace it and show again.
   const showFeed =
     analysis.isActive &&
     feedNodeIndex !== undefined &&
     (currentMessageIndex === undefined || feedNodeIndex > currentMessageIndex);
-  const visibleFeed = showFeed ? feed : NO_FEED_ROWS;
-  for (const { key } of visibleFeed) {
-    const node = nodeById.get(key);
-    if (!node) continue;
-    if (node.role === 'tool') {
-      feedRows.push(<ToolLine key={key} node={node} />);
-    } else if (node.role === 'assistant') {
-      feedRows.push(
-        <div
-          key={key}
-          className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
-          data-testid="minimal-thinking"
-        >
-          Thinking...
-          <ShimmerOverlay />
-        </div>,
-      );
-    }
+  const feedNode = showFeed && feed ? nodeById.get(feed.key) : undefined;
+  let feedRow: React.ReactNode = null;
+  if (feedNode?.role === 'tool') {
+    feedRow = <ToolLine key={feedNode.id} node={feedNode} />;
+  } else if (feedNode?.role === 'assistant') {
+    feedRow = (
+      <div
+        key={feedNode.id}
+        className="relative w-fit overflow-hidden text-[15px] text-muted-foreground"
+        data-testid="minimal-thinking"
+      >
+        Thinking...
+        <ShimmerOverlay />
+      </div>
+    );
   }
 
   return (
@@ -424,9 +423,10 @@ const TurnSection = React.memo(function TurnSection({
           intro={analysis.intro}
           currentMsg={currentMsg}
           summary={analysis.summary}
-          pinnedRows={pinnedRows}
-          feedRows={feedRows}
-          showFeed={showFeed}
+          pinnedRowsBeforeIntro={pinnedRowsBeforeIntro}
+          pinnedRowsBeforeCurrent={pinnedRowsBeforeCurrent}
+          pinnedRowsAfterCurrent={pinnedRowsAfterCurrent}
+          feedRow={feedRow}
         />
       )}
     </section>
@@ -458,25 +458,15 @@ function AssistantText({
   );
 }
 
-function TurnItemRenderer({ item }: { item: MinimalTurnItem }): React.JSX.Element {
-  switch (item.kind) {
-    case 'text':
-      return (
-        <div className="group">
-          <AssistantText node={item.node} />
-          <MessageToolbar text={item.node.text || item.node.errorMessage || ''} />
-        </div>
-      );
-    case 'system':
-      return (
-        <SystemBubble
-          text={item.node.text}
-          isLoading={item.node.isLoading}
-          searchQuery=""
-          activeOccurrenceIndex={null}
-        />
-      );
-  }
+function TurnItemRenderer({ item }: { item: MinimalSystemItem }): React.JSX.Element {
+  return (
+    <SystemBubble
+      text={item.node.text}
+      isLoading={item.node.isLoading}
+      searchQuery=""
+      activeOccurrenceIndex={null}
+    />
+  );
 }
 
 function CollapsedContent({
@@ -484,22 +474,25 @@ function CollapsedContent({
   intro,
   currentMsg,
   summary,
-  pinnedRows,
-  feedRows,
-  showFeed,
+  pinnedRowsBeforeIntro,
+  pinnedRowsBeforeCurrent,
+  pinnedRowsAfterCurrent,
+  feedRow,
 }: {
   showIntro: boolean;
   intro: AssistantNode | null;
   currentMsg: AssistantNode | null;
   summary: AssistantNode | null;
-  pinnedRows: React.ReactNode[];
-  feedRows: React.ReactNode[];
-  showFeed: boolean;
+  pinnedRowsBeforeIntro: React.ReactNode[];
+  pinnedRowsBeforeCurrent: React.ReactNode[];
+  pinnedRowsAfterCurrent: React.ReactNode[];
+  feedRow: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="mt-2" data-testid="minimal-collapsed">
       <div className="overflow-hidden">
         <div className="flex flex-col gap-1">
+          {pinnedRowsBeforeIntro}
           {showIntro && (
             <div className="group" data-testid="minimal-intro">
               <AssistantText node={intro!} />
@@ -508,6 +501,7 @@ function CollapsedContent({
               )}
             </div>
           )}
+          {pinnedRowsBeforeCurrent}
           {currentMsg && (
             <div className={cn('group', showIntro && 'mt-2')} data-testid="minimal-current-msg">
               <AssistantText node={currentMsg} />
@@ -516,10 +510,10 @@ function CollapsedContent({
               )}
             </div>
           )}
-          {pinnedRows}
-          {showFeed && feedRows.length > 0 && (
+          {pinnedRowsAfterCurrent}
+          {feedRow && (
             <div className="flex h-[27px] items-center overflow-hidden" data-testid="minimal-feed">
-              {feedRows}
+              {feedRow}
             </div>
           )}
         </div>

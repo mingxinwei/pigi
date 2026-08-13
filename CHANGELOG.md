@@ -8,6 +8,11 @@
 
 ### Fixed
 
+- Prompt and session startup failures now return the chat input to its send state instead of leaving the session permanently showing Abort.
+- Minimal-view turn-end scrolling now removes its spacer and terminal pin state when interrupted by the mouse wheel.
+- Returning to a session after `MessageList` remounts now restores its saved scroll position.
+- Switching to Minimal view during an active run now establishes the active turn's top pin.
+- Context compaction markers no longer split an active Minimal-view turn or capture its subsequent assistant and tool output.
 - Long Minimal-view intro or summary output now keeps following downward after it exceeds the viewport, even when the user message and first agent events arrive in the same render batch.
 - Switching away from a session and back while a Minimal-view turn is running now restores its pin even when a tool or assistant response is the latest transcript entry.
 - Expanding a running Minimal-view turn now fills the available space before following new tool cards downward, instead of scrolling partly past the newest card.

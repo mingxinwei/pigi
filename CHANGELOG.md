@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Minimal-view summaries no longer retain a stale “Thinking...” activity row after text output begins.
 - Prompt and session startup failures now return the chat input to its send state instead of leaving the session permanently showing Abort.
 - Minimal-view turn-end scrolling now removes its spacer and terminal pin state when interrupted by the mouse wheel.
 - Returning to a session after `MessageList` remounts now restores its saved scroll position.

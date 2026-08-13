@@ -346,17 +346,25 @@ const TurnSection = React.memo(function TurnSection({
     }
   }
   const feedNodeIndex = feed ? nodeIndexById.get(feed.key) : undefined;
+  const feedNode = feed ? nodeById.get(feed.key) : undefined;
   // Assistant output hides an older activity row (especially when the summary
   // starts), but a later tool/thinking event may replace it and show again.
+  // A single SDK assistant message can transition from thinking into text;
+  // once it has text, that same node is output rather than feed activity.
+  const isFeedActivity =
+    feedNode?.role === 'tool' ||
+    (feedNode?.role === 'assistant' &&
+      feedNode.errorMessage === undefined &&
+      feedNode.text.length === 0);
   const showFeed =
     analysis.isActive &&
+    isFeedActivity &&
     feedNodeIndex !== undefined &&
     (currentMessageIndex === undefined || feedNodeIndex > currentMessageIndex);
-  const feedNode = showFeed && feed ? nodeById.get(feed.key) : undefined;
   let feedRow: React.ReactNode = null;
-  if (feedNode?.role === 'tool') {
+  if (showFeed && feedNode?.role === 'tool') {
     feedRow = <ToolLine key={feedNode.id} node={feedNode} />;
-  } else if (feedNode?.role === 'assistant') {
+  } else if (showFeed && feedNode?.role === 'assistant') {
     feedRow = (
       <div
         key={feedNode.id}

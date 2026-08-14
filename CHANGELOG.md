@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The message list no longer micro-jitters when scrolling to the bottom of a long conversation: messages stay in place instead of shifting a few pixels as the list settles.
+
 ## [0.4.3] - 2026-08-13
 
 ### Added

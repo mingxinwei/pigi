@@ -240,16 +240,26 @@ export default React.memo(function MessageList({
     getItemKey,
     estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
     overscan: 8,
+    // gap makes the virtualizer's coordinate model match the DOM flow layout:
+    // rows are laid out in-flow with marginBottom = MESSAGE_ROW_GAP, so without
+    // gap the model is gapless while the DOM is not. Every rendered row then
+    // sits one gap lower than the model per preceding row — a systematic drift
+    // of windowIndex * gap px that shifts ALL visible rows every time the
+    // window re-anchors (rows entering/leaving the render window), and makes
+    // the model's bottom disagree with the real DOM scrollHeight.
+    gap: MESSAGE_ROW_GAP,
   });
 
-  // Always disable the virtualizer's built-in scroll correction. Auto-scroll
-  // pinning is owned exclusively by the ResizeObserver pin + the
-  // useLayoutEffect below, both of which target the real DOM scrollHeight. The
-  // virtualizer's correction (resizeItem -> scrollTo(modelOffset + delta))
-  // uses the virtualizer's OWN coordinate model, which is gapless (the row gap
-  // is applied as CSS marginBottom, invisible to measurements) while
-  // scrollHeight includes those gaps — so its target is never the true bottom.
-  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
+  // The virtualizer's built-in scroll correction (resizeItem -> scroll by the
+  // size delta for items above the viewport) is intentionally left ON. It runs
+  // in the ResizeObserver step of the same frame a measurement lands in,
+  // before paint, so it compensates estimate-error shifts of rows mounting or
+  // being measured above the viewport — the micro-jitter seen when scrolling
+  // to the bottom of a long list. It previously had to be disabled because its
+  // gapless coordinate model disagreed with the DOM scrollHeight and it fought
+  // the auto-scroll pin without converging; with gap restored both corrections
+  // now target the same bottom, and the pin (registered later, in an effect
+  // after mount) still wins when both run in the same frame.
 
   // Viewport-height spacer below the active turn so it can reach the top.
   const [topPaddingPx, setTopPaddingPx] = useState(0);
@@ -304,9 +314,9 @@ export default React.memo(function MessageList({
   //   the growth frame paints unpinned (content visually jumps up) and the
   //   next frame snaps back — a high-amplitude vibration at fast output rates.
   // - The virtualizer's built-in correction (resizeItem -> scrollTo) runs in
-  //   the right frame but targets its own gapless coordinate model (the row
-  //   gap is CSS marginBottom, invisible to measurements) instead of the real
-  //   DOM scrollHeight, causing a low-amplitude high-frequency vibration.
+  //   the right frame and — now that the virtualizer's gap option keeps its
+  //   coordinate model in sync with the DOM — converges on the same bottom as
+  //   this pin instead of fighting it.
   //
   // Two observers cover both ways the bottom can move:
   // - rowsWrapperRo: any row grows (streaming text, async code highlight,

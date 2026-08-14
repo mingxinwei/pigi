@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- The up and down arrow keys in the chat input now move the cursor between lines first: recalling previous messages only kicks in when the cursor is already on the first line (up arrow) or the last line (down arrow), so editing a multi-line message no longer suddenly jumps into message history.
 - The message list no longer micro-jitters when scrolling to the bottom of a long conversation: messages stay in place instead of shifting a few pixels as the list settles.
 
 ## [0.4.3] - 2026-08-13

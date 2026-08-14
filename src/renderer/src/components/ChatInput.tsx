@@ -337,25 +337,45 @@ export default function ChatInput({
         }
       }
 
-      // History recall: up/down arrow navigates past user messages (shell-style)
+      // History recall: up/down arrow navigates past user messages (shell-style).
+      // Only when the caret is already on the first/last line; otherwise the
+      // arrow keys keep moving the caret between lines.
       const noModifiers = !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
       if (e.key === 'ArrowUp' && noModifiers) {
         if (userHistory.length === 0) return;
+        const textarea = textareaRef.current;
+        // With an active selection the default collapse/caret behavior wins
+        if (
+          !textarea ||
+          textarea.selectionStart !== textarea.selectionEnd ||
+          getCaretLine(textarea) > 0
+        )
+          return;
         // Keep the position valid if history shrank (e.g., messages removed)
         historyIndexRef.current = Math.min(historyIndexRef.current, userHistory.length - 1);
-        e.preventDefault();
-        if (historyIndexRef.current === -1) {
+        const currentIndex = historyIndexRef.current;
+        let nextIndex: number;
+        if (currentIndex === -1) {
           // Save whatever is currently typed so down arrow can restore it
-          savedDraftRef.current = textareaRef.current?.value ?? '';
-          historyIndexRef.current = userHistory.length - 1;
-        } else if (historyIndexRef.current > 0) {
-          historyIndexRef.current -= 1;
+          savedDraftRef.current = textarea.value;
+          nextIndex = userHistory.length - 1;
+        } else if (currentIndex > 0) {
+          nextIndex = currentIndex - 1;
+        } else {
+          // Already at the oldest entry; nothing further to recall
+          return;
         }
+        e.preventDefault();
+        historyIndexRef.current = nextIndex;
         applyHistoryEntry(historyIndexRef.current);
         return;
       }
       if (e.key === 'ArrowDown' && noModifiers) {
         if (userHistory.length === 0 || historyIndexRef.current === -1) return;
+        const textarea = textareaRef.current;
+        if (!textarea || textarea.selectionStart !== textarea.selectionEnd) return;
+        const totalLines = textarea.value.split('\n').length;
+        if (getCaretLine(textarea) < totalLines - 1) return;
         historyIndexRef.current = Math.min(historyIndexRef.current, userHistory.length - 1);
         e.preventDefault();
         // At the newest entry, pressing down restores the saved draft
@@ -628,6 +648,11 @@ function resizeTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = 'auto';
   const maxHeight = window.innerHeight * TEXTAREA_MAX_HEIGHT_RATIO;
   textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+}
+
+/** Zero-based hard-line index of the caret within the textarea value. */
+function getCaretLine(textarea: HTMLTextAreaElement): number {
+  return textarea.value.slice(0, textarea.selectionStart).split('\n').length - 1;
 }
 
 function ModelSettingsPicker({

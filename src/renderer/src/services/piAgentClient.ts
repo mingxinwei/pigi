@@ -6,7 +6,7 @@
  */
 import type {
   AuthProviderInfo,
-  ModelInfo,
+  ModelCatalogSnapshot,
   PiCommand,
   PiPush,
   GitBranchResult,
@@ -267,11 +267,18 @@ export function onStreamBatch(
 }
 
 /** Get the cached model catalog snapshot. Updates arrive via onModelCatalogUpdated. */
-export async function getModelCatalog(): Promise<ModelInfo[]> {
+export async function getModelCatalog(): Promise<ModelCatalogSnapshot> {
   return window.piApi.getModelCatalog();
 }
 
+/** Kick a background catalog reload; the current snapshot is returned immediately. */
+export async function refreshModelCatalog(): Promise<ModelCatalogSnapshot> {
+  return window.piApi.refreshModelCatalog();
+}
+
 /** Subscribe to model catalog updates pushed from main. */
-export function onModelCatalogUpdated(callback: (models: ModelInfo[]) => void): () => void {
+export function onModelCatalogUpdated(
+  callback: (snapshot: ModelCatalogSnapshot) => void,
+): () => void {
   return window.piApi.onModelCatalogUpdated(callback);
 }

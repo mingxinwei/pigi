@@ -39,6 +39,17 @@ export interface ModelInfo {
   thinkingLevels: ThinkingLevel[];
 }
 
+/**
+ * Versioned catalog snapshot. The version breaks the race between an invoke
+ * reply (GetModelCatalog / RefreshModelCatalog) and a newer push arriving
+ * first: the renderer drops any snapshot whose version is not newer than the
+ * one it already applied.
+ */
+export interface ModelCatalogSnapshot {
+  version: number;
+  models: ModelInfo[];
+}
+
 export interface ProjectDirectory {
   path: string;
   name: string;
@@ -283,6 +294,8 @@ export enum PiChannel {
   SetShortcut = 'pi:set_shortcut',
   /** renderer → main: get the cached model catalog snapshot */
   GetModelCatalog = 'pi:get_model_catalog',
+  /** renderer → main: kick a background catalog reload and get the current snapshot back immediately */
+  RefreshModelCatalog = 'pi:refresh_model_catalog',
   /** main → renderer: the model catalog changed (push, no request) */
   ModelCatalogUpdated = 'pi:model_catalog_updated',
   /** renderer → main: ensure the terminal process for an id is running and deliver its data MessagePort */

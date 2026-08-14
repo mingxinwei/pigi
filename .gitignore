@@ -6,3 +6,4 @@ out
 .cache
 *.log*
 *.tsbuildinfo
+.pi-subagents

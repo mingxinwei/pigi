@@ -72,6 +72,8 @@ interface ChatInputProps {
   userHistory: string[];
   onSelectModel: (model: ModelInfo) => void;
   onSelectThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
+  /** Fire-and-forget refresh of the model catalog; called when the model picker is clicked. */
+  onRequestModelRefresh: () => void;
   /** New session mode: centers input, enables project switching via # */
   isNewSession?: boolean;
   recentProjects?: ProjectDirectory[];
@@ -111,6 +113,7 @@ export default function ChatInput({
   thinkingLevelOptions,
   onSelectModel,
   onSelectThinkingLevel,
+  onRequestModelRefresh,
   skillOptions,
   userHistory,
   isNewSession = false,
@@ -559,6 +562,7 @@ export default function ChatInput({
                       modelValue={session?.model ?? null}
                       modelOptions={modelOptions}
                       onSelectModel={onSelectModel}
+                      onRequestModelRefresh={onRequestModelRefresh}
                       thinkingLabel={thinkingLabel}
                       thinkingValue={thinkingValue}
                       thinkingOptions={thinkingLevelOptions}
@@ -635,6 +639,7 @@ function ModelSettingsPicker({
   modelValue,
   modelOptions,
   onSelectModel,
+  onRequestModelRefresh,
   thinkingLabel,
   thinkingValue,
   thinkingOptions,
@@ -644,6 +649,7 @@ function ModelSettingsPicker({
   modelValue: ModelInfo | null;
   modelOptions: ModelInfo[];
   onSelectModel: (model: ModelInfo) => void;
+  onRequestModelRefresh: () => void;
   thinkingLabel: string;
   thinkingValue: ThinkingLevel | null;
   thinkingOptions: ThinkingLevel[];
@@ -657,13 +663,20 @@ function ModelSettingsPicker({
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
-      if (nextOpen && !canOpen) return;
+      if (nextOpen) {
+        // Refresh on every open attempt: corrects a stale/partial model list
+        // right when the user needs it. Fire-and-forget even if the picker
+        // cannot open yet (empty list) — the refreshed list arrives via push
+        // and the button becomes usable then.
+        onRequestModelRefresh();
+        if (!canOpen) return;
+      }
       setOpen(nextOpen);
       if (!nextOpen) {
         setModelSearch('');
       }
     },
-    [canOpen],
+    [canOpen, onRequestModelRefresh],
   );
 
   useEffect(() => {

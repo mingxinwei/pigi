@@ -14,7 +14,7 @@ import {
   type ControlPortMessage,
   type DataPortMessage,
   type GitBranchResult,
-  type ModelInfo,
+  type ModelCatalogSnapshot,
   type PiCommand,
   type PiPush,
   type PiRequest,
@@ -417,12 +417,17 @@ const piApi = {
   },
 
   /** Get the cached model catalog snapshot. Updates arrive via onModelCatalogUpdated. */
-  getModelCatalog: (): Promise<ModelInfo[]> => ipcRenderer.invoke(PiChannel.GetModelCatalog),
+  getModelCatalog: (): Promise<ModelCatalogSnapshot> =>
+    ipcRenderer.invoke(PiChannel.GetModelCatalog),
+
+  /** Kick a background catalog reload and get the current snapshot back immediately. */
+  refreshModelCatalog: (): Promise<ModelCatalogSnapshot> =>
+    ipcRenderer.invoke(PiChannel.RefreshModelCatalog),
 
   /** Subscribe to model catalog updates (main → renderer push). */
-  onModelCatalogUpdated: (callback: (models: ModelInfo[]) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { models: ModelInfo[] }): void => {
-      callback(data.models);
+  onModelCatalogUpdated: (callback: (snapshot: ModelCatalogSnapshot) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, snapshot: ModelCatalogSnapshot): void => {
+      callback(snapshot);
     };
     ipcRenderer.on(PiChannel.ModelCatalogUpdated, handler);
     return () => ipcRenderer.removeListener(PiChannel.ModelCatalogUpdated, handler);

@@ -25,24 +25,43 @@ function sendToMain(response: SessionWorkerResponse): void {
 // The catalog is a property of the user environment (user-level extensions
 // register providers; credentials live in agentDir/auth.json), not of the
 // active project — project-level extensions that register providers are out
-// of scope by product decision. So this worker loads it exactly once at
-// startup and rebuilds it only when credentials change (login/logout). There
-// is no cwd coordination, no query-triggered refresh, and no retry loop: a
-// picker that misses a dynamic provider due to a network blip recovers on the
-// next app launch or login, with the on-disk models cache as the fallback.
+// of scope by product decision. So this worker loads it at startup and
+// rebuilds it on credential changes (login/logout) and on demand from the
+// renderer (picker refresh).
+//
+// Self-healing rules, in order of escalation:
+// - Every reload builds fresh services and is time-boxed end to end, so a
+//   wedged SDK network call can never poison the reload chain (stale
+//   outcomes are simply dropped).
+// - The one network refresh per load is aborted for real via AbortController,
+//   so a hung fetch settles instead of wedging the provider's coalesced
+//   in-flight refresh for everyone.
+// - If the catalog has never been published and services cannot be built,
+//   the worker exits so main respawns a fresh process — the only guaranteed
+//   way to clear an SDK network call that ignores abort signals.
 // =============================================================================
 
-// Upper bound for the one network refresh per load, so a stalled provider
-// (the SDK reload has no network timeout) cannot wedge the reload chain.
+// Upper bounds per load. The SDK's own reload path has no reliable timeout
+// (refresh drops abort signals in some paths, and a provider's coalesced
+// in-flight refresh ignores later signals), so these races are the real
+// protection, with process restart as the final fallback. The services bound
+// sits well above ModelRuntime.create's internal 15s refresh so a healthy
+// but slow build is not mistaken for a wedge.
+const CATALOG_SERVICES_TIMEOUT_MS = 30000;
 const CATALOG_REFRESH_TIMEOUT_MS = 10000;
 
 let catalogServices: AgentSessionServices | null = null;
 // Dedup key of the last published catalog (sorted provider/id pairs).
 let lastPublishedCatalogKey: string | null = null;
-// Serializes reloads: a login burst may fire several credentials_changed.
-let reloadChain: Promise<void> = Promise.resolve();
+// Coalesced reload: concurrent requests join the in-flight reload instead of
+// queueing behind it, so a burst (login + picker refresh) costs one rebuild.
+let pendingReload: Promise<void> | null = null;
+// Generation guard for process.cwd(): an abandoned timed-out build must not
+// restore cwd over a newer build's registration (which pins cwd to agentDir).
+let catalogBuildGeneration = 0;
 
 function createCatalogServices(): Promise<AgentSessionServices> {
+  const generation = ++catalogBuildGeneration;
   return (async () => {
     const agentDir = getAgentDir();
     const previousCwd = process.cwd();
@@ -67,7 +86,11 @@ function createCatalogServices(): Promise<AgentSessionServices> {
         },
       });
     } finally {
-      process.chdir(previousCwd);
+      // Only the latest build may restore cwd: a superseded build that
+      // settles late skips the restore (the newer build owns the cwd now).
+      if (catalogBuildGeneration === generation) {
+        process.chdir(previousCwd);
+      }
     }
   })();
 }
@@ -92,43 +115,92 @@ function publishCatalog(modelRuntime: ModelRuntime): void {
 }
 
 /**
- * (Re)build the catalog services and publish. Called once at startup and on
- * every credentials change (the in-memory auth snapshot is not re-read from
- * disk by refresh(), so a rebuild is the reliable way to pick up logins).
+ * (Re)build the catalog services and publish. Called at startup, on every
+ * credentials change, and on picker refresh requests from the renderer.
+ *
+ * Every await inside is raced against a timeout so a hung SDK call can never
+ * wedge the chain: the next reload builds fresh services regardless.
  */
-async function reloadCatalog(): Promise<void> {
-  reloadChain = reloadChain.then(async () => {
-    try {
-      const services = await createCatalogServices();
-      catalogServices = services;
-      // Publish the local snapshot immediately so the picker renders from
-      // disk-cached models (dynamic providers included) without waiting on
-      // the network…
-      publishCatalog(services.modelRuntime);
-      // …then do the single network refresh per load (equivalent to the old
-      // warm-up behavior). Time-boxed so a stalled provider cannot wedge the
-      // reload chain; if it finishes late anyway, publish the result then.
-      const refresh = services.modelRuntime.reloadConfig().catch(() => {});
-      const outcome = await Promise.race([
-        refresh.then(() => 'completed' as const),
-        delay(CATALOG_REFRESH_TIMEOUT_MS).then(() => 'timed_out' as const),
-      ]);
-      if (outcome === 'timed_out') {
-        void refresh.then(() => {
-          if (catalogServices === services) {
-            publishCatalog(services.modelRuntime);
-          }
-        });
-      }
-      if (catalogServices === services) {
-        publishCatalog(services.modelRuntime);
-      }
-    } catch (error) {
-      // Keep serving the last published catalog; the next reload retries.
-      console.error('Failed to load model catalog services:', error);
+async function performCatalogReload(): Promise<void> {
+  const servicesPromise = createCatalogServices();
+  servicesPromise.catch(() => {}); // handled via the race outcome below
+  const servicesOutcome = await Promise.race([
+    servicesPromise.then(
+      (services) => ({ outcome: 'created' as const, services }),
+      () => ({ outcome: 'failed' as const }),
+    ),
+    delay(CATALOG_SERVICES_TIMEOUT_MS).then(() => ({ outcome: 'timed_out' as const })),
+  ]);
+
+  if (servicesOutcome.outcome !== 'created') {
+    console.error(
+      `Failed to build model catalog services (${servicesOutcome.outcome}); ` +
+        'a fresh reload will retry from scratch',
+    );
+    // Never published? The picker would be empty forever in this process,
+    // and the hung SDK call cannot be cleared from the inside. Exit so main
+    // respawns a fresh worker.
+    if (lastPublishedCatalogKey === null) {
+      process.exit(1);
     }
+    // A catalog exists: keep serving it. The abandoned build (if it was a
+    // hang rather than a failure) leaks one pending promise, but a hung
+    // fetch is still bounded by Node's default socket timeouts and the next
+    // reload starts a fresh build anyway.
+    return;
+  }
+
+  const services = servicesOutcome.services;
+  catalogServices = services;
+  // Publish the local snapshot immediately so the picker renders from
+  // disk-cached models (dynamic providers included) without waiting on
+  // the network…
+  publishCatalog(services.modelRuntime);
+
+  // …then do the single network refresh per load, with a real abort: the
+  // SDK's reloadConfig() takes no signal, but refresh() does. Aborting makes
+  // a hung fetch settle instead of wedging the provider's coalesced
+  // in-flight refresh for every later refresh in this process.
+  const controller = new AbortController();
+  const refreshPromise = services.modelRuntime.refresh({
+    allowNetwork: true,
+    signal: controller.signal,
   });
-  await reloadChain;
+  const refreshOutcome = await Promise.race([
+    refreshPromise.then(
+      () => 'completed' as const,
+      () => 'failed' as const,
+    ),
+    delay(CATALOG_REFRESH_TIMEOUT_MS).then(() => 'timed_out' as const),
+  ]);
+  if (refreshOutcome === 'timed_out') {
+    controller.abort();
+    // If the refresh still finishes late (some SDK paths ignore the abort),
+    // publish the result then — unless a newer reload has taken over.
+    void refreshPromise.then(
+      () => {
+        if (catalogServices === services) {
+          publishCatalog(services.modelRuntime);
+        }
+      },
+      () => {},
+    );
+  }
+  if (refreshOutcome === 'failed') {
+    console.error('Model catalog refresh failed; serving the local snapshot');
+  }
+  // Publish whatever the refresh produced (including a partial result).
+  if (catalogServices === services) {
+    publishCatalog(services.modelRuntime);
+  }
+}
+
+/** Coalesced reload: concurrent requests join the in-flight one. */
+function reloadCatalog(): Promise<void> {
+  pendingReload ??= performCatalogReload().finally(() => {
+    pendingReload = null;
+  });
+  return pendingReload;
 }
 
 function serializeSessionInfo(session: SessionInfo): PiSessionInfo {

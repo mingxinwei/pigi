@@ -19,6 +19,7 @@ import {
   createAgentSessionServices,
   getAgentDir,
   ModelRegistry,
+  type ModelRuntime,
   SessionManager,
   SettingsManager,
   type WriteToolInput,
@@ -189,6 +190,33 @@ function getServices(cwd: string): Promise<AgentSessionServices> {
   });
   servicesByCwd.set(cwd, services);
   return services;
+}
+
+// =============================================================================
+// Model runtime refresh (set_model self-heal)
+// =============================================================================
+
+// Bound for a refresh triggered by a missing model. The AbortController bounds
+// the cooperative SDK paths; the outer race is the real guarantee — a provider
+// whose fetch ignores the signal still leaves refresh() pending, so the wait
+// itself is raced or set_model would hang forever.
+const SESSION_MODEL_REFRESH_TIMEOUT_MS = 10000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function refreshModelRuntimeModels(modelRuntime: ModelRuntime): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SESSION_MODEL_REFRESH_TIMEOUT_MS);
+  try {
+    await Promise.race([
+      modelRuntime.refresh({ allowNetwork: true, signal: controller.signal }),
+      delay(SESSION_MODEL_REFRESH_TIMEOUT_MS),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // =============================================================================
@@ -490,7 +518,19 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
       return runtime.session.cycleThinkingLevel();
 
     case 'set_model': {
-      const model = runtime.services.modelRuntime.getModel(command.provider, command.modelId);
+      let model = runtime.services.modelRuntime.getModel(command.provider, command.modelId);
+      if (!model) {
+        // The picker may show a model this process has not loaded yet (its
+        // own catalog refresh lagged or failed while the session worker's
+        // copy is current). Self-heal with one bounded refresh, then retry;
+        // only then report the model as missing.
+        try {
+          await refreshModelRuntimeModels(runtime.services.modelRuntime);
+          model = runtime.services.modelRuntime.getModel(command.provider, command.modelId);
+        } catch (error) {
+          console.error('Model refresh during set_model failed:', error);
+        }
+      }
       if (!model) {
         return { success: false, error: `model not found: ${command.provider}/${command.modelId}` };
       }

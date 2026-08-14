@@ -57,14 +57,57 @@ const processPool = new PiAgentProcessPool((sessionPath, code) => {
 // Model catalog (served by the session worker, cached + broadcast by main)
 //
 // The session worker is the single producer of the model catalog; it loads it
-// once at startup and rebuilds it only on credential changes. Main keeps the
-// last published snapshot so a freshly loaded renderer gets an immediate
-// answer, and forwards every update push.
+// at startup, rebuilds it on credential changes, and reloads on renderer
+// request (picker refresh). Main keeps the last published snapshot so a
+// freshly loaded renderer gets an immediate answer, and forwards every update
+// push with a monotonically increasing version so the renderer can drop
+// out-of-order snapshots.
 // =============================================================================
 
 let modelCatalogCache: ModelInfo[] = [];
+let modelCatalogVersion = 0;
+
+// Respawn policy: the worker self-exits when it cannot build a catalog (the
+// only way to clear a wedged SDK network call), so main respawns it with a
+// capped exponential backoff. Failures reset once a catalog is published.
+const SESSION_WORKER_RESPAWN_BASE_DELAY_MS = 2000;
+const SESSION_WORKER_RESPAWN_MAX_DELAY_MS = 30000;
+const SESSION_WORKER_MAX_RESPAWN_FAILURES = 3;
+// Picker-originated refreshes: throttle reloads so a burst of open/close
+// cycles costs one rebuild, and revive a dead worker on a cooldown so a
+// persistent config error cannot turn every click into a spawn/exit thrash.
+const PICKER_REFRESH_THROTTLE_MS = 5000;
+const WORKER_REVIVE_COOLDOWN_MS = 30000;
+let sessionWorkerRespawnTimer: NodeJS.Timeout | null = null;
+let sessionWorkerRespawnFailures = 0;
+let lastPickerRefreshAt = 0;
+let lastWorkerReviveAt = 0;
+let isShuttingDown = false;
+
+function scheduleSessionWorkerRespawn(): void {
+  if (
+    isShuttingDown ||
+    sessionWorkerRespawnTimer ||
+    sessionWorkerRespawnFailures >= SESSION_WORKER_MAX_RESPAWN_FAILURES
+  ) {
+    return;
+  }
+  sessionWorkerRespawnFailures += 1;
+  const delay = Math.min(
+    SESSION_WORKER_RESPAWN_BASE_DELAY_MS * 2 ** (sessionWorkerRespawnFailures - 1),
+    SESSION_WORKER_RESPAWN_MAX_DELAY_MS,
+  );
+  sessionWorkerRespawnTimer = setTimeout(() => {
+    sessionWorkerRespawnTimer = null;
+    startSessionWorker();
+  }, delay);
+}
 
 function startSessionWorker(): void {
+  if (sessionWorkerRespawnTimer) {
+    clearTimeout(sessionWorkerRespawnTimer);
+    sessionWorkerRespawnTimer = null;
+  }
   if (sessionWorkerProcess) {
     return;
   }
@@ -76,7 +119,12 @@ function startSessionWorker(): void {
     switch (message.type) {
       case 'catalog_updated':
         modelCatalogCache = message.models;
-        sendToRenderer(PiChannel.ModelCatalogUpdated, { models: message.models });
+        modelCatalogVersion += 1;
+        sessionWorkerRespawnFailures = 0;
+        sendToRenderer(PiChannel.ModelCatalogUpdated, {
+          version: modelCatalogVersion,
+          models: message.models,
+        });
         break;
       case 'project_sessions_chunk':
         sendToRenderer(PiChannel.ProjectSessionsChunk, {
@@ -127,6 +175,7 @@ function startSessionWorker(): void {
         callback({ success: false, error: 'session worker process exited' });
         pendingReadMessagesCallbacks.delete(id);
       }
+      scheduleSessionWorkerRespawn();
     }
   });
 }
@@ -276,6 +325,11 @@ async function spawnSessionProcess(
 }
 
 export function stopAllProcesses(): void {
+  isShuttingDown = true;
+  if (sessionWorkerRespawnTimer) {
+    clearTimeout(sessionWorkerRespawnTimer);
+    sessionWorkerRespawnTimer = null;
+  }
   processPool.stopAllProcesses();
   sessionWorkerProcess?.kill();
   sessionWorkerProcess = null;
@@ -338,7 +392,24 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(PiChannel.GetModelCatalog, async () => {
     // Pure cache read: the worker publishes on startup and on credential
     // changes; updates arrive via ModelCatalogUpdated.
-    return modelCatalogCache;
+    return { version: modelCatalogVersion, models: modelCatalogCache };
+  });
+
+  ipcMain.handle(PiChannel.RefreshModelCatalog, async () => {
+    // Picker refresh: return the current snapshot immediately (corrects a
+    // renderer whose snapshot went stale) and kick a reload in the
+    // background — updates arrive via ModelCatalogUpdated. Throttled so a
+    // burst of picker opens costs one rebuild, not one per click.
+    const now = Date.now();
+    if (now - lastPickerRefreshAt >= PICKER_REFRESH_THROTTLE_MS) {
+      lastPickerRefreshAt = now;
+      if (!sessionWorkerProcess && now - lastWorkerReviveAt >= WORKER_REVIVE_COOLDOWN_MS) {
+        lastWorkerReviveAt = now;
+        startSessionWorker();
+      }
+      sessionWorkerProcess?.postMessage({ type: 'reload_catalog' });
+    }
+    return { version: modelCatalogVersion, models: modelCatalogCache };
   });
 
   ipcMain.handle(PiChannel.ListProjectSessions, async (_e, cwds: string[]) => {

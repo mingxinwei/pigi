@@ -3,7 +3,7 @@ import type {
   PiCommand,
   PiPush,
   GitBranchResult,
-  ModelInfo,
+  ModelCatalogSnapshot,
   ProjectSessionsChunk,
   ProjectStateResult,
   SessionListResult,
@@ -58,8 +58,9 @@ interface PiApi {
   // Utilities
   getCwd: () => string;
   openExternal: (url: string) => void;
-  getModelCatalog: () => Promise<ModelInfo[]>;
-  onModelCatalogUpdated: (callback: (models: ModelInfo[]) => void) => () => void;
+  getModelCatalog: () => Promise<ModelCatalogSnapshot>;
+  refreshModelCatalog: () => Promise<ModelCatalogSnapshot>;
+  onModelCatalogUpdated: (callback: (snapshot: ModelCatalogSnapshot) => void) => () => void;
 
   // Keyboard shortcuts
   getShortcuts: () => Promise<ShortcutDefinition[]>;

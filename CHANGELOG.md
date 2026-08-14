@@ -6,6 +6,7 @@
 
 - The up and down arrow keys in the chat input now move the cursor between lines first: recalling previous messages only kicks in when the cursor is already on the first line (up arrow) or the last line (down arrow), so editing a multi-line message no longer suddenly jumps into message history.
 - The message list no longer micro-jitters when scrolling to the bottom of a long conversation: messages stay in place instead of shifting a few pixels as the list settles.
+- The model list can no longer get permanently stuck after a bad start: every catalog load is now time-boxed and aborted for real, a worker that cannot build the catalog is respawned fresh, and opening the model picker now kicks a background refresh — so a session opened quickly after launch no longer ends up with a missing or frozen model list that only an app restart could fix.
 
 ## [0.4.3] - 2026-08-13
 

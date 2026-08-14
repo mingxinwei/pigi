@@ -41,10 +41,12 @@ import {
   renameSession,
   readSessionMessages,
   getModelCatalog,
+  refreshModelCatalog,
   onModelCatalogUpdated,
 } from './services/piAgentClient';
 import type {
   AuthProviderInfo,
+  ModelCatalogSnapshot,
   ModelInfo,
   PiSessionInfo,
   ProjectDirectory,
@@ -266,12 +268,32 @@ function App(): React.JSX.Element {
 
   // Global model catalog: immediate snapshot + live updates from main. The
   // worker re-publishes only on change, so this is quiet in the steady state.
+  // Snapshot versions break the race between an invoke reply and a newer
+  // push arriving first: stale snapshots are dropped.
+  const catalogVersionRef = useRef(0);
+  const applyCatalogSnapshot = useCallback((snapshot: ModelCatalogSnapshot) => {
+    if (snapshot.version <= catalogVersionRef.current) {
+      return;
+    }
+    catalogVersionRef.current = snapshot.version;
+    setCatalogModels(snapshot.models);
+  }, []);
+
   useEffect(() => {
     void getModelCatalog()
-      .then(setCatalogModels)
+      .then(applyCatalogSnapshot)
       .catch((err) => console.error('Failed to load model catalog:', err));
-    return onModelCatalogUpdated(setCatalogModels);
-  }, []);
+    return onModelCatalogUpdated(applyCatalogSnapshot);
+  }, [applyCatalogSnapshot]);
+
+  // Picker refresh: kick a background reload in the session worker and apply
+  // the snapshot main returns immediately. This is the user-facing self-heal
+  // for a stale or partial model list; updates also arrive via push.
+  const handleRequestModelRefresh = useCallback(() => {
+    void refreshModelCatalog()
+      .then(applyCatalogSnapshot)
+      .catch((err) => console.error('Failed to refresh model catalog:', err));
+  }, [applyCatalogSnapshot]);
 
   const thinkingLevelOptions = activeSessionPath ? sessionThinkingLevels : draftThinkingLevels;
 
@@ -1211,6 +1233,7 @@ function App(): React.JSX.Element {
                   skillOptions={activeSessionPath ? skillOptions : []}
                   onSelectModel={handleSelectModel}
                   onSelectThinkingLevel={handleSelectThinkingLevel}
+                  onRequestModelRefresh={handleRequestModelRefresh}
                   userHistory={userHistory}
                 />
               </div>
@@ -1237,6 +1260,7 @@ function App(): React.JSX.Element {
                 skillOptions={skillOptions}
                 onSelectModel={handleSelectModel}
                 onSelectThinkingLevel={handleSelectThinkingLevel}
+                onRequestModelRefresh={handleRequestModelRefresh}
                 userHistory={draftUserHistory}
                 isNewSession={isDraftEmpty}
                 recentProjects={recentProjects}

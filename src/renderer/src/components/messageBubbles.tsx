@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconCopy, IconSparkles } from '@tabler/icons-react';
 import { type UserNode } from '../state/transcriptController';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -7,6 +7,7 @@ import OverflowClamp from './overflowClamp';
 import { highlightMatches } from '../lib/highlightMatches';
 import ShimmerOverlay from './shimmerOverlay';
 import { parseSkillBlock, type ParsedSkillBlock } from '../lib/skillBlock';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
 
 /**
  * Shared message bubbles (user / system / toolbar) used by both the classic
@@ -16,20 +17,14 @@ import { parseSkillBlock, type ParsedSkillBlock } from '../lib/skillBlock';
 const USER_MESSAGE_MAX_HEIGHT_VH = 0.2;
 
 export function MessageToolbar({ text }: { text: string }): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
+  const { copied, copy } = useCopyFeedback(text);
 
   return (
     <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
       <button
         type="button"
         className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground"
-        onClick={handleCopy}
+        onClick={copy}
         title="Copy message"
       >
         {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}

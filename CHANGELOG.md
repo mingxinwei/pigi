@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Code blocks in messages now show a copy button in the top-right corner, so you can copy the code inside a fenced block with one click.
+
 ### Fixed
 
 - The up and down arrow keys in the chat input now move the cursor between lines first: recalling previous messages only kicks in when the cursor is already on the first line (up arrow) or the last line (down arrow), so editing a multi-line message no longer suddenly jumps into message history.

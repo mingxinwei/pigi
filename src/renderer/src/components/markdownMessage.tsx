@@ -1,8 +1,10 @@
-import { memo, type ReactNode } from 'react';
+import { createContext, memo, useContext, type ReactNode } from 'react';
+import { IconCheck, IconCopy } from '@tabler/icons-react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import SyntaxHighlightedCode from './syntaxHighlightedCode';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
 
 interface MarkdownMessageProps {
   text: string;
@@ -34,6 +36,8 @@ const CODE_LANGUAGE_LABELS: Record<string, string> = {
 
 // Only elements needing behavior or structure get an override; all typographic
 // styling lives in the `.markdown-body` rules in main.css.
+const IsInCodeBlockContext = createContext(false);
+
 const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a
@@ -54,23 +58,75 @@ const markdownComponents: Components = {
       <table>{children}</table>
     </div>
   ),
-  code: ({ className, children }) => {
-    const language = getCodeLanguage(className);
-    const code = getCodeText(children);
-    if (language) {
-      return (
-        <>
-          <span className="markdown-code-label" data-search-ignore>
-            {getCodeLanguageLabel(language)}
-          </span>
-          <SyntaxHighlightedCode code={code} language={language} />
-        </>
-      );
-    }
-
-    return <code className={className}>{children}</code>;
-  },
+  // react-markdown gives the code element no way to tell block code from
+  // inline code, so the pre override broadcasts it via context.
+  pre: ({ children }) => (
+    <IsInCodeBlockContext.Provider value={true}>
+      <pre>{children}</pre>
+    </IsInCodeBlockContext.Provider>
+  ),
+  code: MarkdownCode,
 };
+
+function MarkdownCode({
+  className,
+  children,
+}: {
+  className?: string;
+  children?: ReactNode;
+}): React.JSX.Element {
+  const isCodeBlock = useContext(IsInCodeBlockContext);
+  if (!isCodeBlock) {
+    return <code className={className}>{children}</code>;
+  }
+
+  const language = getCodeLanguage(className);
+  const code = getCodeText(children);
+  if (language) {
+    return (
+      <>
+        <span className="markdown-code-header" data-search-ignore>
+          <span className="markdown-code-label">{getCodeLanguageLabel(language)}</span>
+          <CodeCopyButton code={code} />
+        </span>
+        <SyntaxHighlightedCode code={code} language={language} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <CodeCopyButton code={code} overlay />
+      <code className={className}>{children}</code>
+    </>
+  );
+}
+
+function CodeCopyButton({
+  code,
+  overlay = false,
+}: {
+  code: string;
+  /** Float over the code in the corner instead of sitting in a header row. */
+  overlay?: boolean;
+}): React.JSX.Element {
+  const { copied, copy } = useCopyFeedback(code);
+
+  return (
+    <button
+      type="button"
+      className={
+        overlay
+          ? 'markdown-code-copy-button markdown-code-copy-button-overlay'
+          : 'markdown-code-copy-button'
+      }
+      onClick={copy}
+      title="Copy code"
+    >
+      {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+    </button>
+  );
+}
 
 function getCodeLanguage(className: string | undefined): string | null {
   const languageClass = className

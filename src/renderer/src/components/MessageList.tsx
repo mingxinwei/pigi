@@ -159,9 +159,6 @@ export default React.memo(function MessageList({
   // The turn id that was pinned before details expanded — re-pin on collapse.
   const lastPinnedTurnIdRef = useRef<string | null>(null);
   const lastTurnIdRef = useRef<string | null>(null);
-  // Previous scrollTop, used by the scroll-event lock to tell "user scrolled
-  // down" (relock) from "content shrank" (clamped scrollTop, keep locked).
-  const lastScrollTopRef = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -447,19 +444,6 @@ export default React.memo(function MessageList({
       }
       const distanceFromBottom =
         container!.scrollHeight - container!.scrollTop - container!.clientHeight;
-      // Universal scroll lock: any scroll away from the bottom — wheel,
-      // scrollbar drag, keyboard, programmatic — disables auto-follow, and
-      // scrolling back to the bottom re-enables it. Our own bottom pins land
-      // at distance 0, so they never trip the lock. The scrollTop-increased
-      // guard on the relock distinguishes a real downward scroll from the
-      // browser clamping scrollTop when content above shrinks (which must
-      // NOT re-enable auto-follow).
-      if (distanceFromBottom > AUTO_SCROLL_BOTTOM_THRESHOLD) {
-        autoScrollRef.current = false;
-      } else if (container!.scrollTop > lastScrollTopRef.current) {
-        autoScrollRef.current = true;
-      }
-      lastScrollTopRef.current = container!.scrollTop;
       setShowScrollButton(
         distanceFromBottom > container!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER,
       );

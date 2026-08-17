@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Sending a message now reliably scrolls to the bottom and follows the reply again: auto-follow no longer trips on the list's own scroll positioning while the chat input collapses after sending (the lock is wheel-only again — keyboard and scrollbar scrolling no longer disable auto-follow).
+
 ## [0.4.4] - 2026-08-17
 
 ### Added

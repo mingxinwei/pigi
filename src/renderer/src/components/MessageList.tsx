@@ -159,6 +159,9 @@ export default React.memo(function MessageList({
   // The turn id that was pinned before details expanded — re-pin on collapse.
   const lastPinnedTurnIdRef = useRef<string | null>(null);
   const lastTurnIdRef = useRef<string | null>(null);
+  // Previous scrollTop, used by the scroll-event lock to tell "user scrolled
+  // down" (relock) from "content shrank" (clamped scrollTop, keep locked).
+  const lastScrollTopRef = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -251,15 +254,25 @@ export default React.memo(function MessageList({
   });
 
   // The virtualizer's built-in scroll correction (resizeItem -> scroll by the
-  // size delta for items above the viewport) is intentionally left ON. It runs
-  // in the ResizeObserver step of the same frame a measurement lands in,
-  // before paint, so it compensates estimate-error shifts of rows mounting or
-  // being measured above the viewport — the micro-jitter seen when scrolling
-  // to the bottom of a long list. It previously had to be disabled because its
-  // gapless coordinate model disagreed with the DOM scrollHeight and it fought
-  // the auto-scroll pin without converging; with gap restored both corrections
-  // now target the same bottom, and the pin (registered later, in an effect
-  // after mount) still wins when both run in the same frame.
+  // size delta for items above the viewport) is intentionally left ON but
+  // gated on auto-scroll. It runs in the ResizeObserver step of the same
+  // frame a measurement lands in, before paint, so it compensates
+  // estimate-error shifts of rows mounting or being measured above the
+  // viewport — the micro-jitter seen when scrolling to the bottom of a long
+  // list. It previously had to be disabled because its gapless coordinate
+  // model disagreed with the DOM scrollHeight and it fought the auto-scroll
+  // pin without converging; with gap restored both corrections now target the
+  // same bottom, and the pin (registered later, in an effect after mount)
+  // still wins when both run in the same frame.
+  //
+  // The gate matters: the correction writes scrollTop through
+  // applyScrollAdjustment without consulting autoScrollRef, so an un-gated
+  // correction keeps adjusting while the user is scrolled up (e.g. a late
+  // re-measure of a row above the viewport — async code highlight landing —
+  // drags the locked viewport down, defeating the wheel lock). While
+  // following (autoScroll on) the correction stays active, preserving the
+  // bottom-scroll micro-jitter fix.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => autoScrollRef.current;
 
   // Viewport-height spacer below the active turn so it can reach the top.
   const [topPaddingPx, setTopPaddingPx] = useState(0);
@@ -434,6 +447,19 @@ export default React.memo(function MessageList({
       }
       const distanceFromBottom =
         container!.scrollHeight - container!.scrollTop - container!.clientHeight;
+      // Universal scroll lock: any scroll away from the bottom — wheel,
+      // scrollbar drag, keyboard, programmatic — disables auto-follow, and
+      // scrolling back to the bottom re-enables it. Our own bottom pins land
+      // at distance 0, so they never trip the lock. The scrollTop-increased
+      // guard on the relock distinguishes a real downward scroll from the
+      // browser clamping scrollTop when content above shrinks (which must
+      // NOT re-enable auto-follow).
+      if (distanceFromBottom > AUTO_SCROLL_BOTTOM_THRESHOLD) {
+        autoScrollRef.current = false;
+      } else if (container!.scrollTop > lastScrollTopRef.current) {
+        autoScrollRef.current = true;
+      }
+      lastScrollTopRef.current = container!.scrollTop;
       setShowScrollButton(
         distanceFromBottom > container!.clientHeight * SCROLL_BUTTON_VIEWPORT_MULTIPLIER,
       );

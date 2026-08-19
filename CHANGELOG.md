@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Compact and Show All message lists no longer intermittently jump away from the bottom while many messages stream in.
+
 ## [0.4.5] - 2026-08-17
 
 ### Fixed

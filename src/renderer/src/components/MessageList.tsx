@@ -266,10 +266,15 @@ export default React.memo(function MessageList({
   // applyScrollAdjustment without consulting autoScrollRef, so an un-gated
   // correction keeps adjusting while the user is scrolled up (e.g. a late
   // re-measure of a row above the viewport — async code highlight landing —
-  // drags the locked viewport down, defeating the wheel lock). While
-  // following (autoScroll on) the correction stays active, preserving the
-  // bottom-scroll micro-jitter fix.
-  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => autoScrollRef.current;
+  // drags the locked viewport down, defeating the wheel lock). Preserve the
+  // virtualizer's default positional check while following: returning only
+  // autoScrollRef.current would force a correction for EVERY resized item,
+  // including the active row in or below the viewport. That correction can
+  // run after the real-DOM bottom pin and move a painted frame off-bottom.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
+    const scrollOffset = containerRef.current?.scrollTop;
+    return autoScrollRef.current && scrollOffset !== undefined && item.start < scrollOffset;
+  };
 
   // Viewport-height spacer below the active turn so it can reach the top.
   const [topPaddingPx, setTopPaddingPx] = useState(0);

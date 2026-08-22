@@ -195,7 +195,8 @@ export type PiPush =
   | { type: 'login_progress'; message: string }
   | { type: 'login_complete'; providerId: string }
   | { type: 'login_error'; error: string }
-  | { type: 'auto_title'; title: string; cwd: string };
+  | { type: 'auto_title'; title: string; cwd: string }
+  | { type: 'extension_notify'; message: string; level: 'info' | 'warning' | 'error' };
 
 // =============================================================================
 // Stream batches: Utility → Renderer (via data MessagePort, high-frequency)

@@ -198,6 +198,16 @@ function ensureSessionSubscription(sessionPath: string, controller: TranscriptCo
       case 'auto_title':
         void listProjectSessions([pushMessage.cwd]);
         break;
+
+      case 'extension_notify':
+        if (pushMessage.level === 'error') {
+          toast.error(pushMessage.message);
+        } else if (pushMessage.level === 'warning') {
+          toast.warning(pushMessage.message);
+        } else {
+          toast.info(pushMessage.message);
+        }
+        break;
     }
   });
 

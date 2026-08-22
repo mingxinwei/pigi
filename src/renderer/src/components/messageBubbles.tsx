@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { IconCheck, IconCopy, IconSparkles } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconSparkles, IconTerminal2 } from '@tabler/icons-react';
 import { type UserNode } from '../state/transcriptController';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import MarkdownMessage from './markdownMessage';
@@ -8,6 +8,16 @@ import { highlightMatches } from '../lib/highlightMatches';
 import ShimmerOverlay from './shimmerOverlay';
 import { parseSkillBlock, type ParsedSkillBlock } from '../lib/skillBlock';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
+
+/** Matches a slash command like `/plannotator-review` or `/review staged`. */
+const SLASH_COMMAND_PATTERN = /^\/([a-z][a-z0-9_-]*)(\s.*)?$/i;
+
+function parseSlashCommand(text: string): { name: string; args: string } | null {
+  if (text.includes('\n')) return null;
+  const match = text.match(SLASH_COMMAND_PATTERN);
+  if (!match) return null;
+  return { name: match[1], args: (match[2] ?? '').trim() };
+}
 
 /**
  * Shared message bubbles (user / system / toolbar) used by both the classic
@@ -115,6 +125,35 @@ function SkillLinkBubble({
   );
 }
 
+function CommandBubble({
+  name,
+  args,
+  timestamp,
+}: {
+  name: string;
+  args: string;
+  timestamp: number;
+}): React.JSX.Element {
+  return (
+    <div className="flex justify-end pb-2 pt-6" data-testid="command-message">
+      <div className="group flex max-w-[85%] flex-col items-end">
+        <div className="rounded-2xl bg-muted px-3.5 py-1.5 text-[15px] leading-6 text-foreground max-w-full w-fit">
+          <span className="text-[var(--system-accent)]">
+            <IconTerminal2 className="size-4 shrink-0 inline -mt-0.5 mr-0.5" />
+            <span className="font-medium">{name}</span>
+          </span>
+          {args && <span className="ml-1 text-muted-foreground">{args}</span>}
+        </div>
+        <div className="flex w-full items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground" data-search-ignore>
+            {formatUserMessageTime(timestamp)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function UserBubble({
   node,
   searchQuery,
@@ -137,6 +176,7 @@ export function UserBubble({
   }, []);
 
   const skillBlock = useMemo(() => parseSkillBlock(text), [text]);
+  const slashCommand = useMemo(() => parseSlashCommand(text), [text]);
 
   if (skillBlock) {
     return (
@@ -146,6 +186,12 @@ export function UserBubble({
         searchQuery={searchQuery}
         activeOccurrenceIndex={activeOccurrenceIndex}
       />
+    );
+  }
+
+  if (slashCommand) {
+    return (
+      <CommandBubble name={slashCommand.name} args={slashCommand.args} timestamp={node.sentAt} />
     );
   }
 

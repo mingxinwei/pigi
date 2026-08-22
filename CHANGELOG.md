@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Extension commands (e.g. `/plannotator-review`) now appear in the slash command autocomplete menu
+- Extension notifications are displayed as toast messages instead of being silently ignored
+- Slash commands render as a styled command pill in the chat instead of a plain text bubble
+
 ### Fixed
 
 - Compact and Show All message lists no longer intermittently jump away from the bottom while many messages stream in.

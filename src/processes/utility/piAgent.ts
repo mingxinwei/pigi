@@ -24,6 +24,7 @@ import {
   SettingsManager,
   type WriteToolInput,
   type EditToolInput,
+  type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
 import type {
   AuthProviderInfo,
@@ -142,6 +143,51 @@ let hasAutoRenamed = false;
 // Services are expensive to build; prewarm them while the user is browsing sessions.
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
 let serviceCreationQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Minimal ExtensionUIContext that forwards notifications to the renderer via dataPort.
+ * Most TUI-specific methods are no-ops since pigi has its own UI.
+ */
+function createExtensionUIContext(): ExtensionUIContext {
+  const noop = (): void => {};
+  // ExtensionUIContext has many TUI-specific methods (theme, widgets, custom editors)
+  // that don't apply to pigi's Electron renderer. We implement the relevant ones
+  // and stub the rest.
+  return {
+    select: async () => undefined,
+    confirm: async () => false,
+    input: async () => undefined,
+    notify: (message: string, type?: 'info' | 'warning' | 'error') => {
+      if (dataPort) {
+        dataPort.postMessage({ type: 'extension_notify', message, level: type ?? 'info' });
+      }
+    },
+    onTerminalInput: () => () => {},
+    setStatus: noop,
+    setWorkingMessage: noop,
+    setWorkingVisible: noop,
+    setWorkingIndicator: noop,
+    setHiddenThinkingLabel: noop,
+    setWidget: noop as ExtensionUIContext['setWidget'],
+    setFooter: noop,
+    setHeader: noop,
+    setTitle: noop,
+    custom: async () => undefined as never,
+    pasteToEditor: noop,
+    setEditorText: noop,
+    getEditorText: () => '',
+    editor: async () => undefined,
+    addAutocompleteProvider: noop,
+    setEditorComponent: noop,
+    getEditorComponent: () => undefined,
+    theme: {} as ExtensionUIContext['theme'],
+    getAllThemes: () => [],
+    getTheme: () => undefined,
+    setTheme: () => ({ success: false }),
+    getToolsExpanded: () => false,
+    setToolsExpanded: noop,
+  };
+}
 
 function enqueueServiceCreation<T>(task: () => Promise<T>): Promise<T> {
   const queuedTask = serviceCreationQueue.then(task, task);
@@ -500,10 +546,14 @@ async function handleCommand(command: PiCommand): Promise<unknown> {
         name: `skill:${skill.name}`,
         description: skill.description,
       }));
+      const extensionCommands = session.extensionRunner.getRegisteredCommands().map((command) => ({
+        name: command.invocationName,
+        description: command.description ?? '',
+      }));
       return {
         models: scopedModels.map((scoped) => toModelInfo(scoped.model)),
         thinkingLevels: session.getAvailableThinkingLevels(),
-        skills,
+        skills: [...extensionCommands, ...skills],
       };
     }
 
@@ -756,7 +806,9 @@ async function createSession(cwd: string): Promise<void> {
       agentDir: getAgentDir(),
       sessionManager: SessionManager.create(cwd),
     });
-    await runtime.session.bindExtensions({});
+    // TODO: pass commandContextActions (waitForIdle, newSession, fork, navigateTree,
+    // switchSession, reload) to support extensions that manage sessions.
+    await runtime.session.bindExtensions({ uiContext: createExtensionUIContext(), mode: 'rpc' });
     const sessionPath = runtime.session.sessionManager.getSessionFile();
     if (!sessionPath) {
       throw new Error('session created without a file path');
@@ -781,7 +833,8 @@ async function resumeSession(sessionPath: string): Promise<void> {
       agentDir: getAgentDir(),
       sessionManager,
     });
-    await runtime.session.bindExtensions({});
+    // TODO: pass commandContextActions (see createSession)
+    await runtime.session.bindExtensions({ uiContext: createExtensionUIContext(), mode: 'rpc' });
     // Resumed sessions already have names; skip auto-rename
     hasAutoRenamed = true;
     sendToMain({

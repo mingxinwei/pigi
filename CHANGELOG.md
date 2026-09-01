@@ -11,6 +11,8 @@
 ### Fixed
 
 - Compact and Show All message lists no longer intermittently jump away from the bottom while many messages stream in.
+- Code blocks with long lines now show a horizontal scrollbar instead of clipping content
+- The copy button on code blocks no longer scrolls away when scrolling code horizontally
 
 ## [0.4.5] - 2026-08-17
 

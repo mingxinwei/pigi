@@ -307,8 +307,6 @@
   }
 
   .markdown-body pre {
-    position: relative;
-    margin-bottom: var(--markdown-block-spacing);
     max-width: 100%;
     overflow-x: auto;
     border-radius: calc(var(--radius) * 0.8);
@@ -330,11 +328,35 @@
     color: var(--foreground);
   }
 
+  /* Wrapper around the header + scrollable <pre>. The header and copy
+     button sit outside the scroll container so they stay fixed when the
+     code is scrolled horizontally. */
+  .markdown-code-block {
+    margin-bottom: var(--markdown-block-spacing);
+  }
+
   .markdown-code-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 6px;
+    padding: 8px 14px 0;
+    border-radius: calc(var(--radius) * 0.8) calc(var(--radius) * 0.8) 0 0;
+    background: var(--muted);
+    font-family: var(
+      --font-mono,
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace
+    );
+  }
+
+  .markdown-code-header + pre {
+    border-radius: 0 0 calc(var(--radius) * 0.8) calc(var(--radius) * 0.8);
   }
 
   .markdown-code-label {
@@ -358,16 +380,6 @@
   .markdown-code-copy-button:hover {
     color: var(--foreground);
     background: var(--accent);
-  }
-
-  /* No-language blocks have no header row; the button floats in the pre's
-     top-right padding instead of adding vertical space above the code. The
-     offsets match the header-row button so copy buttons line up across
-     blocks. */
-  .markdown-code-copy-button-overlay {
-    position: absolute;
-    top: 11px;
-    right: 14px;
   }
 
   /* Inline code: em-relative size scales with surrounding text;

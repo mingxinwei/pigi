@@ -59,11 +59,11 @@ const markdownComponents: Components = {
     </div>
   ),
   // react-markdown gives the code element no way to tell block code from
-  // inline code, so the pre override broadcasts it via context.
+  // inline code, so the pre override broadcasts it via context.  The actual
+  // <pre> is rendered by MarkdownCode so the header / copy button can sit
+  // outside the scrollable area.
   pre: ({ children }) => (
-    <IsInCodeBlockContext.Provider value={true}>
-      <pre>{children}</pre>
-    </IsInCodeBlockContext.Provider>
+    <IsInCodeBlockContext.Provider value={true}>{children}</IsInCodeBlockContext.Provider>
   ),
   code: MarkdownCode,
 };
@@ -84,45 +84,36 @@ function MarkdownCode({
   const code = getCodeText(children);
   if (language) {
     return (
-      <>
-        <span className="markdown-code-header" data-search-ignore>
+      <div className="markdown-code-block">
+        <div className="markdown-code-header" data-search-ignore>
           <span className="markdown-code-label">{getCodeLanguageLabel(language)}</span>
           <CodeCopyButton code={code} />
-        </span>
-        <SyntaxHighlightedCode code={code} language={language} />
-      </>
+        </div>
+        <pre>
+          <SyntaxHighlightedCode code={code} language={language} />
+        </pre>
+      </div>
     );
   }
 
   return (
-    <>
-      <CodeCopyButton code={code} overlay />
-      <code className={className}>{children}</code>
-    </>
+    <div className="markdown-code-block">
+      <div className="markdown-code-header" data-search-ignore>
+        <span className="markdown-code-label">plain text</span>
+        <CodeCopyButton code={code} />
+      </div>
+      <pre>
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
   );
 }
 
-function CodeCopyButton({
-  code,
-  overlay = false,
-}: {
-  code: string;
-  /** Float over the code in the corner instead of sitting in a header row. */
-  overlay?: boolean;
-}): React.JSX.Element {
+function CodeCopyButton({ code }: { code: string }): React.JSX.Element {
   const { copied, copy } = useCopyFeedback(code);
 
   return (
-    <button
-      type="button"
-      className={
-        overlay
-          ? 'markdown-code-copy-button markdown-code-copy-button-overlay'
-          : 'markdown-code-copy-button'
-      }
-      onClick={copy}
-      title="Copy code"
-    >
+    <button type="button" className="markdown-code-copy-button" onClick={copy} title="Copy code">
       {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
     </button>
   );

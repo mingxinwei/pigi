@@ -256,7 +256,11 @@ export default function SyntaxHighlightedCode({
   }, [highlightInput, currentHighlightKey, normalizedLanguage]);
 
   if (!highlightedLines) {
-    return <code className="bg-transparent p-0 font-mono text-[14px]">{code}</code>;
+    return (
+      <code className="block min-w-full w-max bg-transparent p-0 font-mono text-[14px]">
+        {code}
+      </code>
+    );
   }
 
   // The stale highlight covers `source`; anything the live `code` has appended
@@ -274,11 +278,15 @@ export default function SyntaxHighlightedCode({
   } else if (code !== source && !code.startsWith(source)) {
     // Content diverged (not a simple append); avoid showing a mismatched
     // highlight and fall back to plain until the next highlight lands.
-    return <code className="bg-transparent p-0 font-mono text-[14px]">{code}</code>;
+    return (
+      <code className="block min-w-full w-max bg-transparent p-0 font-mono text-[14px]">
+        {code}
+      </code>
+    );
   }
 
   return (
-    <code className="bg-transparent p-0 font-mono text-[14px]">
+    <code className="block min-w-full w-max bg-transparent p-0 font-mono text-[14px]">
       {renderedLines.map((line, lineIndex) => (
         <span
           key={lineIndex}

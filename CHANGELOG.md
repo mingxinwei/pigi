@@ -8,11 +8,19 @@
 - Extension notifications are displayed as toast messages instead of being silently ignored
 - Slash commands render as a styled command pill in the chat instead of a plain text bubble
 
+### Changed
+
+- Read groups now show "Explored N files" instead of "Looked into N files"
+- Git read-only commands (diff, log, show, status, blame, etc.) are collapsed into read groups and labeled separately as "checked git N times"
+- Thinking count is now visible during streaming, not just after completion
+- More bash commands recognized as read-only and collapsed: `sed`, `awk`, `nl`, `tac`, `sort`, `uniq`, `perl` (with read-only flags)
+
 ### Fixed
 
 - Compact and Show All message lists no longer intermittently jump away from the bottom while many messages stream in.
 - Code blocks with long lines now show a horizontal scrollbar instead of clipping content
 - The copy button on code blocks no longer scrolls away when scrolling code horizontally
+- Editing a queued message during compaction no longer fails silently
 
 ## [0.4.5] - 2026-08-17
 

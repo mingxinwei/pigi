@@ -9,8 +9,10 @@ const READ_ONLY_COMMAND_PREFIXES = [
   'cat ',
   'head ',
   'tail ',
+  'tac ',
   'less ',
   'more ',
+  'nl ',
   'grep ',
   'rg ',
   'rg\n',
@@ -53,6 +55,9 @@ const READ_ONLY_COMMAND_PREFIXES = [
   'sha256sum ',
   'md5sum ',
   'shasum ',
+  'awk ',
+  'sort ',
+  'uniq ',
 ];
 
 /** Commands that are read-only when they appear as the entire command (no arguments needed) */
@@ -90,6 +95,29 @@ export function isReadOnlyBashCommand(command: string): boolean {
     }
   }
 
+  // git read-only subcommands
+  if (/^git\s/.test(effectiveCommand) && isReadOnlyGitCommand(effectiveCommand)) {
+    if (!hasMutatingPipe(effectiveCommand)) {
+      return true;
+    }
+  }
+
+  // sed is read-only unless -i (in-place edit) appears anywhere in flags
+  // Catches: sed -i, sed -ni, sed -e 'expr' -i, sed -i.bak
+  if (/^sed\s/.test(effectiveCommand) && !hasInPlaceFlag(effectiveCommand)) {
+    if (!hasMutatingPipe(effectiveCommand)) {
+      return true;
+    }
+  }
+
+  // perl with explicitly read-only flags: -c (syntax check), -n/-p (line filter), -e (one-liner)
+  // Catches: perl -i, perl -ni, perl -pi -e '...'
+  if (/^perl\s+-./.test(effectiveCommand) && !hasInPlaceFlag(effectiveCommand)) {
+    if (!hasMutatingPipe(effectiveCommand)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -98,7 +126,7 @@ export function isReadOnlyBashCommand(command: string): boolean {
  * If the command starts with `cd ... &&`, we skip the cd and evaluate the rest.
  * Also handles pipes — checks the last segment for read-only-ness of the pipeline end.
  */
-function extractEffectiveCommand(command: string): string {
+export function extractEffectiveCommand(command: string): string {
   let effective = command;
 
   // Strip leading `cd ... &&` segments (can be chained)
@@ -112,6 +140,39 @@ function extractEffectiveCommand(command: string): string {
   }
 
   return effective;
+}
+
+/** Detects -i anywhere in flag tokens: -i, -ni, -pi, -i.bak, etc. */
+function hasInPlaceFlag(command: string): boolean {
+  return /\s-[a-z]*i\b/.test(command);
+}
+
+const READ_ONLY_GIT_SUBCOMMANDS = new Set([
+  'log',
+  'diff',
+  'show',
+  'status',
+  'blame',
+  'branch',
+  'remote',
+  'tag',
+  'shortlog',
+  'describe',
+  'config',
+  'ls-files',
+  'ls-tree',
+  'cat-file',
+  'rev-parse',
+  'rev-list',
+  'name-rev',
+  'reflog',
+  'symbolic-ref',
+]);
+
+export function isReadOnlyGitCommand(command: string): boolean {
+  const match = command.match(/^git\s+(\S+)/);
+  if (!match) return false;
+  return READ_ONLY_GIT_SUBCOMMANDS.has(match[1]);
 }
 
 /**

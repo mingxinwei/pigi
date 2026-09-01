@@ -658,6 +658,15 @@ function App(): React.JSX.Element {
   const handleEditQueuedMessage = useCallback(
     async (type: 'steer' | 'followUp', index: number) => {
       if (!activeSessionPath) return;
+
+      // During compaction messages are queued locally, not in the SDK.
+      // Remove from the local compaction queue instead of calling clearQueue.
+      if (transcript.isCompacting) {
+        const editedMessage = transcriptControllerRef.current?.removeCompactionMessage(type, index);
+        if (editedMessage) setRestoreText(editedMessage);
+        return;
+      }
+
       // Clear local queue state to prevent false delivery detection
       transcriptControllerRef.current?.clearLocalQueue();
       try {
@@ -677,7 +686,7 @@ function App(): React.JSX.Element {
         console.error('Failed to edit queued message:', err);
       }
     },
-    [activeSessionPath, transcriptControllerRef],
+    [activeSessionPath, transcript.isCompacting, transcriptControllerRef],
   );
 
   const handleRestoredText = useCallback(() => setRestoreText(null), []);

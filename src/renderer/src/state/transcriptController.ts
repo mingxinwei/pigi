@@ -550,6 +550,39 @@ export class TranscriptController {
     this.setState({ compactionQueue: updated, queuedSteering: steering, queuedFollowUp: followUp });
   }
 
+  /**
+   * Remove a compaction-queued message by type and index, returning its text.
+   * Used when the user clicks "Edit" on a queued message during compaction.
+   */
+  removeCompactionMessage(type: 'steer' | 'followUp', index: number): string | undefined {
+    // Find the nth message of the given type in the compaction queue
+    let seen = 0;
+    let queueIndex = -1;
+    for (let i = 0; i < this._state.compactionQueue.length; i++) {
+      if (this._state.compactionQueue[i].mode === type) {
+        if (seen === index) {
+          queueIndex = i;
+          break;
+        }
+        seen++;
+      }
+    }
+    if (queueIndex === -1) return undefined;
+    const removed = this._state.compactionQueue[queueIndex];
+    const updatedQueue = [
+      ...this._state.compactionQueue.slice(0, queueIndex),
+      ...this._state.compactionQueue.slice(queueIndex + 1),
+    ];
+    const steering = updatedQueue.filter((m) => m.mode === 'steer').map((m) => m.text);
+    const followUp = updatedQueue.filter((m) => m.mode === 'followUp').map((m) => m.text);
+    this.setState({
+      compactionQueue: updatedQueue,
+      queuedSteering: steering,
+      queuedFollowUp: followUp,
+    });
+    return removed.text;
+  }
+
   /** Clear the compaction queue after replaying its messages. */
   clearCompactionQueue(): void {
     this.setState({ compactionQueue: [], queuedSteering: [], queuedFollowUp: [] });

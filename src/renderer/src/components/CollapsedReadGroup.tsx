@@ -12,6 +12,7 @@ import { type ToolNode, type AssistantNode, getToolArgs } from '../state/transcr
 import { collapseCommandNewlines } from '../lib/toolDisplay';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
 import type { ReadGroupEntry } from '../lib/readGrouping';
+import { extractEffectiveCommand, isReadOnlyGitCommand } from '../lib/readOnlyCommand';
 import ToolBlock from './ToolBlock';
 import ThinkingBlock, { ThinkingDuration } from './thinkingBlock';
 import ShimmerOverlay from './shimmerOverlay';
@@ -152,6 +153,41 @@ function ThinkingGroupRow({ node }: { node: AssistantNode }): React.JSX.Element 
   );
 }
 
+function isGitReadCommand(command: string): boolean {
+  const effective = extractEffectiveCommand(command);
+  return /^git\s/.test(effective) && isReadOnlyGitCommand(effective);
+}
+
+function buildGroupLabel(
+  isActive: boolean,
+  fileCount: number,
+  gitCount: number,
+  thinkingCount: number,
+): string {
+  const parts: string[] = [];
+
+  if (fileCount > 0) {
+    const noun = fileCount === 1 ? 'file' : 'files';
+    parts.push(isActive ? `Exploring ${fileCount} ${noun}` : `Explored ${fileCount} ${noun}`);
+  }
+  if (gitCount > 0) {
+    const noun = gitCount === 1 ? 'time' : 'times';
+    parts.push(isActive ? `Checking git ${gitCount} ${noun}` : `Checked git ${gitCount} ${noun}`);
+  }
+  if (thinkingCount > 0) {
+    const noun = thinkingCount === 1 ? 'time' : 'times';
+    parts.push(isActive ? `Thinking ${thinkingCount} ${noun}` : `Thought ${thinkingCount} ${noun}`);
+  }
+
+  if (parts.length === 0) {
+    return isActive ? 'Working...' : 'Done';
+  }
+
+  // First part keeps its capital; subsequent parts are lowercased for natural sentence flow
+  const tail = parts.slice(1).map((p) => p[0].toLowerCase() + p.slice(1));
+  return parts[0] + (tail.length > 0 ? ', ' + tail.join(', ') : '');
+}
+
 export default function CollapsedReadGroup({
   entries,
   isActive,
@@ -161,20 +197,24 @@ export default function CollapsedReadGroup({
   activeToolNodeId,
   activeOccurrenceIndex,
 }: CollapsedReadGroupProps): React.JSX.Element {
-  const toolCount = entries.reduce(
-    (count, entry) => (entry.kind === 'tool' ? count + 1 : count),
-    0,
-  );
-  const thinkingCount = entries.reduce(
-    (count, entry) => (entry.kind === 'thinking' ? count + 1 : count),
-    0,
-  );
-  const noun = toolCount === 1 ? 'file' : 'files';
-  const thinkNoun = thinkingCount === 1 ? 'time' : 'times';
-  const thinkVerb = isActive ? 'thinking' : 'thought';
-  const parts = [`Looked into ${toolCount} ${noun}`];
-  if (thinkingCount > 0) parts.push(`${thinkVerb} ${thinkingCount} ${thinkNoun}`);
-  const label = isActive ? `Looking into ${toolCount} ${noun}` : parts.join(', ');
+  let fileCount = 0;
+  let gitCount = 0;
+  let thinkingCount = 0;
+  for (const entry of entries) {
+    if (entry.kind === 'thinking') {
+      thinkingCount++;
+    } else {
+      const node = entry.node;
+      const args = getToolArgs(node);
+      const command = node.name === 'bash' && typeof args?.command === 'string' ? args.command : '';
+      if (isGitReadCommand(command)) {
+        gitCount++;
+      } else {
+        fileCount++;
+      }
+    }
+  }
+  const label = buildGroupLabel(isActive, fileCount, gitCount, thinkingCount);
 
   return (
     <Collapsible className="group/collapsible mb-[22px]" open={open} onOpenChange={onOpenChange}>

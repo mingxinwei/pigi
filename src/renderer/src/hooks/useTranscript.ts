@@ -87,7 +87,13 @@ function ensureSessionHydration(sessionPath: string, controller: TranscriptContr
 function syncSessionState(sessionPath: string, controller: TranscriptController): void {
   void getState(sessionPath)
     .then((sessionState) => {
-      controller.setStatus(sessionState.isStreaming ? 'streaming' : 'idle');
+      // During compaction the SDK reports isStreaming=false (compaction is not
+      // an agent run), but the controller already tracks compaction via
+      // isCompacting. Don't downgrade to idle — the compaction_end event will
+      // reset status when it finishes.
+      if (!controller.state.isCompacting) {
+        controller.setStatus(sessionState.isStreaming ? 'streaming' : 'idle');
+      }
       useAppStore.getState().updateSession(sessionPath, {
         model: sessionState.model,
         thinkingLevel: sessionState.thinkingLevel,

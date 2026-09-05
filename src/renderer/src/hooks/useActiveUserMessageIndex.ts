@@ -64,7 +64,7 @@ export function useActiveUserMessageIndex({
     }
     return closestDisplayIndex;
     // virtualItems included as dependency to re-derive on scroll
-  }, [virtualItems, renderItems, nodeToDisplayIndex, virtualizer, containerRef]);
+  }, [virtualItems, renderItems, nodeToDisplayIndex, virtualizer]);
 
   const [minimalActiveUserMessageIndex, setMinimalActiveUserMessageIndex] = useState(-1);
 

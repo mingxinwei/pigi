@@ -71,6 +71,8 @@ export function useMessageListScrollController({
   const restoreAnimRef = useRef<{ cancel: () => void } | null>(null);
 
   // Minimal-mode pin state machine. A single ref encodes the phase of the
+  // active turn's pin lifecycle; every transition happens in event handlers
+  // or observers, never during render.
   const pinRef = useRef<PinPhase>({ phase: 'idle' });
   // The turn id that was pinned before details expanded — re-pin on collapse.
   const lastPinnedTurnIdRef = useRef<string | null>(null);
@@ -147,6 +149,25 @@ export function useMessageListScrollController({
   // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
   // different element, so the observers must re-bind.
   // Re-glues the pinned turn's top edge to the viewport top.
+  /** Re-fit the pinned spacer so maxScroll equals the pin position (user
+   *  cannot scroll past the turn). Reads the spacer's live DOM height since
+   *  state may lag behind the last commit; skips sub-pixel corrections. */
+  function refinePinSpacer(container: HTMLDivElement, turnId: string): void {
+    const turnEl = container.querySelector(`[data-turn-id="${turnId}"]`);
+    if (!turnEl) return;
+    const pinPosition =
+      turnEl.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+    const spacerEl = container.querySelector('[data-testid="minimal-top-padding"]');
+    const actualSpacer = spacerEl ? spacerEl.getBoundingClientRect().height : 0;
+    const contentHeight = container.scrollHeight - actualSpacer;
+    const ideal = Math.max(0, pinPosition + container.clientHeight - contentHeight);
+    if (Math.abs(actualSpacer - ideal) > 1) {
+      setTopPaddingPx(ideal);
+    }
+  }
+
   const pinTopToViewport = useCallback(() => {
     const pin = pinRef.current;
     if (pin.phase === 'idle' || pin.phase === 'ending') return;
@@ -178,15 +199,7 @@ export function useMessageListScrollController({
             container!.getBoundingClientRect().top +
             container!.scrollTop;
           container!.scrollTop = pinPosition;
-          // Refine spacer so maxScroll = pinPosition (user can't scroll past).
-          // Read actual spacer height from DOM (state may lag behind).
-          const spacerEl = container!.querySelector('[data-testid="minimal-top-padding"]');
-          const actualSpacer = spacerEl ? spacerEl.getBoundingClientRect().height : 0;
-          const contentHeight = container!.scrollHeight - actualSpacer;
-          const ideal = Math.max(0, pinPosition + container!.clientHeight - contentHeight);
-          if (Math.abs(actualSpacer - ideal) > 1) {
-            setTopPaddingPx(ideal);
-          }
+          refinePinSpacer(container!, pin.turnId);
           break;
         }
         case 'following': {
@@ -562,20 +575,7 @@ export function useMessageListScrollController({
       } else if (pin.phase === 'pinned') {
         // Content still fits viewport: size the spacer so maxScroll exactly
         // equals the pinned position (user cannot scroll past the turn).
-        const turnEl = container.querySelector(`[data-turn-id="${pin.turnId}"]`);
-        if (turnEl) {
-          const pinPosition =
-            turnEl.getBoundingClientRect().top -
-            container.getBoundingClientRect().top +
-            container.scrollTop;
-          const spacerEl = container.querySelector('[data-testid="minimal-top-padding"]');
-          const actualSpacer = spacerEl ? spacerEl.getBoundingClientRect().height : 0;
-          const contentHeight = container.scrollHeight - actualSpacer;
-          const ideal = Math.max(0, pinPosition + container.clientHeight - contentHeight);
-          if (Math.abs(actualSpacer - ideal) > 1) {
-            setTopPaddingPx(ideal);
-          }
-        }
+        refinePinSpacer(container, pin.turnId);
       }
     },
     [containerRef],

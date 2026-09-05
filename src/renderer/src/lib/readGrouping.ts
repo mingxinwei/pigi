@@ -94,7 +94,13 @@ function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
   for (const item of items) {
     const previous = result[result.length - 1];
     if (item.type === 'node' && isThinkingOnlyNode(item.node) && previous?.type === 'readGroup') {
-      previous.entries.push({ kind: 'thinking', node: item.node });
+      // Copy-on-absorb: replace the group instead of pushing into its entries,
+      // so nothing here ever mutates an array that may already be shared
+      // (e.g. a group cached by a previous canonicalize pass).
+      result[result.length - 1] = {
+        ...previous,
+        entries: [...previous.entries, { kind: 'thinking', node: item.node }],
+      };
       continue;
     }
     result.push(item);
@@ -143,7 +149,7 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
   }
   flushGroup();
 
-  // Canonicalize AFTER absorb: the absorb pass mutates fresh group entries,
-  // and cached entries must never be mutated after entering the cache.
+  // Canonicalize after absorb so cached wrappers reflect the final entries;
+  // absorb itself is non-mutating.
   return absorbThinkingIntoReadGroups(items).map(canonicalizeGroupItem);
 }

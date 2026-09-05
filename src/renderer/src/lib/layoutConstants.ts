@@ -8,6 +8,9 @@ export const MESSAGE_CONTENT_MAX_WIDTH =
 export const CHAT_INPUT_MAX_WIDTH = MESSAGE_CONTENT_MAX_WIDTH;
 export const MESSAGE_ROW_GAP = 4;
 
+/** Max entries a collapsed read group previews before its "Show more" toggle. */
+export const READ_GROUP_MAX_COLLAPSED_ENTRIES = 3;
+
 /** Bottom terminal panel sizing. */
 export const TERMINAL_DEFAULT_HEIGHT = 280;
 export const TERMINAL_MIN_HEIGHT = 120;

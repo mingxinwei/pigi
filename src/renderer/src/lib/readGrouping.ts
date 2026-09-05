@@ -16,6 +16,51 @@ export type RenderItem =
   | { type: 'node'; node: TranscriptNode; id: string }
   | { type: 'readGroup'; entries: ReadGroupEntry[]; id: string };
 
+/**
+ * Wrapper identity cache. renderItems is rebuilt on every transcript commit
+ * (each streaming delta); reusing the same wrapper object for an unchanged
+ * node keeps React.memo bailouts working for every visible row except the
+ * one actually streaming. Keyed weakly by node reference, so replaced nodes
+ * (immutable updates) and hydrated sessions (fresh objects) miss the cache
+ * and get new wrappers, and dropped sessions release their entries.
+ */
+const nodeItemCache = new WeakMap<TranscriptNode, RenderItem>();
+const readGroupItemCache = new WeakMap<TranscriptNode, RenderItem>();
+
+function getNodeItem(node: TranscriptNode): RenderItem {
+  let item = nodeItemCache.get(node);
+  if (!item) {
+    item = { type: 'node', node, id: node.id };
+    nodeItemCache.set(node, item);
+  }
+  return item;
+}
+
+/** Same node sequence → same cached group item, so unchanged groups keep
+ *  their identity across rebuilds. A group that grew (streaming reads or
+ *  absorbed thinking) gets a fresh item — exactly the invalidation we want. */
+function canonicalizeGroupItem(item: RenderItem): RenderItem {
+  if (item.type !== 'readGroup') return item;
+  const cacheKey = item.entries[0].node;
+  const cached = readGroupItemCache.get(cacheKey);
+  if (cached && cached.type === 'readGroup' && entriesReferenceEqual(cached, item)) {
+    return cached;
+  }
+  readGroupItemCache.set(cacheKey, item);
+  return item;
+}
+
+function entriesReferenceEqual(
+  a: Extract<RenderItem, { type: 'readGroup' }>,
+  b: Extract<RenderItem, { type: 'readGroup' }>,
+): boolean {
+  if (a.entries.length !== b.entries.length) return false;
+  for (let index = 0; index < a.entries.length; index++) {
+    if (a.entries[index].node !== b.entries[index].node) return false;
+  }
+  return true;
+}
+
 function isReadToolNode(node: TranscriptNode): boolean {
   if (node.role !== 'tool') return false;
   if (node.name === 'read') return true;
@@ -61,7 +106,7 @@ function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
  */
 export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem[] {
   if (!compact) {
-    return nodes.map((node) => ({ type: 'node', node, id: node.id }));
+    return nodes.map(getNodeItem);
   }
 
   const items: RenderItem[] = [];
@@ -89,10 +134,12 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
       currentGroup.push({ kind: 'thinking', node });
     } else {
       flushGroup();
-      items.push({ type: 'node', node, id: node.id });
+      items.push(getNodeItem(node));
     }
   }
   flushGroup();
 
-  return absorbThinkingIntoReadGroups(items);
+  // Canonicalize AFTER absorb: the absorb pass mutates fresh group entries,
+  // and cached entries must never be mutated after entering the cache.
+  return absorbThinkingIntoReadGroups(items).map(canonicalizeGroupItem);
 }

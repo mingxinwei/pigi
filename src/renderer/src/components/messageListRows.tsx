@@ -33,7 +33,8 @@ export const RenderItemRenderer = React.memo(function RenderItemRenderer({
   sessionActive: boolean;
   searchQuery: string;
   expanded?: boolean;
-  onToggleExpand?: () => void;
+  /** Stable group-toggle callback (takes the group id) so React.memo comparisons hold. */
+  onToggleExpand?: (groupId: string) => void;
   activeOccurrenceItemId: string | null;
   activeOccurrenceToolNodeId: string | null;
   activeOccurrenceIndex: number | null;
@@ -46,7 +47,7 @@ export const RenderItemRenderer = React.memo(function RenderItemRenderer({
         entries={item.entries}
         isActive={isLast && sessionActive}
         open={expanded ?? false}
-        onOpenChange={onToggleExpand ?? (() => {})}
+        onOpenChange={onToggleExpand ? () => onToggleExpand(item.id) : () => {}}
         searchQuery={searchQuery}
         activeToolNodeId={activeToolNodeId}
         activeOccurrenceIndex={activeIndex}

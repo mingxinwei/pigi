@@ -49,31 +49,51 @@ function getNodeItem(node: TranscriptNode): RenderItem {
 
 /** Same node sequence → same cached group item, so unchanged groups keep
  *  their identity across rebuilds. A group that grew (streaming reads or
- *  absorbed thinking) gets a fresh item — exactly the invalidation we want. */
-const readGroupItemCache = new WeakMap<TranscriptNode, RenderItem>();
+ *  absorbed thinking) — or whose absorbed thinking streamed in place — gets
+ *  a fresh item: entry revisions are snapshotted at cache time, because
+ *  streaming mutates assistant nodes without changing their references. */
+const readGroupItemCache = new WeakMap<
+  TranscriptNode,
+  { revisions: number[]; item: Extract<RenderItem, { type: 'readGroup' }> }
+>();
 
 function canonicalizeGroupItem(item: RenderItem): RenderItem {
   if (item.type !== 'readGroup') return item;
   const cacheKey = item.entries[0].node;
   const cached = readGroupItemCache.get(cacheKey);
-  if (cached && cached.type === 'readGroup' && entriesReferenceEqual(cached, item)) {
-    return cached;
+  if (cached && entriesEquivalent(cached, item)) {
+    return cached.item;
   }
-  readGroupItemCache.set(cacheKey, item);
+  readGroupItemCache.set(cacheKey, {
+    revisions: item.entries.map((entry) => nodeRevision(entry.node)),
+    item,
+  });
   return item;
 }
 
-function entriesReferenceEqual(
-  a: Extract<RenderItem, { type: 'readGroup' }>,
-  b: Extract<RenderItem, { type: 'readGroup' }>,
+/** The entries sequence matches when every node reference, kind, and mutation
+ *  revision equals the snapshot taken when the cached item was stored.
+ *  References alone are not enough: thinking deltas mutate absorbed assistant
+ *  nodes in place, and only their revision exposes the change. */
+function entriesEquivalent(
+  cached: { revisions: number[]; item: Extract<RenderItem, { type: 'readGroup' }> },
+  incoming: Extract<RenderItem, { type: 'readGroup' }>,
 ): boolean {
-  if (a.entries.length !== b.entries.length) return false;
-  for (let index = 0; index < a.entries.length; index++) {
+  const cachedEntries = cached.item.entries;
+  const incomingEntries = incoming.entries;
+  if (cachedEntries.length !== incomingEntries.length) return false;
+  for (let index = 0; index < incomingEntries.length; index++) {
+    const cachedEntry = cachedEntries[index];
+    const incomingEntry = incomingEntries[index];
     // kind is derivable from the node's role, but comparing it makes the
     // "same entries sequence" invariant self-evident.
-    const entryA = a.entries[index];
-    const entryB = b.entries[index];
-    if (entryA.kind !== entryB.kind || entryA.node !== entryB.node) return false;
+    if (
+      cachedEntry.kind !== incomingEntry.kind ||
+      cachedEntry.node !== incomingEntry.node ||
+      cached.revisions[index] !== nodeRevision(incomingEntry.node)
+    ) {
+      return false;
+    }
   }
   return true;
 }

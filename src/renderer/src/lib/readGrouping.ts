@@ -56,7 +56,11 @@ function entriesReferenceEqual(
 ): boolean {
   if (a.entries.length !== b.entries.length) return false;
   for (let index = 0; index < a.entries.length; index++) {
-    if (a.entries[index].node !== b.entries[index].node) return false;
+    // kind is derivable from the node's role, but comparing it makes the
+    // "same entries sequence" invariant self-evident.
+    const entryA = a.entries[index];
+    const entryB = b.entries[index];
+    if (entryA.kind !== entryB.kind || entryA.node !== entryB.node) return false;
   }
   return true;
 }
@@ -115,7 +119,7 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
   function flushGroup(): void {
     if (currentGroup.length > 0) {
       const first = currentGroup[0];
-      const firstNode = first.kind === 'tool' ? first.node : first.node;
+      const firstNode = first.node;
       items.push({
         type: 'readGroup',
         entries: currentGroup,

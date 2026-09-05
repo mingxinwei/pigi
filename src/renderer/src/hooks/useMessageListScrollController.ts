@@ -149,6 +149,19 @@ export function useMessageListScrollController({
   // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
   // different element, so the observers must re-bind.
   // Re-glues the pinned turn's top edge to the viewport top.
+  const pinTopToViewport = useCallback(() => {
+    const pin = pinRef.current;
+    if (pin.phase === 'idle' || pin.phase === 'ending') return;
+    const container = containerRef.current;
+    if (!container) return;
+    const turnEl = container.querySelector(`[data-turn-id="${pin.turnId}"]`);
+    if (!turnEl) return;
+    container.scrollTop =
+      turnEl.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+  }, [containerRef]);
+
   /** Re-fit the pinned spacer so maxScroll equals the pin position (user
    *  cannot scroll past the turn). Reads the spacer's live DOM height since
    *  state may lag behind the last commit; skips sub-pixel corrections. */
@@ -167,19 +180,6 @@ export function useMessageListScrollController({
       setTopPaddingPx(ideal);
     }
   }
-
-  const pinTopToViewport = useCallback(() => {
-    const pin = pinRef.current;
-    if (pin.phase === 'idle' || pin.phase === 'ending') return;
-    const container = containerRef.current;
-    if (!container) return;
-    const turnEl = container.querySelector(`[data-turn-id="${pin.turnId}"]`);
-    if (!turnEl) return;
-    container.scrollTop =
-      turnEl.getBoundingClientRect().top -
-      container.getBoundingClientRect().top +
-      container.scrollTop;
-  }, [containerRef]);
 
   useEffect(() => {
     const container = containerRef.current;

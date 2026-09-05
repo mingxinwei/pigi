@@ -5,11 +5,18 @@ import type { MinimalTurn } from '../lib/minimalTurns';
 
 /**
  * Owns every scroll-position writer for the message list outside the
- * virtualizer itself: the bottom auto-follow pin, the minimal-mode turn pin
- * state machine, per-session scroll save/restore, and the view-mode switch
- * re-derivation. MessageList consumes the returned refs/handlers; nothing
- * else may write container.scrollTop while this hook is mounted.
+ * virtualizer itself: the minimal-mode turn pin state machine, per-session
+ * scroll save/restore, and the view-mode switch re-derivation. In normal
+ * (virtualized) mode the virtualizer itself owns bottom auto-follow via
+ * anchorTo: 'end' — it glues the viewport to the streaming bottom
+ * synchronously in its item ResizeObservers and preserves the reading
+ * position otherwise — so this hook must not write scrollTop there except
+ * for the one-shot cases below (session restore, new-turn jump,
+ * scroll-to-bottom button, container viewport resize). MessageList consumes
+ * the returned refs/handlers.
  */
+
+import { MESSAGE_LIST_SCROLL_END_THRESHOLD } from '../lib/layoutConstants';
 
 /** Minimal-mode pin state machine. */
 type PinPhase =
@@ -19,13 +26,12 @@ type PinPhase =
   | { phase: 'scrolled'; turnId: string }
   | { phase: 'ending'; turnId: string };
 
-const AUTO_SCROLL_BOTTOM_THRESHOLD = 2;
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
 
 function isAtBottom(container: HTMLDivElement): boolean {
   return (
     container.scrollHeight - container.scrollTop - container.clientHeight <
-    AUTO_SCROLL_BOTTOM_THRESHOLD
+    MESSAGE_LIST_SCROLL_END_THRESHOLD
   );
 }
 
@@ -36,16 +42,12 @@ interface MessageListScrollControllerOptions {
   isMinimal: boolean;
   lastMinimalTurn: MinimalTurn | null;
   isLastMinimalTurnActive: boolean;
-  /** Virtualizer total size; backs up the observer pin when only the spacer height commits. */
-  totalSize: number;
 }
 
 export interface MessageListScrollController {
   topPaddingPx: number;
   showScrollButton: boolean;
   containerWidth: number;
-  /** Whether bottom auto-follow is currently engaged. */
-  isAutoScrollEnabled: () => boolean;
   /** Disables bottom auto-follow (search jump, minimap jump, group toggle...). */
   suspendAutoScroll: () => void;
   handleScrollToBottom: () => void;
@@ -63,7 +65,6 @@ export function useMessageListScrollController({
   isMinimal,
   lastMinimalTurn,
   isLastMinimalTurnActive,
-  totalSize,
 }: MessageListScrollControllerOptions): MessageListScrollController {
   const autoScrollRef = useRef(true);
   // In-flight layout-restore animation (cancelled the moment the user
@@ -76,7 +77,6 @@ export function useMessageListScrollController({
   const pinRef = useRef<PinPhase>({ phase: 'idle' });
   // The turn id that was pinned before details expanded — re-pin on collapse.
   const lastPinnedTurnIdRef = useRef<string | null>(null);
-  const lastTurnIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -87,30 +87,46 @@ export function useMessageListScrollController({
     topPaddingPxRef.current = topPaddingPx;
   }, [topPaddingPx]);
 
-  // New active turn: pin it in minimal mode, or enable auto-scroll. Resolve
+  // New active turn: pin it in minimal mode, or jump to the bottom. Resolve
   // the turn rather than checking only the latest transcript node: React may
   // batch the user message with agent_start or the first assistant delta, so
   // the user node is often no longer last by the time this layout effect runs.
+  //
+  // Tracked by the first time a turn is observed as ACTIVE — not by the turn
+  // id alone. The user node can land before the session status flips to
+  // streaming (the status arrives via a separate store update), so gating on
+  // "turn id changed" misses turns whose status arrives one render late.
+  // handledTurnIdRef records which turn we've already positioned; the effect
+  // re-fires when the status catches up.
+  const handledTurnIdRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const lastTurnId = lastMinimalTurn?.id ?? null;
-    const isNewActiveTurn =
-      lastMinimalTurn !== null && lastTurnId !== lastTurnIdRef.current && isLastMinimalTurnActive;
-    if (isNewActiveTurn) {
-      if (isMinimal) {
-        pinRef.current = { phase: 'pinned', turnId: lastMinimalTurn.id };
-        autoScrollRef.current = false;
-        // Set an initial spacer — the RO's pinned case will refine it to
-        // the exact value on the next layout, but we need SOME space now so
-        // the browser doesn't clamp scrollTop before the RO fires.
-        const container = containerRef.current;
-        if (container) {
-          setTopPaddingPx(container.clientHeight);
-        }
-      } else {
-        autoScrollRef.current = true;
+    const needsHandling =
+      lastMinimalTurn !== null &&
+      isLastMinimalTurnActive &&
+      handledTurnIdRef.current !== lastTurnId;
+    if (!needsHandling) return;
+    handledTurnIdRef.current = lastTurnId;
+    if (isMinimal) {
+      pinRef.current = { phase: 'pinned', turnId: lastMinimalTurn.id };
+      autoScrollRef.current = false;
+      // Set an initial spacer — the RO's pinned case will refine it to
+      // the exact value on the next layout, but we need SOME space now so
+      // the browser doesn't clamp scrollTop before the RO fires.
+      const container = containerRef.current;
+      if (container) {
+        setTopPaddingPx(container.clientHeight);
+      }
+    } else {
+      // The virtualizer's followOnAppend covers this when the viewport is
+      // already at the end; jump explicitly so sending a message also
+      // follows the reply when the user had scrolled up.
+      autoScrollRef.current = true;
+      const container = containerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
       }
     }
-    lastTurnIdRef.current = lastTurnId;
   }, [containerRef, isLastMinimalTurnActive, isMinimal, lastMinimalTurn]);
 
   // While a just-expanded details area settles (one frame: the details mount,
@@ -120,32 +136,23 @@ export function useMessageListScrollController({
   // padding is still in place) and leave the viewport wherever it clamped.
   const expandSettlingRef = useRef(false);
 
-  // Auto-scroll + wheel handler.
+  // Minimal-mode pin observers + wheel handler.
   //
-  // Pinning is done synchronously inside ResizeObserver callbacks, which run
-  // after layout but BEFORE paint in the same frame — so the pinned scroll
-  // position is what actually gets painted. This is the only timing that
-  // avoids visible jitter during fast streaming:
+  // The rows-wrapper ResizeObserver pins synchronously after layout but
+  // before paint, so the pinned scroll position is what gets painted — the
+  // only timing that avoids visible jitter during fast streaming in minimal
+  // mode. It drives ONLY the minimal pin phases: in normal (virtualized)
+  // mode the virtualizer's anchorTo: 'end' correction owns bottom-follow
+  // (its per-item observers run in the same frame with the same target),
+  // and a second writer here would just fight it.
   //
-  // - Pinning from a React effect keyed on the virtualizer's total size is one
-  //   frame too late: the streaming commit grows the row DOM immediately, but
-  //   the virtualizer only learns the new size via its own ResizeObserver, so
-  //   the growth frame paints unpinned (content visually jumps up) and the
-  //   next frame snaps back — a high-amplitude vibration at fast output rates.
-  // - The virtualizer's built-in correction (resizeItem -> scrollTo) runs in
-  //   the right frame and — now that the virtualizer's gap option keeps its
-  //   coordinate model in sync with the DOM — converges on the same bottom as
-  //   this pin instead of fighting it.
-  //
-  // Two observers cover both ways the bottom can move:
-  // - rowsWrapperRo: any row grows (streaming text, async code highlight,
-  //   late re-measure) — the wrapper's border-box tracks the real rows, which
-  //   lead the virtualizer's measurements.
-  // - containerRo: the container itself shrinks (e.g. StreamingQueue appears).
-  //
-  // The useLayoutEffect keyed on totalSize below remains as a backup for
-  // spacer-height commits (virtualizer re-measures change totalSize without a
-  // row-DOM resize, which rowsWrapperRo cannot see).
+  // - rowsWrapperRo: any minimal-mode content grows (streaming text, details
+  //   expanding) — pinned/following phases re-glue here.
+  // - containerRo: the container itself resizes. In minimal mode this re-runs
+  //   the pin; in normal mode a viewport shrink (e.g. StreamingQueue appears)
+  //   must re-pin to the bottom ourselves — the virtualizer only corrects on
+  //   item re-measures, not on viewport rect changes — so while auto-follow
+  //   is engaged we snap to the bottom here.
   // Re-created on view-mode switch: minimal mode attaches rowsWrapperRef to a
   // different element, so the observers must re-bind.
   // Re-glues the pinned turn's top edge to the viewport top.
@@ -188,6 +195,7 @@ export function useMessageListScrollController({
 
     function handleResize(): void {
       if (expandSettlingRef.current) return;
+      if (!isMinimal) return;
       const pin = pinRef.current;
       switch (pin.phase) {
         case 'pinned': {
@@ -209,11 +217,9 @@ export function useMessageListScrollController({
             container!.scrollHeight - topPaddingPxRef.current - container!.clientHeight;
           break;
         }
-        case 'idle':
-          if (!autoScrollRef.current) break;
-          container!.scrollTop = container!.scrollHeight;
-          break;
-        // 'scrolled' / 'ending': don't touch scrollTop
+        // 'idle' / 'scrolled' / 'ending': don't touch scrollTop (idle is
+        // virtualizer-owned in normal mode; minimal mode has nothing to pin
+        // when no turn is active).
       }
     }
 
@@ -222,6 +228,11 @@ export function useMessageListScrollController({
 
     const containerRo = new ResizeObserver(() => {
       handleResize();
+      // Normal-mode viewport resize: re-pin to the bottom while auto-follow
+      // is engaged (see the observer comment above).
+      if (!isMinimal && autoScrollRef.current) {
+        container!.scrollTop = container!.scrollHeight;
+      }
       setContainerWidth(container!.clientWidth);
     });
     containerRo.observe(container);
@@ -371,6 +382,10 @@ export function useMessageListScrollController({
       autoScrollRef.current = true;
       requestAnimationFrame(() => {
         if (prevSessionPathRef.current === sessionPath && containerRef.current) {
+          // No saved position: land at the bottom like a fresh mount would.
+          // The virtualizer only follows on appends/resizes from here on, so
+          // the initial position must be written explicitly.
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
           restoredScrollSessionRef.current = sessionPath;
         }
       });
@@ -383,25 +398,6 @@ export function useMessageListScrollController({
     pinTopToViewport,
     sessionPath,
   ]);
-
-  // Backup pin for spacer-height commits: when the virtualizer's total size
-  // changes without a row-DOM resize (late re-measurements only rewrite the
-  // spacer height, which the rows-wrapper ResizeObserver cannot see), pin here
-  // — synchronously after the height commit, before paint. Row growth during
-  // streaming is primarily pinned by the ResizeObserver above.
-  const scrollSessionRef = useRef(sessionPath);
-  useLayoutEffect(() => {
-    // On session switch the restore effect owns initial positioning; skip the
-    // pin for that render so a restored mid-scroll position isn't flashed to the
-    // bottom first.
-    const sessionChanged = scrollSessionRef.current !== sessionPath;
-    scrollSessionRef.current = sessionPath;
-    if (sessionChanged) return;
-    if (!autoScrollRef.current) return;
-    const container = containerRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-  }, [containerRef, totalSize, sessionPath]);
 
   // View-mode switch swaps the content layout entirely, so a pixel scrollTop
   // (and the pin flag) carried over from the other mode is meaningless —
@@ -518,13 +514,6 @@ export function useMessageListScrollController({
     clearTopPin();
     autoScrollRef.current = true;
     container.scrollTop = container.scrollHeight;
-    // Re-assert next frame in case an item measurement lands right after the
-    // click and grows scrollHeight; autoScrollRef stays true so this is safe.
-    requestAnimationFrame(() => {
-      if (autoScrollRef.current && containerRef.current) {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
-    });
     setShowScrollButton(false);
   }
 
@@ -620,14 +609,10 @@ export function useMessageListScrollController({
     autoScrollRef.current = false;
   }, []);
 
-  /** Whether bottom auto-follow is currently engaged. */
-  const isAutoScrollEnabled = useCallback(() => autoScrollRef.current, []);
-
   return {
     topPaddingPx,
     showScrollButton,
     containerWidth,
-    isAutoScrollEnabled,
     suspendAutoScroll,
     handleScrollToBottom,
     handleMinimalTurnEnd,

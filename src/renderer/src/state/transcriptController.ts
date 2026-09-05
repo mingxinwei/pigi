@@ -31,6 +31,11 @@ export interface AssistantNode {
   role: 'assistant';
   text: string;
   thinking: string;
+  /** Incremented on every in-place mutation (streaming deltas, finalize,
+   *  thinking timestamps). The node's object identity stays stable across
+   *  streaming updates, so renderer-side identity caches must compare this
+   *  field to detect content changes. */
+  revision?: number;
   model?: string;
   provider?: string;
   stopReason?: string;
@@ -807,6 +812,7 @@ export class TranscriptController {
       if (assistant && assistant.isStreaming) {
         this.markThinkingEnded(assistant);
         assistant.text += batch.text;
+        this.bumpRevision(assistant);
         changed = true;
       }
     }
@@ -816,6 +822,7 @@ export class TranscriptController {
       if (assistant && assistant.isStreaming) {
         this.markThinkingStarted(assistant);
         assistant.thinking += batch.thinking;
+        this.bumpRevision(assistant);
         changed = true;
       }
     }
@@ -882,6 +889,11 @@ export class TranscriptController {
     });
   }
 
+  /** Bump the mutation revision so renderer identity caches invalidate. */
+  private bumpRevision(assistant: AssistantNode): void {
+    assistant.revision = (assistant.revision ?? 0) + 1;
+  }
+
   /** Stamp the moment thinking starts. Thinking is always the first content
    *  of an assistant message, and thinking deltas may be delivered in a burst
    *  (batched or provider-buffered), so anchor to the message_start time
@@ -889,6 +901,7 @@ export class TranscriptController {
   private markThinkingStarted(assistant: AssistantNode): void {
     if (assistant.thinkingStartedAt === undefined) {
       assistant.thinkingStartedAt = assistant.messageStartedAt ?? Date.now();
+      this.bumpRevision(assistant);
     }
   }
 
@@ -897,12 +910,16 @@ export class TranscriptController {
    *  pending thinking batch is flushed, so backfill startedAt from the
    *  message_start time when that happens. */
   private markThinkingEnded(assistant: AssistantNode): void {
+    let mutated = false;
     if (assistant.thinkingStartedAt === undefined) {
       assistant.thinkingStartedAt = assistant.messageStartedAt;
+      mutated = true;
     }
     if (assistant.thinkingStartedAt !== undefined && assistant.thinkingEndedAt === undefined) {
       assistant.thinkingEndedAt = Date.now();
+      mutated = true;
     }
+    if (mutated) this.bumpRevision(assistant);
   }
 
   private getOrCreateAssistantForStream(messageId: string): AssistantNode | undefined {
@@ -1014,6 +1031,7 @@ export class TranscriptController {
       if (assistant) {
         this.markThinkingEnded(assistant);
         assistant.text += ame.delta;
+        this.bumpRevision(assistant);
         this.setState({ nodes: [...this._state.nodes] });
       }
       return;
@@ -1024,6 +1042,7 @@ export class TranscriptController {
       if (assistant) {
         this.markThinkingStarted(assistant);
         assistant.thinking += ame.delta;
+        this.bumpRevision(assistant);
         this.setState({ nodes: [...this._state.nodes] });
       }
       return;
@@ -1044,12 +1063,14 @@ export class TranscriptController {
     assistant.stopReason = endMessage.stopReason;
     assistant.model = endMessage.model?.name;
     assistant.provider = endMessage.model?.provider;
+    this.bumpRevision(assistant);
 
     // Extract final text from message content if available (more accurate than accumulated deltas)
     if (endMessage.content) {
       const { text, thinking } = extractAssistantContent(endMessage.content);
       if (text) assistant.text = text;
       if (thinking) assistant.thinking = thinking;
+      this.bumpRevision(assistant);
     }
 
     // If there's an error message and tool nodes exist after the assistant node,
@@ -1194,6 +1215,7 @@ export class TranscriptController {
     if (assistant && assistant.isStreaming) {
       assistant.isStreaming = false;
       this.markThinkingEnded(assistant);
+      this.bumpRevision(assistant);
     }
 
     // Finalize any tool nodes still in 'running' state (e.g. abort during tool execution)

@@ -20,25 +20,38 @@ export type RenderItem =
  * Wrapper identity cache. renderItems is rebuilt on every transcript commit
  * (each streaming delta); reusing the same wrapper object for an unchanged
  * node keeps React.memo bailouts working for every visible row except the
- * one actually streaming. Keyed weakly by node reference, so replaced nodes
- * (immutable updates) and hydrated sessions (fresh objects) miss the cache
- * and get new wrappers, and dropped sessions release their entries.
+ * one actually streaming.
+ *
+ * Keyed weakly by node reference, with the node's mutation revision for
+ * assistant nodes: the transcript controller mutates streaming assistant
+ * nodes in place (object identity is stable across deltas), so reference
+ * equality alone cannot detect content changes — the revision must match
+ * too. Tool nodes are replaced immutably on update (fresh reference = miss),
+ * user/system nodes never mutate, and dropped sessions release their
+ * entries via the WeakMap.
  */
-const nodeItemCache = new WeakMap<TranscriptNode, RenderItem>();
-const readGroupItemCache = new WeakMap<TranscriptNode, RenderItem>();
+const nodeItemCache = new WeakMap<TranscriptNode, { revision: number; item: RenderItem }>();
+
+function nodeRevision(node: TranscriptNode): number {
+  return node.role === 'assistant' ? (node.revision ?? 0) : 0;
+}
 
 function getNodeItem(node: TranscriptNode): RenderItem {
-  let item = nodeItemCache.get(node);
-  if (!item) {
-    item = { type: 'node', node, id: node.id };
-    nodeItemCache.set(node, item);
+  const revision = nodeRevision(node);
+  const cached = nodeItemCache.get(node);
+  if (cached && cached.revision === revision) {
+    return cached.item;
   }
+  const item: RenderItem = { type: 'node', node, id: node.id };
+  nodeItemCache.set(node, { revision, item });
   return item;
 }
 
 /** Same node sequence → same cached group item, so unchanged groups keep
  *  their identity across rebuilds. A group that grew (streaming reads or
  *  absorbed thinking) gets a fresh item — exactly the invalidation we want. */
+const readGroupItemCache = new WeakMap<TranscriptNode, RenderItem>();
+
 function canonicalizeGroupItem(item: RenderItem): RenderItem {
   if (item.type !== 'readGroup') return item;
   const cacheKey = item.entries[0].node;

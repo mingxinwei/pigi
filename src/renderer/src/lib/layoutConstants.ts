@@ -11,6 +11,27 @@ export const MESSAGE_ROW_GAP = 4;
 /** Max entries a collapsed read group previews before its "Show more" toggle. */
 export const READ_GROUP_MAX_COLLAPSED_ENTRIES = 3;
 
+/** Vertical inset above the first list row. Modeled as the virtualizer's
+ *  paddingStart so virtual coordinates match real scroll coordinates and
+ *  the at-end check (getVirtualDistanceFromEnd) is exact. */
+export const MESSAGE_LIST_TOP_INSET = 24;
+
+/** Breathing room below the last row's content (replaces the old
+ *  last-row extra margin + spacer padding + wrapper pb-8, which summed to
+ *  72px). Modeled as the virtualizer's paddingEnd AND applied as the last
+ *  row's bottom margin: the margin makes the rows-wrapper's bottom edge
+ *  track the last row's DOM growth immediately (a growing row pushes the
+ *  wrapper past the spacer, growing scrollHeight in the same layout pass),
+ *  which is what keeps the virtualizer's synchronous at-end correction from
+ *  being clamped to a stale scrollHeight before the spacer re-renders. */
+export const MESSAGE_LIST_BOTTOM_INSET = 72;
+
+/** Distance (px) from the content end within which bottom auto-follow stays
+ *  engaged. Shared by the scroll controller's real-DOM checks and the
+ *  virtualizer's scrollEndThreshold (exact match because the coordinate
+ *  models are aligned). */
+export const MESSAGE_LIST_SCROLL_END_THRESHOLD = 2;
+
 /** Bottom terminal panel sizing. */
 export const TERMINAL_DEFAULT_HEIGHT = 280;
 export const TERMINAL_MIN_HEIGHT = 120;

@@ -1219,12 +1219,22 @@ function App(): React.JSX.Element {
             <div className="relative min-h-0 flex-1 overflow-hidden">
               <div className={terminalPushClassName} style={terminalPushStyle}>
                 <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
-                <StreamingQueue
-                  isStreaming={transcript.status !== 'idle'}
-                  queuedSteering={transcript.queuedSteering}
-                  queuedFollowUp={transcript.queuedFollowUp}
-                  onEditQueuedMessage={handleEditQueuedMessage}
-                />
+                {/* Zero-height flow anchor: the queue is absolutely positioned
+                    above the input, so its appear/disappear at turn boundaries
+                    never resizes the message list (the turn-end clamp jolt). Its
+                    -mb-14 lets the input overlap its bottom padding — the
+                    "grow out from behind" effect — and ChatInput (DOM-later,
+                    z-10) renders on top. */}
+                <div className="relative z-10 h-0 shrink-0">
+                  <div className="absolute inset-x-0 bottom-0">
+                    <StreamingQueue
+                      isStreaming={transcript.status !== 'idle'}
+                      queuedSteering={transcript.queuedSteering}
+                      queuedFollowUp={transcript.queuedFollowUp}
+                      onEditQueuedMessage={handleEditQueuedMessage}
+                    />
+                  </div>
+                </div>
                 <ChatInput
                   ref={chatInputRef}
                   onSend={handleSend}
@@ -1251,31 +1261,56 @@ function App(): React.JSX.Element {
         ) : isDraftChat ? (
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <div className={terminalPushClassName} style={terminalPushStyle}>
-              {!isDraftEmpty && <MessageList nodes={draftState.nodes} sessionPath="" />}
-              <ChatInput
-                ref={chatInputRef}
-                onSend={handleSend}
-                onFollowUp={handleFollowUp}
-                onAbort={handleAbort}
-                onSlashCommand={handleSlashCommand}
-                isStreaming={isDraftSpawning}
-                gitBranch={gitBranch}
-                restoreText={restoreText}
-                onRestoredText={handleRestoredText}
-                onRefreshGitBranch={refreshGitBranch}
-                session={draftSession}
-                modelOptions={modelOptions}
-                thinkingLevelOptions={thinkingLevelOptions}
-                skillOptions={skillOptions}
-                onSelectModel={handleSelectModel}
-                onSelectThinkingLevel={handleSelectThinkingLevel}
-                onRequestModelRefresh={handleRequestModelRefresh}
-                userHistory={draftUserHistory}
-                isNewSession={isDraftEmpty}
-                recentProjects={recentProjects}
-                activeProject={activeProject}
-                onSelectProject={handleSelectProject}
-              />
+              {isDraftEmpty ? (
+                <ChatInput
+                  ref={chatInputRef}
+                  onSend={handleSend}
+                  onFollowUp={handleFollowUp}
+                  onAbort={handleAbort}
+                  onSlashCommand={handleSlashCommand}
+                  isStreaming={isDraftSpawning}
+                  gitBranch={gitBranch}
+                  restoreText={restoreText}
+                  onRestoredText={handleRestoredText}
+                  onRefreshGitBranch={refreshGitBranch}
+                  session={draftSession}
+                  modelOptions={modelOptions}
+                  thinkingLevelOptions={thinkingLevelOptions}
+                  skillOptions={skillOptions}
+                  onSelectModel={handleSelectModel}
+                  onSelectThinkingLevel={handleSelectThinkingLevel}
+                  onRequestModelRefresh={handleRequestModelRefresh}
+                  userHistory={draftUserHistory}
+                  isNewSession
+                  recentProjects={recentProjects}
+                  activeProject={activeProject}
+                  onSelectProject={handleSelectProject}
+                />
+              ) : (
+                <>
+                  <MessageList nodes={draftState.nodes} sessionPath="" />
+                  <ChatInput
+                    ref={chatInputRef}
+                    onSend={handleSend}
+                    onFollowUp={handleFollowUp}
+                    onAbort={handleAbort}
+                    onSlashCommand={handleSlashCommand}
+                    isStreaming={isDraftSpawning}
+                    gitBranch={gitBranch}
+                    restoreText={restoreText}
+                    onRestoredText={handleRestoredText}
+                    onRefreshGitBranch={refreshGitBranch}
+                    session={draftSession}
+                    modelOptions={modelOptions}
+                    thinkingLevelOptions={thinkingLevelOptions}
+                    skillOptions={skillOptions}
+                    onSelectModel={handleSelectModel}
+                    onSelectThinkingLevel={handleSelectThinkingLevel}
+                    onRequestModelRefresh={handleRequestModelRefresh}
+                    userHistory={draftUserHistory}
+                  />
+                </>
+              )}
             </div>
           </div>
         ) : recentProjects.length === 0 ? (

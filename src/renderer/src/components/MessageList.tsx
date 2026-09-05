@@ -3,7 +3,13 @@ import { useAppStore } from '../state/appStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconArrowDown } from '@tabler/icons-react';
 import type { TranscriptNode } from '../state/transcriptController';
-import { MESSAGE_LIST_MAX_WIDTH, MESSAGE_ROW_GAP } from '../lib/layoutConstants';
+import {
+  MESSAGE_LIST_BOTTOM_INSET,
+  MESSAGE_LIST_MAX_WIDTH,
+  MESSAGE_LIST_SCROLL_END_THRESHOLD,
+  MESSAGE_LIST_TOP_INSET,
+  MESSAGE_ROW_GAP,
+} from '../lib/layoutConstants';
 import { buildRenderItems } from '../lib/readGrouping';
 import { estimateRenderItemHeight } from '../lib/messageListEstimates';
 import { RenderItemRenderer } from './messageListRows';
@@ -100,12 +106,27 @@ export default React.memo(function MessageList({
     overscan: 8,
     // gap makes the virtualizer's coordinate model match the DOM flow layout:
     // rows are laid out in-flow with marginBottom = MESSAGE_ROW_GAP, so without
-    // gap the model is gapless while the DOM is not. Every rendered row then
-    // sits one gap lower than the model per preceding row — a systematic drift
-    // of windowIndex * gap px that shifts ALL visible rows every time the
-    // window re-anchors (rows entering/leaving the render window), and makes
-    // the model's bottom disagree with the real DOM scrollHeight.
+    // gap the model is gapless while the DOM is not. paddingStart/paddingEnd
+    // fold the top inset and the below-last-row breathing room into the model,
+    // which makes totalSize equal the real scrollHeight — the precondition for
+    // anchorTo: 'end' to judge "at end" exactly (see below) and for
+    // scrollToIndex alignments to be pixel-accurate.
     gap: MESSAGE_ROW_GAP,
+    paddingStart: MESSAGE_LIST_TOP_INSET,
+    paddingEnd: MESSAGE_LIST_BOTTOM_INSET,
+    // anchorTo: 'end' lets the virtualizer own bottom auto-follow: on every
+    // item re-measure, if the viewport sits within scrollEndThreshold of the
+    // content end it applies the size delta synchronously (inside its own
+    // ResizeObserver callback, before paint) so the viewport stays glued to
+    // the streaming bottom — replacing the hand-rolled wrapper-observer pin.
+    // When NOT at the end, the built-in default correction preserves the
+    // reading position (only items entirely above the viewport shift scroll,
+    // fold-spanning rows and backward scrolling are exempt).
+    anchorTo: 'end',
+    // When rows are appended while at the end (new message), scroll to the
+    // new end during the same commit, before paint.
+    followOnAppend: true,
+    scrollEndThreshold: MESSAGE_LIST_SCROLL_END_THRESHOLD,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
@@ -118,7 +139,6 @@ export default React.memo(function MessageList({
     isMinimal,
     lastMinimalTurn,
     isLastMinimalTurnActive,
-    totalSize,
   });
 
   const {
@@ -133,37 +153,6 @@ export default React.memo(function MessageList({
     handleCollapseChange,
     handleCollapseDetails,
   } = scrollController;
-
-  // The virtualizer's built-in scroll correction (resizeItem -> scroll by the
-  // size delta for items above the viewport) is intentionally left ON but
-  // gated on auto-scroll. It runs in the ResizeObserver step of the same
-  // frame a measurement lands in, before paint, so it compensates
-  // estimate-error shifts of rows mounting or being measured above the
-  // viewport — the micro-jitter seen when scrolling to the bottom of a long
-  // list. It previously had to be disabled because its gapless coordinate
-  // model disagreed with the DOM scrollHeight and it fought the auto-scroll
-  // pin without converging; with gap restored both corrections now target the
-  // same bottom, and the pin (registered later, in an effect after mount)
-  // still wins when both run in the same frame.
-  //
-  // The gate matters: the correction writes scrollTop through
-  // applyScrollAdjustment without consulting the scroll controller, so an
-  // un-gated correction keeps adjusting while the user is scrolled up (e.g. a
-  // late re-measure of a row above the viewport — async code highlight
-  // landing — drags the locked viewport down, defeating the wheel lock).
-  // Preserve the virtualizer's default positional check while following:
-  // returning only the auto-follow flag would force a correction for EVERY
-  // resized item, including the active row in or below the viewport. That
-  // correction can run after the real-DOM bottom pin and move a painted
-  // frame off-bottom.
-  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
-    const scrollOffset = containerRef.current?.scrollTop;
-    return (
-      scrollController.isAutoScrollEnabled() &&
-      scrollOffset !== undefined &&
-      item.start < scrollOffset
-    );
-  };
 
   const activeUserMessageIndex = useActiveUserMessageIndex({
     isMinimal,
@@ -251,10 +240,12 @@ export default React.memo(function MessageList({
         {...escapeAbortScopeProps}
       >
         <div
-          className="mx-auto px-5 pb-8 pt-6 user-content"
+          className="mx-auto px-5 user-content"
           style={{ maxWidth: `${MESSAGE_LIST_MAX_WIDTH}px` }}
         >
-          {displayNodes.length === 0 && <div style={{ minHeight: '60vh' }} />}
+          {displayNodes.length === 0 && (
+            <div style={{ minHeight: '60vh', marginTop: `${MESSAGE_LIST_TOP_INSET}px` }} />
+          )}
 
           {isMinimal ? (
             /* Minimal mode: unvirtualized turn content. rowsWrapperRef gives
@@ -262,7 +253,7 @@ export default React.memo(function MessageList({
                pinned turn's open space below it is a real spacer row (state
                driven, part of the render tree — minimap jumps, view/session
                switches and streaming commits can never lose it). */
-            <div ref={rowsWrapperRef}>
+            <div ref={rowsWrapperRef} className="pb-8 pt-6">
               <MinimalView
                 nodes={displayNodes}
                 sessionStatus={sessionStatus}
@@ -283,20 +274,14 @@ export default React.memo(function MessageList({
             </div>
           ) : (
             /*
-             * Spacer div for the virtualizer. We add paddingBottom instead of
-             * using the virtualizer's paddingEnd option because paddingEnd
-             * feeds into getTotalSize() and triggers a measure → scroll adjust
-             * → re-render loop that causes visible flickering. paddingBottom on
-             * this spacer is invisible to the virtualizer (the items inside are
-             * position:absolute and ignore it), but it increases scrollHeight
-             * so scroll-to-bottom reaches the last item's full margin-bottom.
+             * Spacer div for the virtualizer: its height IS totalSize (the
+             * model includes paddingStart/paddingEnd, so it equals the real
+             * scrollHeight — this is what keeps the virtualizer's at-end
+             * check exact). Rows are position:absolute inside it.
              */
             <div
               className="relative"
-              style={{
-                height: `${totalSize}px`,
-                paddingBottom: `${MESSAGE_ROW_GAP + 16}px`,
-              }}
+              style={{ height: `${totalSize}px` }}
               data-testid="message-virtualizer"
             >
               <div
@@ -314,7 +299,7 @@ export default React.memo(function MessageList({
                       data-index={virtualItem.index}
                       data-item-id={item.id}
                       style={{
-                        marginBottom: `${isLast ? MESSAGE_ROW_GAP + 16 : MESSAGE_ROW_GAP}px`,
+                        marginBottom: `${isLast ? MESSAGE_LIST_BOTTOM_INSET : MESSAGE_ROW_GAP}px`,
                       }}
                     >
                       <RenderItemRenderer

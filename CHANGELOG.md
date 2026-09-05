@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Opening the terminal no longer slides the whole message list up — only the chat input rises above the terminal panel while the list stays put
+- With the terminal open, message text no longer shows through the bar under the chat input (git branch and context usage row)
+
 ## [0.4.6] - 2026-09-01
 
 ### Added

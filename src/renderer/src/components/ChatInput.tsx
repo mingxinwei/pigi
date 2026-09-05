@@ -447,7 +447,7 @@ export default function ChatInput({
   return (
     <div
       className={cn(
-        !isNewSession && 'relative z-10 shrink-0 px-8 pb-3',
+        !isNewSession && 'relative z-10 shrink-0 px-8',
         isNewSession && 'flex flex-1 flex-col items-center justify-center min-h-0 px-8',
       )}
       data-testid="chat-input"
@@ -625,7 +625,7 @@ export default function ChatInput({
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between gap-4 px-4 pt-1.5 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between gap-4 bg-background px-4 pt-1.5 pb-3 text-sm text-muted-foreground">
                   <span
                     className="flex min-w-0 items-center gap-1.5"
                     onClick={() => void onRefreshGitBranch()}

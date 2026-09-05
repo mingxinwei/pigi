@@ -129,6 +129,13 @@ export function isReadOnlyBashCommand(command: string): boolean {
 export function extractEffectiveCommand(command: string): string {
   let effective = command;
 
+  // Strip leading comment lines (# ...\n)
+  while (effective.startsWith('#')) {
+    const newlineIndex = effective.indexOf('\n');
+    if (newlineIndex === -1) return effective;
+    effective = effective.slice(newlineIndex + 1).trimStart();
+  }
+
   // Strip leading `cd ... &&` segments (can be chained)
   while (/^cd\s+\S+/.test(effective)) {
     const andIndex = effective.indexOf('&&');

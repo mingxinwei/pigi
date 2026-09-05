@@ -1,13 +1,16 @@
 import {
   IconChevronRight,
   IconChevronDown,
+  IconChevronUp,
   IconCheck,
   IconX,
   IconMinus,
   IconLoader2,
   IconBrain,
 } from '@tabler/icons-react';
-import { useRef, useState } from 'react';
+
+const MAX_COLLAPSED_ENTRIES = 3;
+import { useRef, useState, useMemo } from 'react';
 import { type ToolNode, type AssistantNode, getToolArgs } from '../state/transcriptController';
 import { collapseCommandNewlines } from '../lib/toolDisplay';
 import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
@@ -15,7 +18,7 @@ import type { ReadGroupEntry } from '../lib/readGrouping';
 import { extractEffectiveCommand, isReadOnlyGitCommand } from '../lib/readOnlyCommand';
 import ToolBlock from './ToolBlock';
 import ThinkingBlock, { ThinkingDuration } from './thinkingBlock';
-import ShimmerOverlay from './shimmerOverlay';
+
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { useHighlightTextNodes } from '../lib/highlightMatches';
 
@@ -216,6 +219,16 @@ export default function CollapsedReadGroup({
   }
   const label = buildGroupLabel(isActive, fileCount, gitCount, thinkingCount);
 
+  const [showAllEntries, setShowAllEntries] = useState(false);
+  const hasOverflow = entries.length > MAX_COLLAPSED_ENTRIES;
+  const visibleEntries = useMemo(
+    () =>
+      showAllEntries || !hasOverflow
+        ? entries
+        : entries.slice(entries.length - MAX_COLLAPSED_ENTRIES),
+    [entries, showAllEntries, hasOverflow],
+  );
+
   return (
     <Collapsible className="group/collapsible mb-[22px]" open={open} onOpenChange={onOpenChange}>
       <div className="rounded-md border border-border/65 bg-muted/25">
@@ -226,7 +239,29 @@ export default function CollapsedReadGroup({
             <IconChevronDown className="chevron-down size-3.5 shrink-0" />
           </CollapsibleTrigger>
           <div className="mt-0.5 flex flex-col group-data-[state=open]/collapsible:hidden">
-            {entries.map((entry) => {
+            {hasOverflow && (
+              <button
+                type="button"
+                className="flex w-fit items-center gap-1 text-[14px] text-muted-foreground transition-colors hover:text-foreground"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setShowAllEntries((prev) => !prev);
+                }}
+              >
+                {showAllEntries ? (
+                  <>
+                    Show less
+                    <IconChevronDown className="size-3.5" />
+                  </>
+                ) : (
+                  <>
+                    Show more
+                    <IconChevronUp className="size-3.5" />
+                  </>
+                )}
+              </button>
+            )}
+            {visibleEntries.map((entry) => {
               if (entry.kind === 'thinking') {
                 return <ThinkingGroupRow key={entry.node.id} node={entry.node} />;
               }
@@ -279,14 +314,6 @@ export default function CollapsedReadGroup({
               )}
             </HighlightedEntry>
           ))}
-          {isActive && (
-            <div className="flex items-center" data-search-ignore>
-              <span className="relative overflow-hidden text-[15px] text-muted-foreground">
-                Working...
-                <ShimmerOverlay />
-              </span>
-            </div>
-          )}
         </CollapsibleContent>
       </div>
     </Collapsible>

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.7] - 2026-09-06
+
+### Fixed
+
+- Streaming message lists no longer freeze mid-turn or jolt when a turn finishes
+- Auto-follow is more reliable: the list keeps following new output whenever the latest message is still fully visible, instead of randomly stopping
+- Switching sessions restores your exact scroll position; opening a session lands on the newest messages, and scrolling back to the bottom lands cleanly without chasing a moving target
+- Opening the terminal no longer shifts the message list — only the chat input rises above the panel, and messages no longer show through the bar under the input
+- Read groups no longer freeze while the model thinks between file reads
+
 ## [0.4.6] - 2026-09-01
 
 ### Added

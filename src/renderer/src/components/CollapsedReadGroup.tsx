@@ -8,12 +8,10 @@ import {
   IconLoader2,
   IconBrain,
 } from '@tabler/icons-react';
-
-const MAX_COLLAPSED_ENTRIES = 3;
 import { useRef, useState, useMemo } from 'react';
 import { type ToolNode, type AssistantNode, getToolArgs } from '../state/transcriptController';
 import { collapseCommandNewlines } from '../lib/toolDisplay';
-import { MESSAGE_ROW_GAP } from '../lib/layoutConstants';
+import { MESSAGE_ROW_GAP, READ_GROUP_MAX_COLLAPSED_ENTRIES } from '../lib/layoutConstants';
 import type { ReadGroupEntry } from '../lib/readGrouping';
 import { extractEffectiveCommand, isReadOnlyGitCommand } from '../lib/readOnlyCommand';
 import ToolBlock from './ToolBlock';
@@ -220,12 +218,12 @@ export default function CollapsedReadGroup({
   const label = buildGroupLabel(isActive, fileCount, gitCount, thinkingCount);
 
   const [showAllEntries, setShowAllEntries] = useState(false);
-  const hasOverflow = entries.length > MAX_COLLAPSED_ENTRIES;
+  const hasOverflow = entries.length > READ_GROUP_MAX_COLLAPSED_ENTRIES;
   const visibleEntries = useMemo(
     () =>
       showAllEntries || !hasOverflow
         ? entries
-        : entries.slice(entries.length - MAX_COLLAPSED_ENTRIES),
+        : entries.slice(entries.length - READ_GROUP_MAX_COLLAPSED_ENTRIES),
     [entries, showAllEntries, hasOverflow],
   );
 
@@ -242,6 +240,7 @@ export default function CollapsedReadGroup({
             {hasOverflow && (
               <button
                 type="button"
+                aria-expanded={showAllEntries}
                 className="flex w-fit items-center gap-1 text-[14px] text-muted-foreground transition-colors hover:text-foreground"
                 onClick={(event) => {
                   event.stopPropagation();

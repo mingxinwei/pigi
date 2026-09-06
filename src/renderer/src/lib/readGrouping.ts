@@ -16,6 +16,88 @@ export type RenderItem =
   | { type: 'node'; node: TranscriptNode; id: string }
   | { type: 'readGroup'; entries: ReadGroupEntry[]; id: string };
 
+/**
+ * Wrapper identity cache. renderItems is rebuilt on every transcript commit
+ * (each streaming delta); reusing the same wrapper object for an unchanged
+ * node keeps React.memo bailouts working for every visible row except the
+ * one actually streaming.
+ *
+ * Keyed weakly by node reference, with the node's mutation revision for
+ * assistant nodes: the transcript controller mutates streaming assistant
+ * nodes in place (object identity is stable across deltas), so reference
+ * equality alone cannot detect content changes — the revision must match
+ * too. Tool nodes are replaced immutably on update (fresh reference = miss),
+ * user/system nodes never mutate, and dropped sessions release their
+ * entries via the WeakMap.
+ */
+const nodeItemCache = new WeakMap<TranscriptNode, { revision: number; item: RenderItem }>();
+
+function nodeRevision(node: TranscriptNode): number {
+  return node.role === 'assistant' ? (node.revision ?? 0) : 0;
+}
+
+function getNodeItem(node: TranscriptNode): RenderItem {
+  const revision = nodeRevision(node);
+  const cached = nodeItemCache.get(node);
+  if (cached && cached.revision === revision) {
+    return cached.item;
+  }
+  const item: RenderItem = { type: 'node', node, id: node.id };
+  nodeItemCache.set(node, { revision, item });
+  return item;
+}
+
+/** Same node sequence → same cached group item, so unchanged groups keep
+ *  their identity across rebuilds. A group that grew (streaming reads or
+ *  absorbed thinking) — or whose absorbed thinking streamed in place — gets
+ *  a fresh item: entry revisions are snapshotted at cache time, because
+ *  streaming mutates assistant nodes without changing their references. */
+const readGroupItemCache = new WeakMap<
+  TranscriptNode,
+  { revisions: number[]; item: Extract<RenderItem, { type: 'readGroup' }> }
+>();
+
+function canonicalizeGroupItem(item: RenderItem): RenderItem {
+  if (item.type !== 'readGroup') return item;
+  const cacheKey = item.entries[0].node;
+  const cached = readGroupItemCache.get(cacheKey);
+  if (cached && entriesEquivalent(cached, item)) {
+    return cached.item;
+  }
+  readGroupItemCache.set(cacheKey, {
+    revisions: item.entries.map((entry) => nodeRevision(entry.node)),
+    item,
+  });
+  return item;
+}
+
+/** The entries sequence matches when every node reference, kind, and mutation
+ *  revision equals the snapshot taken when the cached item was stored.
+ *  References alone are not enough: thinking deltas mutate absorbed assistant
+ *  nodes in place, and only their revision exposes the change. */
+function entriesEquivalent(
+  cached: { revisions: number[]; item: Extract<RenderItem, { type: 'readGroup' }> },
+  incoming: Extract<RenderItem, { type: 'readGroup' }>,
+): boolean {
+  const cachedEntries = cached.item.entries;
+  const incomingEntries = incoming.entries;
+  if (cachedEntries.length !== incomingEntries.length) return false;
+  for (let index = 0; index < incomingEntries.length; index++) {
+    const cachedEntry = cachedEntries[index];
+    const incomingEntry = incomingEntries[index];
+    // kind is derivable from the node's role, but comparing it makes the
+    // "same entries sequence" invariant self-evident.
+    if (
+      cachedEntry.kind !== incomingEntry.kind ||
+      cachedEntry.node !== incomingEntry.node ||
+      cached.revisions[index] !== nodeRevision(incomingEntry.node)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isReadToolNode(node: TranscriptNode): boolean {
   if (node.role !== 'tool') return false;
   if (node.name === 'read') return true;
@@ -45,7 +127,13 @@ function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
   for (const item of items) {
     const previous = result[result.length - 1];
     if (item.type === 'node' && isThinkingOnlyNode(item.node) && previous?.type === 'readGroup') {
-      previous.entries.push({ kind: 'thinking', node: item.node });
+      // Copy-on-absorb: replace the group instead of pushing into its entries,
+      // so nothing here ever mutates an array that may already be shared
+      // (e.g. a group cached by a previous canonicalize pass).
+      result[result.length - 1] = {
+        ...previous,
+        entries: [...previous.entries, { kind: 'thinking', node: item.node }],
+      };
       continue;
     }
     result.push(item);
@@ -61,7 +149,7 @@ function absorbThinkingIntoReadGroups(items: RenderItem[]): RenderItem[] {
  */
 export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): RenderItem[] {
   if (!compact) {
-    return nodes.map((node) => ({ type: 'node', node, id: node.id }));
+    return nodes.map(getNodeItem);
   }
 
   const items: RenderItem[] = [];
@@ -70,7 +158,7 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
   function flushGroup(): void {
     if (currentGroup.length > 0) {
       const first = currentGroup[0];
-      const firstNode = first.kind === 'tool' ? first.node : first.node;
+      const firstNode = first.node;
       items.push({
         type: 'readGroup',
         entries: currentGroup,
@@ -89,10 +177,12 @@ export function buildRenderItems(nodes: TranscriptNode[], compact: boolean): Ren
       currentGroup.push({ kind: 'thinking', node });
     } else {
       flushGroup();
-      items.push({ type: 'node', node, id: node.id });
+      items.push(getNodeItem(node));
     }
   }
   flushGroup();
 
-  return absorbThinkingIntoReadGroups(items);
+  // Canonicalize after absorb so cached wrappers reflect the final entries;
+  // absorb itself is non-mutating.
+  return absorbThinkingIntoReadGroups(items).map(canonicalizeGroupItem);
 }

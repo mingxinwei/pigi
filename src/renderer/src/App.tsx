@@ -1219,7 +1219,11 @@ function App(): React.JSX.Element {
                 the clip; the input rides over it. Clipped below the toolbar. */}
             <div className="relative min-h-0 flex-1 overflow-hidden">
               <div className="absolute inset-0 flex flex-col">
-                <MessageList nodes={transcript.nodes} sessionPath={activeSessionPath ?? ''} />
+                <MessageList
+                  key={activeSessionPath ?? 'draft'}
+                  nodes={transcript.nodes}
+                  sessionPath={activeSessionPath ?? ''}
+                />
                 <div className={`${terminalPushClassName} shrink-0`} style={terminalPushStyle}>
                   {/* Zero-height flow anchor: the queue is absolutely positioned
                       above the input, so its appear/disappear at turn boundaries

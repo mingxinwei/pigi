@@ -27,6 +27,9 @@ type PinPhase =
   | { phase: 'ending'; turnId: string };
 
 const SCROLL_BUTTON_VIEWPORT_MULTIPLIER = 2;
+/** Heals short-of-end landings left by estimate-lagged size corrections
+ *  while auto-follow is engaged (see handleResize). */
+const FOLLOW_HEAL_BAND_PX = 160;
 
 function isAtBottom(container: HTMLDivElement): boolean {
   return (
@@ -195,7 +198,26 @@ export function useMessageListScrollController({
 
     function handleResize(): void {
       if (expandSettlingRef.current) return;
-      if (!isMinimal) return;
+      if (!isMinimal) {
+        // Follow heal, same frame as the growth: when auto-follow is engaged
+        // and the viewport sits just short of the real content end, glue it
+        // back. The virtualizer's end-anchor correction writes scrollTop by
+        // its model's size delta, but while a streaming row is still larger
+        // than its estimate the model delta is smaller than the real growth,
+        // so the correction lands short — right past scrollEndThreshold, where
+        // every follow gate reads "not at end" and follow silently dies. This
+        // observer runs after the virtualizer's per-row observers in the same
+        // frame (registration order), so this write is what gets painted.
+        // The band is deliberately narrow: it heals short landings (the
+        // estimate lag), never drags a viewport that scrolled away to read.
+        const container = containerRef.current;
+        if (!container || !autoScrollRef.current) return;
+        const shortfall = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (shortfall > 0.5 && shortfall <= FOLLOW_HEAL_BAND_PX) {
+          container.scrollTop = container.scrollHeight - container.clientHeight;
+        }
+        return;
+      }
       const pin = pinRef.current;
       switch (pin.phase) {
         case 'pinned': {

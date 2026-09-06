@@ -26,11 +26,15 @@ export const MESSAGE_LIST_TOP_INSET = 24;
  *  being clamped to a stale scrollHeight before the spacer re-renders. */
 export const MESSAGE_LIST_BOTTOM_INSET = 72;
 
-/** Distance (px) from the content end within which bottom auto-follow stays
- *  engaged. Shared by the scroll controller's real-DOM checks and the
- *  virtualizer's scrollEndThreshold (exact match because the coordinate
- *  models are aligned). */
-export const MESSAGE_LIST_SCROLL_END_THRESHOLD = 2;
+/** Distance (px) from the content end within which the list counts as
+ *  "at the bottom". Matches the bottom inset: anywhere within it, the last
+ *  message is still fully visible above the input, so it looks and behaves
+ *  as at-end. Deliberate scroll-ups beyond the inset disengage follow.
+ *  Shared by the scroll controller's real-DOM checks and the virtualizer's
+ *  scrollEndThreshold (followOnAppend + growth corrections), so a strict 2px
+ *  here made follow brittle: momentum slop or a correction still in flight
+ *  would land just past it and silently kill auto-follow. */
+export const MESSAGE_LIST_SCROLL_END_THRESHOLD = 72;
 
 /** Bottom terminal panel sizing. */
 export const TERMINAL_DEFAULT_HEIGHT = 280;

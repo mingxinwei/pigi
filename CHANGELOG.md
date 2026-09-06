@@ -7,6 +7,7 @@
 - Read groups no longer freeze while the model thinks between file reads: the "Thinking" row now updates live, including its expanded text
 - Opening the terminal no longer slides the whole message list up — only the chat input rises above the terminal panel while the list stays put
 - With the terminal open, message text no longer shows through the bar under the chat input (git branch and context usage row)
+- Auto-follow no longer silently stops after new messages appear: scrolling back to a spot where the last message is still fully visible now keeps the list following new content
 
 ## [0.4.6] - 2026-09-01
 

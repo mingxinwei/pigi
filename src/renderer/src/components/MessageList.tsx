@@ -12,6 +12,7 @@ import {
 } from '../lib/layoutConstants';
 import { buildRenderItems } from '../lib/readGrouping';
 import { estimateRenderItemHeight } from '../lib/messageListEstimates';
+import { getMeasuredRowHeight, recordMeasuredRowHeight } from '../lib/measuredRowHeights';
 import { RenderItemRenderer } from './messageListRows';
 import { escapeAbortScopeProps } from '../lib/focusScopes';
 import MessageSearch from './MessageSearch';
@@ -94,6 +95,17 @@ export default React.memo(function MessageList({
 
   const getItemKey = useCallback((index: number) => renderItems[index]?.id ?? index, [renderItems]);
 
+  // Reuse heights measured in previous visits of this session: on remount
+  // (session switch) the virtualizer's cache is gone, but rows keyed by the
+  // same ids have known real heights — restoring them keeps the layout close
+  // to what the saved scroll position was recorded against.
+  const estimateSize = useCallback(
+    (index: number): number =>
+      getMeasuredRowHeight(renderItems[index]?.id ?? '') ??
+      estimateRenderItemHeight(renderItems[index]),
+    [renderItems],
+  );
+
   // TanStack Virtual returns imperative measurement helpers; this follows its documented React pattern.
 
   const rowVirtualizer = useVirtualizer({
@@ -102,7 +114,7 @@ export default React.memo(function MessageList({
     count: isMinimal ? 0 : renderItems.length,
     getScrollElement: () => containerRef.current,
     getItemKey,
-    estimateSize: (index) => estimateRenderItemHeight(renderItems[index]),
+    estimateSize,
     overscan: 8,
     // gap makes the virtualizer's coordinate model match the DOM flow layout:
     // rows are laid out in-flow with marginBottom = MESSAGE_ROW_GAP, so without
@@ -114,6 +126,20 @@ export default React.memo(function MessageList({
     gap: MESSAGE_ROW_GAP,
     paddingStart: MESSAGE_LIST_TOP_INSET,
     paddingEnd: MESSAGE_LIST_BOTTOM_INSET,
+    // Seed the tracked scroll offset with the session's saved position so
+    // restoration happens natively: the virtualizer writes initialOffset on
+    // scroll-element attach, and when the transcript loads (item count
+    // 0 -> N) its anchor logic re-applies the tracked offset to the element
+    // — no post-render scrollTop writes that its reconcile would fight.
+    // A bottom sentinel (clamped to the content end) covers both "was at
+    // bottom" (-1) and "no saved position": both should land at the end.
+    // Lazy function form: read once, at first getScrollOffset() call.
+    initialOffset: () => {
+      const saved = sessionPath
+        ? useAppStore.getState().scrollPositions.get(sessionPath)
+        : undefined;
+      return saved === undefined || saved === -1 ? Number.MAX_SAFE_INTEGER : saved;
+    },
     // anchorTo: 'end' lets the virtualizer own bottom auto-follow: on every
     // item re-measure, if the viewport sits within scrollEndThreshold of the
     // content end it applies the size delta synchronously (inside its own
@@ -295,7 +321,12 @@ export default React.memo(function MessageList({
                   return (
                     <div
                       key={item.id}
-                      ref={rowVirtualizer.measureElement}
+                      ref={(element) => {
+                        rowVirtualizer.measureElement(element);
+                        if (element) {
+                          recordMeasuredRowHeight(item.id, element.offsetHeight);
+                        }
+                      }}
                       data-index={virtualItem.index}
                       data-item-id={item.id}
                       style={{

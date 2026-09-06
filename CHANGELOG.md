@@ -8,6 +8,8 @@
 - Opening the terminal no longer slides the whole message list up — only the chat input rises above the terminal panel while the list stays put
 - With the terminal open, message text no longer shows through the bar under the chat input (git branch and context usage row)
 - Auto-follow no longer silently stops after new messages appear: scrolling back to a spot where the last message is still fully visible now keeps the list following new content
+- Switching back to a session now restores the remembered scroll position accurately, and scrolling to the bottom no longer has to chase a target that keeps moving away
+- Opening a session now lands on the newest messages instead of the top of the history
 
 ## [0.4.6] - 2026-09-01
 

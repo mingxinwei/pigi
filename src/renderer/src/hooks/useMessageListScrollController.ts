@@ -357,39 +357,44 @@ export function useMessageListScrollController({
     }
     clearTopPin();
 
+    // Position restoration itself happens natively: MessageList seeds the
+    // virtualizer's initialOffset with the saved position (or a bottom
+    // sentinel), so the element already sits where it should when the
+    // transcript renders in. What is left here is to keep position SAVING
+    // locked until the content has actually laid out: during the load the
+    // clamped-to-zero intermediate positions fire scroll events, and saving
+    // them would clobber the stored value for the next switch.
+    const unlockWhenRendered = (): void => {
+      const RETRY_BUDGET_MS = 2000;
+      const startedAt = performance.now();
+      const attempt = (): void => {
+        if (prevSessionPathRef.current !== sessionPath) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const rendered = container.scrollHeight > container.clientHeight;
+        if (rendered || performance.now() - startedAt > RETRY_BUDGET_MS) {
+          restoredScrollSessionRef.current = sessionPath;
+          return;
+        }
+        window.setTimeout(attempt, 50);
+      };
+      attempt();
+    };
+
     const savedPosition = sessionPath
       ? useAppStore.getState().scrollPositions.get(sessionPath)
       : undefined;
 
     if (savedPosition === -1) {
-      // Was at bottom: let ResizeObserver handle it
+      // Was at bottom: follow corrections keep tracking the end
       autoScrollRef.current = true;
-      requestAnimationFrame(() => {
-        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-          restoredScrollSessionRef.current = sessionPath;
-        }
-      });
     } else if (savedPosition !== undefined) {
       autoScrollRef.current = false;
-      requestAnimationFrame(() => {
-        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
-          containerRef.current.scrollTop = savedPosition;
-          restoredScrollSessionRef.current = sessionPath;
-        }
-      });
     } else {
+      // No saved position: land at the bottom like a fresh mount would.
       autoScrollRef.current = true;
-      requestAnimationFrame(() => {
-        if (prevSessionPathRef.current === sessionPath && containerRef.current) {
-          // No saved position: land at the bottom like a fresh mount would.
-          // The virtualizer only follows on appends/resizes from here on, so
-          // the initial position must be written explicitly.
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-          restoredScrollSessionRef.current = sessionPath;
-        }
-      });
     }
+    unlockWhenRendered();
   }, [
     containerRef,
     isLastMinimalTurnActive,
